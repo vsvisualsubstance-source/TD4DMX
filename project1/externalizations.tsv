@@ -237,7 +237,7 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/Embody	container	tox	project1/Embody.tox	2026-08-29 10:21:13 UTC		1196	2025.33070	-275	275	0.3250,0.8000,0.3000
 /project1	container	tox	project1.tox	2026-08-29 10:21:13 UTC		15	2025.33070	200	100	0.3250,0.8000,0.3000
 /perform	window	tox	perform.tox	2026-08-25 09:18:33 UTC		1	2025.33070	-200	40	0.3250,0.8000,0.3000
-/	base	tdn	dmx.tdn	2026-08-25 11:55:45 UTC			099.2025.33070			
+/	base	tdn	dmx.tdn	2026-08-29 10:23:19 UTC			099.2025.33070			
 /project1/dmx_audio_chase/bars_preview_callbacks	text	py	project1/dmx_audio_chase/bars_preview_callbacks.py	2026-08-25 11:55:50 UTC				450	880	0.9000,0.3000,0.4000
 /project1/gaia_client/dmx_services	text	py	project1/gaia_client/dmx_services.py	2026-08-29 09:51:50 UTC				0	-6300	0.9000,0.3000,0.4000
 /project1/gaia_client/dmx_services_lifecycle	execute	py	project1/gaia_client/dmx_services_lifecycle.py	2026-08-29 09:51:50 UTC				400	-6300	0.9000,0.3000,0.4000
