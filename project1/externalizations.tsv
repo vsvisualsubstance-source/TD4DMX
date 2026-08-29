@@ -1,0 +1,243 @@
+path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y	node_color
+/project1/externalizations	table	tsv	project1/externalizations.tsv	2026-08-25 09:15:54 UTC				-200	0	0.9000,0.3000,0.4000
+/project1/noise	container	tox	project1/noise.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	225	0.3250,0.8000,0.3000
+/project1/dmx_audio_chase/pixel_preview_exec	execute	py	project1/dmx_audio_chase/pixel_preview_exec.py	2026-08-25 09:18:31 UTC				250	700	0.9000,0.3000,0.4000
+/project1/dmx_audio_chase/palette_preview_callbacks1	text	py	project1/dmx_audio_chase/palette_preview_callbacks1.py	2026-08-25 09:18:31 UTC				450	450	0.9000,0.3000,0.4000
+/project1/dmx_audio_chase/palette_preview_callbacks	text	py	project1/dmx_audio_chase/palette_preview_callbacks.py	2026-08-25 09:18:31 UTC				0	-120	0.9000,0.3000,0.4000
+/project1/dmx_audio_chase/fixture_profiles	table	tsv	project1/dmx_audio_chase/fixture_profiles.tsv	2026-08-25 09:18:31 UTC				-800	550	0.9000,0.3000,0.4000
+/project1/dmx_audio_chase/fixture_apply	parexec	py	project1/dmx_audio_chase/fixture_apply.py	2026-08-25 09:18:31 UTC				50	150	0.9000,0.3000,0.4000
+/project1/dmx_audio_chase/dmx_out_routingtable	table	tsv	project1/dmx_audio_chase/dmx_out_routingtable.tsv	2026-08-25 09:18:31 UTC				0	-120	0.9000,0.3000,0.4000
+/project1/dmx_audio_chase/dmx_generator_callbacks1	text	py	project1/dmx_audio_chase/dmx_generator_callbacks1.py	2026-08-25 09:18:31 UTC				-150	150	0.9000,0.3000,0.4000
+/project1/dmx_audio_chase/dmx_generator_callbacks	text	py	project1/dmx_audio_chase/dmx_generator_callbacks.py	2026-08-25 09:18:31 UTC				0	-120	0.9000,0.3000,0.4000
+/project1/dmx_audio_chase	base	tox	project1/dmx_audio_chase.tox	2026-08-25 11:50:39 UTC		4	2025.33070	0	50	0.3250,0.8000,0.3000
+/project1/Embody/wizard/track/fill	container	tox	project1/Embody/wizard/track/fill.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/wizard/track	container	tox	project1/Embody/wizard/track.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	-150	0.3250,0.8000,0.3000
+/project1/Embody/wizard/topspacer	container	tox	project1/Embody/wizard/topspacer.tox	2026-08-25 09:18:31 UTC		1	2025.33070	480	-450	0.3250,0.8000,0.3000
+/project1/Embody/wizard/title_callbacks	text	py	project1/Embody/wizard/title_callbacks.py	2026-08-25 09:18:31 UTC				480	-160	0.9000,0.3000,0.4000
+/project1/Embody/wizard/title	text	tox	project1/Embody/wizard/title.tox	2026-08-25 09:18:31 UTC		1	2025.33070	480	0	0.3250,0.8000,0.3000
+/project1/Embody/wizard/steplabel_callbacks	text	py	project1/Embody/wizard/steplabel_callbacks.py	2026-08-25 09:18:31 UTC				415	200	0.9000,0.3000,0.4000
+/project1/Embody/wizard/steplabel	text	tox	project1/Embody/wizard/steplabel.tox	2026-08-25 09:18:31 UTC		1	2025.33070	225	200	0.3250,0.8000,0.3000
+/project1/Embody/wizard/spacer	container	tox	project1/Embody/wizard/spacer.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	-300	0.3250,0.8000,0.3000
+/project1/Embody/wizard/logic	text	py	project1/Embody/wizard/logic.py	2026-08-25 09:18:31 UTC				0	200	0.9000,0.3000,0.4000
+/project1/Embody/wizard/hint_callbacks	text	py	project1/Embody/wizard/hint_callbacks.py	2026-08-25 09:18:31 UTC				190	0	0.9000,0.3000,0.4000
+/project1/Embody/wizard/hint	text	tox	project1/Embody/wizard/hint.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/wizard/grp_save	container	tox	project1/Embody/wizard/grp_save.tox	2026-08-25 09:18:31 UTC		1	2025.33070	1455	-1060	0.3250,0.8000,0.3000
+/project1/Embody/wizard/grp_permissions	container	tox	project1/Embody/wizard/grp_permissions.tox	2026-08-25 09:18:31 UTC		1	2025.33070	1455	-800	0.3250,0.8000,0.3000
+/project1/Embody/wizard/grp_mode	container	tox	project1/Embody/wizard/grp_mode.tox	2026-08-25 09:18:31 UTC		1	2025.33070	450	-800	0.3250,0.8000,0.3000
+/project1/Embody/wizard/grp_git	container	tox	project1/Embody/wizard/grp_git.tox	2026-08-25 09:18:31 UTC		1	2025.33070	1715	-800	0.3250,0.8000,0.3000
+/project1/Embody/wizard/grp_footprint	container	tox	project1/Embody/wizard/grp_footprint.tox	2026-08-25 09:18:31 UTC		1	2025.33070	1195	-800	0.3250,0.8000,0.3000
+/project1/Embody/wizard/grp_externalize	container	tox	project1/Embody/wizard/grp_externalize.tox	2026-08-25 09:18:31 UTC		1	2025.33070	1715	-1400	0.3250,0.8000,0.3000
+/project1/Embody/wizard/grp_convoy	container	tox	project1/Embody/wizard/grp_convoy.tox	2026-08-25 09:18:31 UTC		1	2025.33070	1715	-1060	0.3250,0.8000,0.3000
+/project1/Embody/wizard/grp_client	container	tox	project1/Embody/wizard/grp_client.tox	2026-08-25 09:18:31 UTC		1	2025.33070	935	-800	0.3250,0.8000,0.3000
+/project1/Embody/wizard/grp_assistant	container	tox	project1/Embody/wizard/grp_assistant.tox	2026-08-25 09:18:31 UTC		1	2025.33070	675	-800	0.3250,0.8000,0.3000
+/project1/Embody/wizard/footer	container	tox	project1/Embody/wizard/footer.tox	2026-08-25 09:18:31 UTC		1	2025.33070	250	-700	0.3250,0.8000,0.3000
+/project1/Embody/wizard/divider	container	tox	project1/Embody/wizard/divider.tox	2026-08-25 09:18:31 UTC		1	2025.33070	240	-300	0.3250,0.8000,0.3000
+/project1/Embody/wizard/clicks	panelexec	py	project1/Embody/wizard/clicks.py	2026-08-25 09:18:31 UTC				240	-150	0.9000,0.3000,0.4000
+/project1/Embody/wizard/botspacer	container	tox	project1/Embody/wizard/botspacer.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	-450	0.3250,0.8000,0.3000
+/project1/Embody/wizard	container	tox	project1/Embody/wizard.tox	2026-08-25 09:18:31 UTC		24	2025.33070	1200	225	0.3250,0.8000,0.3000
+/project1/Embody/window_wizard	window	tox	project1/Embody/window_wizard.tox	2026-08-25 09:18:31 UTC		1	2025.33070	1200	675	0.3250,0.8000,0.3000
+/project1/Embody/window_tagging_menu	window	tox	project1/Embody/window_tagging_menu.tox	2026-08-25 09:18:31 UTC		24	2025.33070	900	675	0.3250,0.8000,0.3000
+/project1/Embody/window_omit	window	tox	project1/Embody/window_omit.tox	2026-08-25 09:18:31 UTC		1	2025.33070	700	675	0.3250,0.8000,0.3000
+/project1/Embody/window_manager	window	tox	project1/Embody/window_manager.tox	2026-08-25 09:18:31 UTC		13	2025.33070	500	675	0.3250,0.8000,0.3000
+/project1/Embody/windowHeader/title	text	tox	project1/Embody/windowHeader/title.tox	2026-08-25 09:18:31 UTC		50	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/windowHeader/panelexec1	panelexec	py	project1/Embody/windowHeader/panelexec1.py	2026-08-25 09:18:31 UTC				300	-200	0.9000,0.3000,0.4000
+/project1/Embody/windowHeader/button_min	text	tox	project1/Embody/windowHeader/button_min.tox	2026-08-25 09:18:31 UTC		2	2025.33070	300	0	0.3250,0.8000,0.3000
+/project1/Embody/windowHeader/button_max	text	tox	project1/Embody/windowHeader/button_max.tox	2026-08-25 09:18:31 UTC		2	2025.33070	600	0	0.3250,0.8000,0.3000
+/project1/Embody/windowHeader/button_close	text	tox	project1/Embody/windowHeader/button_close.tox	2026-08-25 09:18:31 UTC		2	2025.33070	900	0	0.3250,0.8000,0.3000
+/project1/Embody/windowHeader/WindowHeaderExt	text	py	project1/Embody/windowHeader/WindowHeaderExt.py	2026-08-25 09:18:31 UTC				0	-200	0.9000,0.3000,0.4000
+/project1/Embody/windowHeader	container	tox	project1/Embody/windowHeader.tox	2026-08-25 09:18:31 UTC		15	2025.33070	300	300	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/status_table	table	tsv	project1/Embody/viz_status/status_table.tsv	2026-08-25 09:18:31 UTC				300	0	0.9000,0.3000,0.4000
+/project1/Embody/viz_status/status_publish	text	py	project1/Embody/viz_status/status_publish.py	2026-08-25 09:18:31 UTC				450	0	0.9000,0.3000,0.4000
+/project1/Embody/viz_status/rowbox_4/cell_1	text	tox	project1/Embody/viz_status/rowbox_4/cell_1.tox	2026-08-25 09:18:31 UTC		1	2025.33070	260	0	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_4/cell_0	text	tox	project1/Embody/viz_status/rowbox_4/cell_0.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_4	container	tox	project1/Embody/viz_status/rowbox_4.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	-1040	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_3/cell_1	text	tox	project1/Embody/viz_status/rowbox_3/cell_1.tox	2026-08-25 09:18:31 UTC		1	2025.33070	260	0	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_3/cell_0	text	tox	project1/Embody/viz_status/rowbox_3/cell_0.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_3	container	tox	project1/Embody/viz_status/rowbox_3.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	-780	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_2/cell_1	text	tox	project1/Embody/viz_status/rowbox_2/cell_1.tox	2026-08-25 09:18:31 UTC		1	2025.33070	260	0	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_2/cell_0	text	tox	project1/Embody/viz_status/rowbox_2/cell_0.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_2	container	tox	project1/Embody/viz_status/rowbox_2.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	-520	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_1/cell_1	text	tox	project1/Embody/viz_status/rowbox_1/cell_1.tox	2026-08-25 09:18:31 UTC		1	2025.33070	260	0	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_1/cell_0	text	tox	project1/Embody/viz_status/rowbox_1/cell_0.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_1	container	tox	project1/Embody/viz_status/rowbox_1.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	-260	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_0/cell_1	text	tox	project1/Embody/viz_status/rowbox_0/cell_1.tox	2026-08-25 09:18:31 UTC		1	2025.33070	260	0	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_0/cell_0	text	tox	project1/Embody/viz_status/rowbox_0/cell_0.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/rowbox_0	container	tox	project1/Embody/viz_status/rowbox_0.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/viz_status/parexec_status	parexec	py	project1/Embody/viz_status/parexec_status.py	2026-08-25 09:18:31 UTC				600	0	0.9000,0.3000,0.4000
+/project1/Embody/viz_status	container	tox	project1/Embody/viz_status.tox	2026-08-25 09:18:31 UTC		1	2025.33070	1200	475	0.3250,0.8000,0.3000
+/project1/Embody/updater/UpdaterExt	text	py	project1/Embody/updater/UpdaterExt.py	2026-08-25 09:18:31 UTC				0	0	0.9000,0.3000,0.4000
+/project1/Embody/updater	base	tox	project1/Embody/updater.tox	2026-08-25 09:18:31 UTC		2	2025.33070	500	-550	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/tooltip/text_callbacks	text	py	project1/Embody/toolbar/tooltip/text_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/tooltip/text	text	tox	project1/Embody/toolbar/tooltip/text.tox	2026-08-25 09:18:31 UTC		34	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/tooltip	container	tox	project1/Embody/toolbar/tooltip.tox	2026-08-25 09:18:31 UTC		45	2025.33070	800	-200	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/toolbar_config	table	tsv	project1/Embody/toolbar/toolbar_config.tsv	2026-08-25 09:18:31 UTC				0	-200	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/parexec_responsive	parexec	py	project1/Embody/toolbar/parexec_responsive.py	2026-08-25 09:18:31 UTC				400	-200	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/parexec_filter	parexec	py	project1/Embody/toolbar/parexec_filter.py	2026-08-25 09:18:31 UTC				600	-200	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/panelexec_right	panelexec	py	project1/Embody/toolbar/panelexec_right.py	2026-08-25 09:18:31 UTC				1200	-200	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/panelexec_left	panelexec	py	project1/Embody/toolbar/panelexec_left.py	2026-08-25 09:18:31 UTC				1000	-200	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_right/spacer_pars	container	tox	project1/Embody/toolbar/container_right/spacer_pars.tox	2026-08-25 09:18:31 UTC		1	2025.33070	400	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_right/pars	text	tox	project1/Embody/toolbar/container_right/pars.tox	2026-08-25 09:18:31 UTC		2	2025.33070	600	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_right/filter	text	tox	project1/Embody/toolbar/container_right/filter.tox	2026-08-25 09:18:31 UTC		4	2025.33070	200	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_right/close	text	tox	project1/Embody/toolbar/container_right/close.tox	2026-08-25 09:18:31 UTC		2	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_right	container	tox	project1/Embody/toolbar/container_right.tox	2026-08-25 09:18:31 UTC		25	2025.33070	175	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/status_callbacks	text	py	project1/Embody/toolbar/container_left/status_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_left/status	text	tox	project1/Embody/toolbar/container_left/status.tox	2026-08-25 09:18:31 UTC		22	2025.33070	800	-200	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/spacer_tdn	container	tox	project1/Embody/toolbar/container_left/spacer_tdn.tox	2026-08-25 09:18:31 UTC		1	2025.33070	600	-200	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/spacer_envoy	container	tox	project1/Embody/toolbar/container_left/spacer_envoy.tox	2026-08-25 09:18:31 UTC		1	2025.33070	1200	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/save_folder_callbacks	text	py	project1/Embody/toolbar/container_left/save_folder_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_left/save_folder	text	tox	project1/Embody/toolbar/container_left/save_folder.tox	2026-08-25 09:18:31 UTC		12	2025.33070	400	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/save_comp_callbacks	text	py	project1/Embody/toolbar/container_left/save_comp_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_left/save_comp	text	tox	project1/Embody/toolbar/container_left/save_comp.tox	2026-08-25 09:18:31 UTC		2	2025.33070	1400	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/refresh_callbacks	text	py	project1/Embody/toolbar/container_left/refresh_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_left/refresh	text	tox	project1/Embody/toolbar/container_left/refresh.tox	2026-08-25 09:18:31 UTC		12	2025.33070	200	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/perform_callbacks	text	py	project1/Embody/toolbar/container_left/perform_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_left/perform	text	tox	project1/Embody/toolbar/container_left/perform.tox	2026-08-25 09:18:31 UTC		2	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/initialize_callbacks	text	py	project1/Embody/toolbar/container_left/initialize_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_left/initialize	text	tox	project1/Embody/toolbar/container_left/initialize.tox	2026-08-25 09:18:31 UTC		2	2025.33070	600	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/import_tdn_callbacks	text	py	project1/Embody/toolbar/container_left/import_tdn_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_left/import_tdn	text	tox	project1/Embody/toolbar/container_left/import_tdn.tox	2026-08-25 09:18:31 UTC		2	2025.33070	400	-200	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/export_tdn_callbacks	text	py	project1/Embody/toolbar/container_left/export_tdn_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_left/export_tdn	text	tox	project1/Embody/toolbar/container_left/export_tdn.tox	2026-08-25 09:18:31 UTC		2	2025.33070	0	-200	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/export_comp_tdn_callbacks	text	py	project1/Embody/toolbar/container_left/export_comp_tdn_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_left/export_comp_tdn	text	tox	project1/Embody/toolbar/container_left/export_comp_tdn.tox	2026-08-25 09:18:31 UTC		2	2025.33070	200	-200	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/envoy_toggle_callbacks	text	py	project1/Embody/toolbar/container_left/envoy_toggle_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_left/envoy_toggle	text	tox	project1/Embody/toolbar/container_left/envoy_toggle.tox	2026-08-25 09:18:31 UTC		6	2025.33070	800	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left/disable_callbacks	text	py	project1/Embody/toolbar/container_left/disable_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/toolbar/container_left/disable	text	tox	project1/Embody/toolbar/container_left/disable.tox	2026-08-25 09:18:31 UTC		12	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/container_left	container	tox	project1/Embody/toolbar/container_left.tox	2026-08-25 09:18:31 UTC		18	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/toolbar/ToolbarExt	text	py	project1/Embody/toolbar/ToolbarExt.py	2026-08-25 09:18:31 UTC				200	-200	0.9000,0.3000,0.4000
+/project1/Embody/toolbar	container	tox	project1/Embody/toolbar.tox	2026-08-25 09:18:31 UTC		40	2025.33070	300	200	0.3250,0.8000,0.3000
+/project1/Embody/timer_callbacks	text	py	project1/Embody/timer_callbacks.py	2026-08-25 09:18:31 UTC				-700	-375	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_tdn_textconv	text	py	project1/Embody/templates/text_tdn_textconv.py	2026-08-25 09:18:31 UTC				0	-1000	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_visual_aesthetics	text	md	project1/Embody/templates/text_skill_visual_aesthetics.md	2026-08-25 09:18:31 UTC				2100	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_td_recovery	text	md	project1/Embody/templates/text_skill_td_recovery.md	2026-08-25 09:18:31 UTC				3300	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_td_api_reference	text	md	project1/Embody/templates/text_skill_td_api_reference.md	2026-08-25 09:18:31 UTC				1500	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_pop_networks	text	md	project1/Embody/templates/text_skill_pop_networks.md	2026-08-25 09:18:31 UTC				2400	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_parameter_design	text	md	project1/Embody/templates/text_skill_parameter_design.md	2026-08-25 09:18:31 UTC				3000	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_multi_session_etiquette	text	md	project1/Embody/templates/text_skill_multi_session_etiquette.md	2026-08-25 09:18:31 UTC				3600	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_movie_export	text	md	project1/Embody/templates/text_skill_movie_export.md	2026-08-25 09:18:31 UTC				2700	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_merge_divergent_tox	text	md	project1/Embody/templates/text_skill_merge_divergent_tox.md	2026-08-25 09:18:31 UTC				4200	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_mcp_tools_reference	text	md	project1/Embody/templates/text_skill_mcp_tools_reference.md	2026-08-25 09:18:31 UTC				1800	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_manage_annotations	text	md	project1/Embody/templates/text_skill_manage_annotations.md	2026-08-25 09:18:31 UTC				1200	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_externalize	text	md	project1/Embody/templates/text_skill_externalize.md	2026-08-25 09:18:31 UTC				600	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_debug_operator	text	md	project1/Embody/templates/text_skill_debug_operator.md	2026-08-25 09:18:31 UTC				300	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_create_operator	text	md	project1/Embody/templates/text_skill_create_operator.md	2026-08-25 09:18:31 UTC				0	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_create_extension	text	md	project1/Embody/templates/text_skill_create_extension.md	2026-08-25 09:18:31 UTC				900	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_skill_brief	text	md	project1/Embody/templates/text_skill_brief.md	2026-08-25 09:18:31 UTC				3900	-400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_settings_local	text	json	project1/Embody/templates/text_settings_local.json	2026-08-25 09:18:31 UTC				600	1200	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_rule_worktree_td_safety	text	md	project1/Embody/templates/text_rule_worktree_td_safety.md	2026-08-25 09:18:31 UTC				3200	400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_rule_td_python	text	md	project1/Embody/templates/text_rule_td_python.md	2026-08-25 09:18:31 UTC				300	400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_rule_td_connectivity	text	md	project1/Embody/templates/text_rule_td_connectivity.md	2026-08-25 09:18:31 UTC				2400	400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_rule_refresh_after_commit	text	md	project1/Embody/templates/text_rule_refresh_after_commit.md	2026-08-25 09:18:31 UTC				1800	400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_rule_performance	text	md	project1/Embody/templates/text_rule_performance.md	2026-08-25 09:18:31 UTC				2100	400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_rule_parameters	text	md	project1/Embody/templates/text_rule_parameters.md	2026-08-25 09:18:31 UTC				900	400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_rule_network_layout	text	md	project1/Embody/templates/text_rule_network_layout.md	2026-08-25 09:18:31 UTC				0	400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_rule_multi_session	text	md	project1/Embody/templates/text_rule_multi_session.md	2026-08-25 09:18:31 UTC				2700	400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_rule_mcp_safety	text	md	project1/Embody/templates/text_rule_mcp_safety.md	2026-08-25 09:18:31 UTC				600	400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_rule_github_release	text	md	project1/Embody/templates/text_rule_github_release.md	2026-08-25 09:18:31 UTC				1500	400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_rule_commit_push_checklist	text	md	project1/Embody/templates/text_rule_commit_push_checklist.md	2026-08-25 09:18:31 UTC				1200	400	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_envoy_bridge	text	py	project1/Embody/templates/text_envoy_bridge.py	2026-08-25 09:18:31 UTC				900	1200	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_claude	text	md	project1/Embody/templates/text_claude.md	2026-08-25 09:18:31 UTC				0	1200	0.9000,0.3000,0.4000
+/project1/Embody/templates/text_agents_md	text	md	project1/Embody/templates/text_agents_md.md	2026-08-25 09:18:31 UTC				300	1200	0.9000,0.3000,0.4000
+/project1/Embody/templates	base	tox	project1/Embody/templates.tox	2026-08-25 09:18:31 UTC		28	2025.33070	-400	-1200	0.3250,0.8000,0.3000
+/project1/Embody/tdn_export_progress/win	window	tox	project1/Embody/tdn_export_progress/win.tox	2026-08-25 09:18:31 UTC		1	2025.33070	200	0	0.3250,0.8000,0.3000
+/project1/Embody/tdn_export_progress/panelexec_cancel	panelexec	py	project1/Embody/tdn_export_progress/panelexec_cancel.py	2026-08-25 09:18:31 UTC				200	-200	0.9000,0.3000,0.4000
+/project1/Embody/tdn_export_progress/dialog/title_callbacks	text	py	project1/Embody/tdn_export_progress/dialog/title_callbacks.py	2026-08-25 09:18:31 UTC				200	-160	0.9000,0.3000,0.4000
+/project1/Embody/tdn_export_progress/dialog/title	text	tox	project1/Embody/tdn_export_progress/dialog/title.tox	2026-08-25 09:18:31 UTC		1	2025.33070	200	0	0.3250,0.8000,0.3000
+/project1/Embody/tdn_export_progress/dialog/status_callbacks	text	py	project1/Embody/tdn_export_progress/dialog/status_callbacks.py	2026-08-25 09:18:31 UTC				200	-360	0.9000,0.3000,0.4000
+/project1/Embody/tdn_export_progress/dialog/status	text	tox	project1/Embody/tdn_export_progress/dialog/status.tox	2026-08-25 11:55:44 UTC		3	2025.33070	200	-200	0.3250,0.8000,0.3000
+/project1/Embody/tdn_export_progress/dialog/bar_bg/bar_fill	container	tox	project1/Embody/tdn_export_progress/dialog/bar_bg/bar_fill.tox	2026-08-25 11:55:44 UTC		3	2025.33070	200	0	0.3250,0.8000,0.3000
+/project1/Embody/tdn_export_progress/dialog/bar_bg	container	tox	project1/Embody/tdn_export_progress/dialog/bar_bg.tox	2026-08-25 09:18:31 UTC		1	2025.33070	200	-400	0.3250,0.8000,0.3000
+/project1/Embody/tdn_export_progress/dialog	container	tox	project1/Embody/tdn_export_progress/dialog.tox	2026-08-25 09:18:31 UTC		1	2025.33070	200	200	0.3250,0.8000,0.3000
+/project1/Embody/tdn_export_progress	base	tox	project1/Embody/tdn_export_progress.tox	2026-08-25 09:18:31 UTC		1	2025.33070	1000	475	0.3250,0.8000,0.3000
+/project1/Embody/tagger/replicator1_callbacks	text	py	project1/Embody/tagger/replicator1_callbacks.py	2026-08-25 09:18:31 UTC				-225	-160	0.9000,0.3000,0.4000
+/project1/Embody/tagger/replicator1	replicator	tox	project1/Embody/tagger/replicator1.tox	2026-08-25 09:18:31 UTC		1	2025.33070	-225	0	0.3250,0.8000,0.3000
+/project1/Embody/tagger/header/text1_callbacks	text	py	project1/Embody/tagger/header/text1_callbacks.py	2026-08-25 09:18:31 UTC				-200	-160	0.9000,0.3000,0.4000
+/project1/Embody/tagger/header/text1	text	tox	project1/Embody/tagger/header/text1.tox	2026-08-25 09:18:31 UTC		8	2025.33070	-200	0	0.3250,0.8000,0.3000
+/project1/Embody/tagger/header	container	tox	project1/Embody/tagger/header.tox	2026-08-25 09:18:31 UTC		12	2025.33070	0	275	0.3250,0.8000,0.3000
+/project1/Embody/tagger	container	tox	project1/Embody/tagger.tox	2026-08-25 09:18:31 UTC		30	2025.33070	900	225	0.3250,0.8000,0.3000
+/project1/Embody/startup_progress	text	py	project1/Embody/startup_progress.py	2026-08-25 09:18:31 UTC				-700	400	0.9000,0.3000,0.4000
+/project1/Embody/shortcuts	text	py	project1/Embody/shortcuts.py	2026-08-25 09:18:31 UTC				-500	-375	0.9000,0.3000,0.4000
+/project1/Embody/parexec	parexec	py	project1/Embody/parexec.py	2026-08-25 09:18:31 UTC				-275	300	0.9000,0.3000,0.4000
+/project1/Embody/palette_catalog	table	tsv	project1/Embody/palette_catalog.tsv	2026-08-25 09:18:31 UTC				-500	100	0.9000,0.3000,0.4000
+/project1/Embody/omit_panel/title_callbacks	text	py	project1/Embody/omit_panel/title_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/omit_panel/title	text	tox	project1/Embody/omit_panel/title.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/omit_panel/subtitle_callbacks	text	py	project1/Embody/omit_panel/subtitle_callbacks.py	2026-08-25 09:18:31 UTC				200	-160	0.9000,0.3000,0.4000
+/project1/Embody/omit_panel/subtitle	text	tox	project1/Embody/omit_panel/subtitle.tox	2026-08-25 09:18:31 UTC		1	2025.33070	200	0	0.3250,0.8000,0.3000
+/project1/Embody/omit_panel/list_omits_callbacks	text	py	project1/Embody/omit_panel/list_omits_callbacks.py	2026-08-25 09:18:31 UTC				1400	0	0.9000,0.3000,0.4000
+/project1/Embody/omit_panel/list_omits	list	tox	project1/Embody/omit_panel/list_omits.tox	2026-08-25 09:18:31 UTC		1	2025.33070	1000	0	0.3250,0.8000,0.3000
+/project1/Embody/omit_panel/list_header_callbacks	text	py	project1/Embody/omit_panel/list_header_callbacks.py	2026-08-25 09:18:31 UTC				800	-160	0.9000,0.3000,0.4000
+/project1/Embody/omit_panel/list_header	text	tox	project1/Embody/omit_panel/list_header.tox	2026-08-25 09:18:31 UTC		1	2025.33070	800	0	0.3250,0.8000,0.3000
+/project1/Embody/omit_panel/dropzone/drop_hint_callbacks	text	py	project1/Embody/omit_panel/dropzone/drop_hint_callbacks.py	2026-08-25 09:18:31 UTC				0	-160	0.9000,0.3000,0.4000
+/project1/Embody/omit_panel/dropzone/drop_hint	text	tox	project1/Embody/omit_panel/dropzone/drop_hint.tox	2026-08-25 09:18:31 UTC		1	2025.33070	0	0	0.3250,0.8000,0.3000
+/project1/Embody/omit_panel/dropzone	container	tox	project1/Embody/omit_panel/dropzone.tox	2026-08-25 09:18:31 UTC		1	2025.33070	540	0	0.3250,0.8000,0.3000
+/project1/Embody/omit_panel/dragdrop_callbacks	text	py	project1/Embody/omit_panel/dragdrop_callbacks.py	2026-08-25 09:18:31 UTC				1200	0	0.9000,0.3000,0.4000
+/project1/Embody/omit_panel	container	tox	project1/Embody/omit_panel.tox	2026-08-25 09:18:31 UTC		1	2025.33070	700	475	0.3250,0.8000,0.3000
+/project1/Embody/manager	container	tox	project1/Embody/manager.tox	2026-08-25 09:18:31 UTC		15	2025.33070	500	475	0.3250,0.8000,0.3000
+/project1/Embody/list/list_callbacks	text	py	project1/Embody/list/list_callbacks.py	2026-08-25 09:18:32 UTC				625	0	0.9000,0.3000,0.4000
+/project1/Embody/list/list1	list	tox	project1/Embody/list/list1.tox	2026-08-25 09:18:32 UTC		57	2025.33070	445	0	0.3250,0.8000,0.3000
+/project1/Embody/list/inject_parents_callbacks	text	py	project1/Embody/list/inject_parents_callbacks.py	2026-08-25 09:18:32 UTC				-100	-120	0.9000,0.3000,0.4000
+/project1/Embody/list	container	tox	project1/Embody/list.tox	2026-08-25 09:18:32 UTC		41	2025.33070	300	75	0.3250,0.8000,0.3000
+/project1/Embody/keyboardin_callbacks	text	py	project1/Embody/keyboardin_callbacks.py	2026-08-25 09:18:32 UTC				-300	-375	0.9000,0.3000,0.4000
+/project1/Embody/help/text_help_display	text	py	project1/Embody/help/text_help_display.py	2026-08-25 09:18:32 UTC				0	-200	0.9000,0.3000,0.4000
+/project1/Embody/help/text_help	text	py	project1/Embody/help/text_help.py	2026-08-25 09:18:32 UTC				0	0	0.9000,0.3000,0.4000
+/project1/Embody/help	opviewer	tox	project1/Embody/help.tox	2026-08-25 09:18:32 UTC		15	2025.33070	196	675	0.3250,0.8000,0.3000
+/project1/Embody/fifo1_callbacks	text	py	project1/Embody/fifo1_callbacks.py	2026-08-25 09:18:32 UTC				-275	100	0.9000,0.3000,0.4000
+/project1/Embody/execute	execute	py	project1/Embody/execute.py	2026-08-25 09:18:32 UTC				-275	400	0.9000,0.3000,0.4000
+/project1/Embody/envoy_viz	text	py	project1/Embody/envoy_viz.py	2026-08-25 09:18:32 UTC				-500	600	0.9000,0.3000,0.4000
+/project1/Embody/envoy_setup	text	py	project1/Embody/envoy_setup.py	2026-08-25 09:18:32 UTC				-500	700	0.9000,0.3000,0.4000
+/project1/Embody/envoy_read	text	py	project1/Embody/envoy_read.py	2026-08-25 09:18:32 UTC				-500	800	0.9000,0.3000,0.4000
+/project1/Embody/envoy_ops	text	py	project1/Embody/envoy_ops.py	2026-08-25 09:18:32 UTC				-500	400	0.9000,0.3000,0.4000
+/project1/Embody/envoy_layout	text	py	project1/Embody/envoy_layout.py	2026-08-25 09:18:32 UTC				-500	500	0.9000,0.3000,0.4000
+/project1/Embody/embot_template	base	tox	project1/Embody/embot_template.tox	2026-08-25 09:18:32 UTC		1	2025.33070	-700	-1200	0.3250,0.8000,0.3000
+/project1/Embody/embody_pyenv	text	py	project1/Embody/embody_pyenv.py	2026-08-25 09:18:32 UTC				-500	300	0.9000,0.3000,0.4000
+/project1/Embody/embody_launch	text	py	project1/Embody/embody_launch.py	2026-08-25 09:18:32 UTC				-700	200	0.9000,0.3000,0.4000
+/project1/Embody/embody_git	text	py	project1/Embody/embody_git.py	2026-08-25 09:18:32 UTC				-700	100	0.9000,0.3000,0.4000
+/project1/Embody/embody_admin	text	py	project1/Embody/embody_admin.py	2026-08-25 09:18:32 UTC				-700	300	0.9000,0.3000,0.4000
+/project1/Embody/divergent_defaults	table	tsv	project1/Embody/divergent_defaults.tsv	2026-08-25 09:18:32 UTC				-500	200	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_ws	text	py	project1/Embody/convoy/host/convoy_ws.py	2026-08-25 09:18:32 UTC				1000	-2200	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_wake	text	py	project1/Embody/convoy/host/convoy_wake.py	2026-08-25 09:18:32 UTC				600	-2200	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_sessions	text	py	project1/Embody/convoy/host/convoy_sessions.py	2026-08-25 09:18:32 UTC				200	-2200	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_realm	text	py	project1/Embody/convoy/host/convoy_realm.py	2026-08-25 09:18:32 UTC				1400	-1900	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_protocol	text	py	project1/Embody/convoy/host/convoy_protocol.py	2026-08-25 09:18:32 UTC				400	-800	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_policy	text	py	project1/Embody/convoy/host/convoy_policy.py	2026-08-25 09:18:32 UTC				1000	-1900	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_platform	text	py	project1/Embody/convoy/host/convoy_platform.py	2026-08-25 09:18:32 UTC				0	-800	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_peerserver	text	py	project1/Embody/convoy/host/convoy_peerserver.py	2026-08-25 09:18:32 UTC				0	-1200	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_peers	text	py	project1/Embody/convoy/host/convoy_peers.py	2026-08-25 09:18:32 UTC				800	-800	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_peerclient	text	py	project1/Embody/convoy/host/convoy_peerclient.py	2026-08-25 09:18:32 UTC				400	-1200	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_owlette	text	py	project1/Embody/convoy/host/convoy_owlette.py	2026-08-25 09:18:32 UTC				600	-1900	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_mcpclient	text	py	project1/Embody/convoy/host/convoy_mcpclient.py	2026-08-25 09:18:32 UTC				1200	-400	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_lifecycle	text	py	project1/Embody/convoy/host/convoy_lifecycle.py	2026-08-25 09:18:32 UTC				200	-1900	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_lan	text	py	project1/Embody/convoy/host/convoy_lan.py	2026-08-25 09:18:32 UTC				1200	-800	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_identity	text	py	project1/Embody/convoy/host/convoy_identity.py	2026-08-25 09:18:32 UTC				800	-400	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_hoststore	text	py	project1/Embody/convoy/host/convoy_hoststore.py	2026-08-25 09:18:32 UTC				400	-400	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_hostprobe	text	py	project1/Embody/convoy/host/convoy_hostprobe.py	2026-08-25 09:18:32 UTC				0	-400	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_hostops	text	py	project1/Embody/convoy/host/convoy_hostops.py	2026-08-25 09:18:32 UTC				1400	-1600	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_hostkeys	text	py	project1/Embody/convoy/host/convoy_hostkeys.py	2026-08-25 09:18:32 UTC				1200	0	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_hostapp	text	py	project1/Embody/convoy/host/convoy_hostapp.py	2026-08-25 09:18:32 UTC				800	0	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_discovery	text	py	project1/Embody/convoy/host/convoy_discovery.py	2026-08-25 09:18:32 UTC				1000	-1600	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_controllers	text	py	project1/Embody/convoy/host/convoy_controllers.py	2026-08-25 09:18:32 UTC				400	0	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_capabilities	text	py	project1/Embody/convoy/host/convoy_capabilities.py	2026-08-25 09:18:32 UTC				0	0	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_artifacts	text	py	project1/Embody/convoy/host/convoy_artifacts.py	2026-08-25 09:18:32 UTC				600	-1600	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host/convoy_artifact_http	text	py	project1/Embody/convoy/host/convoy_artifact_http.py	2026-08-25 09:18:32 UTC				200	-1600	0.9000,0.3000,0.4000
+/project1/Embody/convoy/host	base	tox	project1/Embody/convoy/host.tox	2026-08-25 09:18:32 UTC		1	2025.33070	0	-400	0.3250,0.8000,0.3000
+/project1/Embody/convoy/convoy_install	text	py	project1/Embody/convoy/convoy_install.py	2026-08-25 09:18:32 UTC				800	0	0.9000,0.3000,0.4000
+/project1/Embody/convoy/convoy_client	text	py	project1/Embody/convoy/convoy_client.py	2026-08-25 09:18:32 UTC				400	0	0.9000,0.3000,0.4000
+/project1/Embody/convoy/ConvoyExt	text	py	project1/Embody/convoy/ConvoyExt.py	2026-08-25 09:18:32 UTC				0	0	0.9000,0.3000,0.4000
+/project1/Embody/convoy	base	tox	project1/Embody/convoy.tox	2026-08-25 09:18:32 UTC		17	2025.33070	925	-550	0.3250,0.8000,0.3000
+/project1/Embody/chopexec_exit_tagger	chopexec	py	project1/Embody/chopexec_exit_tagger.py	2026-08-25 09:18:32 UTC				-300	-650	0.9000,0.3000,0.4000
+/project1/Embody/TDNExt	text	py	project1/Embody/TDNExt.py	2026-08-25 09:18:32 UTC				-700	600	0.9000,0.3000,0.4000
+/project1/Embody/EnvoyExt	text	py	project1/Embody/EnvoyExt.py	2026-08-25 09:18:32 UTC				-700	700	0.9000,0.3000,0.4000
+/project1/Embody/EmbodyExt	text	py	project1/Embody/EmbodyExt.py	2026-08-25 09:18:32 UTC				-700	800	0.9000,0.3000,0.4000
+/project1/Embody/Collection/scanner	text	py	project1/Embody/Collection/scanner.py	2026-08-25 09:18:32 UTC				0	-200	0.9000,0.3000,0.4000
+/project1/Embody/Collection/safe_import	text	py	project1/Embody/Collection/safe_import.py	2026-08-25 09:18:32 UTC				400	-200	0.9000,0.3000,0.4000
+/project1/Embody/Collection/CollectionExt	text	py	project1/Embody/Collection/CollectionExt.py	2026-08-25 09:18:32 UTC				200	0	0.9000,0.3000,0.4000
+/project1/Embody/Collection	base	tox	project1/Embody/Collection.tox	2026-08-25 09:18:32 UTC		2	2025.33070	200	-550	0.3250,0.8000,0.3000
+/project1/Embody/CatalogManagerExt	text	py	project1/Embody/CatalogManagerExt.py	2026-08-25 09:18:32 UTC				-700	500	0.9000,0.3000,0.4000
+/project1/Embody	container	tox	project1/Embody.tox	2026-08-29 10:21:13 UTC		1196	2025.33070	-275	275	0.3250,0.8000,0.3000
+/project1	container	tox	project1.tox	2026-08-29 10:21:13 UTC		15	2025.33070	200	100	0.3250,0.8000,0.3000
+/perform	window	tox	perform.tox	2026-08-25 09:18:33 UTC		1	2025.33070	-200	40	0.3250,0.8000,0.3000
+/	base	tdn	dmx.tdn	2026-08-25 11:55:45 UTC			099.2025.33070			
+/project1/dmx_audio_chase/bars_preview_callbacks	text	py	project1/dmx_audio_chase/bars_preview_callbacks.py	2026-08-25 11:55:50 UTC				450	880	0.9000,0.3000,0.4000
+/project1/gaia_client/dmx_services	text	py	project1/gaia_client/dmx_services.py	2026-08-29 09:51:50 UTC				0	-6300	0.9000,0.3000,0.4000
+/project1/gaia_client/dmx_services_lifecycle	execute	py	project1/gaia_client/dmx_services_lifecycle.py	2026-08-29 09:51:50 UTC				400	-6300	0.9000,0.3000,0.4000

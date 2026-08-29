@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "WebFetch"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "envoy"
+  ],
+  "enableAllProjectMcpServers": true
+}

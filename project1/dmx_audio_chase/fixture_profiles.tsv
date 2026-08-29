@@ -1,0 +1,8 @@
+name	channels
+ZQ006018 4CH RGBW	red green blue white
+ZQ006018 8CH	dimmer red green blue white strobe mode speed
+RGB 3CH	red green blue
+D+RGB 4CH	dimmer red green blue
+D+RGBW 5CH	dimmer red green blue white
+RGBWA+UV 6CH	red green blue white amber uv
+D+RGBW+S+M 7CH	dimmer red green blue white strobe mode

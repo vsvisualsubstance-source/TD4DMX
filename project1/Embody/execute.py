@@ -1,0 +1,576 @@
+# me - this DAT
+# 
+# frame - the current frame
+# state - True if the timeline is paused
+# 
+# Make sure the corresponding toggle is enabled in the Execute DAT.
+
+def init():
+	# Log version info for debugging user issues
+	parent.Embody.Log(
+		f"Embody v{parent.Embody.par.Version.eval()} | "
+		f"TouchDesigner {app.version}.{app.build} | "
+		f"{parent.Embody.ext.Embody._osLabel()}"
+	)
+	# Prevent Envoy from auto-starting before init completes.
+	# The release .tox may bake in Envoyenable=True and Envoystatus=Running;
+	# reset both so the git dialog doesn't fire before the externalizations
+	# table is ready and Start() isn't blocked by a stale status.
+	# Do NOT store _init_complete here -- keep parexec suppressed until
+	# _restoreSettings completes.  TD defers onValueChange callbacks to the
+	# next cook cycle, so if _init_complete is stored before those callbacks
+	# fire, parexec processes init()'s Envoyenable=False and calls Stop(),
+	# disabling Envoy on every startup.  _restoreSettings stores
+	# _init_complete when it finishes (or immediately if it returns early).
+	parent.Embody.par.Envoyenable = False
+	parent.Embody.par.Envoystatus = 'Disabled'
+	parent.Embody.par.Performmode = False
+	# Updatestatus is a transient read-out; a release .tox bakes in whatever
+	# the dev session last set (e.g. the dev-checkout refusal). Reset it to
+	# the truthful Auto-Update-off resting state -- 'Disabled', never a blank
+	# (an empty read-only field on a fresh install reads as broken). Through
+	# the readOnly dance: direct assignment to a locked par is not reliable.
+	p = parent.Embody.par.Updatestatus
+	was_ro = p.readOnly
+	p.readOnly = False
+	p.val = 'Disabled'
+	p.readOnly = was_ro
+	# Autosavestatus is the same class of transient read-out and was missing
+	# from this scrub, so a release .tox shipped whatever the dev session's
+	# last checkpoint left there (e.g. 'Saved 09:04:54 UTC' -- a timestamp
+	# from another machine, on a fresh install).
+	p = parent.Embody.par.Autosavestatus
+	was_ro = p.readOnly
+	p.readOnly = False
+	p.val = 'Idle'
+	p.readOnly = was_ro
+	# Convoy: the same baked-value scrub that protects Envoyenable above.
+	# A released .tox must NEVER auto-enable Convoy -- enabling it mints a
+	# convoy id into a tracked file and registers the session with a local
+	# host app, both of which require an explicit human yes (A-13). Off on
+	# every open; _restoreSettings puts the user's own choice back a few
+	# frames later, and parexec stays suppressed until it finishes.
+	# getattr-guarded because init() also runs on an upgraded .tox that
+	# predates the Convoy page.
+	p = getattr(parent.Embody.par, 'Convoyenable', None)
+	if p is not None:
+		p.val = 0
+	p = getattr(parent.Embody.par, 'Convoystatus', None)
+	if p is not None:
+		was_ro = p.readOnly
+		p.readOnly = False
+		p.val = 'Disabled'
+		p.readOnly = was_ro
+	# Clear any save-time dialog suppression that baked into the .toe/.tox.
+	# _suppress_dialogs is a save-window-only flag; a fresh open must start with
+	# dialogs enabled so genuine first-run onboarding can prompt.
+	parent.Embody.unstore('_suppress_dialogs')
+
+
+def onStart():
+	init()
+	# Show WHEN the work last reached disk, straight away. init() above
+	# left Autosavestatus at its resting value, and on a project that is
+	# not being edited that is what it stays -- so the row whose whole job
+	# is answering "is my work safe?" would say nothing all session.
+	parent.Embody.ext.Embody.SeedAutosaveStatus()
+	# Restore settings from .embody/config.json -- recovers user config after
+	# crash, force-quit, or any unsaved session. On normal open where
+	# .toe was saved, values match and this is a no-op.
+	run(f"op('{parent.Embody}').ext.Embody._restoreSettings(kick_envoy=True)", delayFrames=5)
+	# Ensure op-type defaults + palette catalog are loaded (loads from
+	# .embody/catalog_<build>.json if present, otherwise async scan).
+	# Must run before ReconstructTDNComps (frame 60) for best results,
+	# but the embedded tableDAT covers exports during the scan window.
+	# Skip entirely in Off mode -- catalogs exist for TDN export compaction
+	# and palette-clone detection; both are dormant when Tdnmode=off.
+	run(
+		f"op('{parent.Embody}').ext.CatalogManager.EnsureCatalogs() "
+		f"if op('{parent.Embody}').ext.Embody._tdnMode() != 'off' else None",
+		delayFrames=10)
+	# On project open, silently extract CLAUDE.md if Envoy is
+	# enabled but the file is missing (handles upgrades from older versions)
+	run(f"op('{parent.Embody}').ext.Embody._upgradeEnvoy()", delayFrames=30)
+	# Restore missing TOX-strategy COMPs from .tox files on disk
+	run(f"op('{parent.Embody}').RestoreTOXComps()", delayFrames=45)
+	# Restore missing standalone DATs from externalized files on disk
+	run(f"op('{parent.Embody}').RestoreDATs()", delayFrames=50)
+	# Reconstruct TDN-strategy COMPs from .tdn files
+	run(f"op('{parent.Embody}').ReconstructTDNComps()", delayFrames=60)
+	# Reconcile metadata for operators that exist but lost tags/colors/file params
+	run(f"op('{parent.Embody}').ext.Embody.ReconcileMetadata()", delayFrames=75)
+	# Offer to restore TDN-tagged empty shells whose table row was lost
+	# (tsv truncation/crash) but whose .tdn survives on disk. Additive +
+	# consent-gated; after ReconcileMetadata so tags are re-applied first.
+	run(f"op('{parent.Embody}').ext.Embody.RecoverOrphanShells()", delayFrames=90)
+	# Pin current TD build into .embody/project.json so the Envoy bridge can
+	# pick a matching install on fresh clones (committed; survives git clone).
+	run(f"op('{parent.Embody}').ext.Embody._writeProjectJson()", delayFrames=80)
+	# Self-update startup sweep (UpdaterExt): crash-sentinel recovery first,
+	# then the Autoupdate-gated check. After every restore phase (frame 90)
+	# with margin -- the check itself is a background worker and never blocks
+	# startup. Guarded so pre-updater toes (no 'updater' child) skip quietly.
+	run(
+		f"op('{parent.Embody}').op('updater').ext.UpdaterExt.StartupCheck() "
+		f"if op('{parent.Embody}').op('updater') else None",
+		delayFrames=150)
+	return
+
+def onCreate():
+	init()
+	# Same seed as onStart -- see there.
+	parent.Embody.ext.Embody.SeedAutosaveStatus()
+	# Auto-create (or reconnect) the externalizations table before Verify()
+	run(f"op('{parent.Embody}').ext.Embody.CreateExternalizationsTable()", delayFrames=15)
+	# Verify handles update-scenario detection and Envoy opt-in
+	run(f"op('{parent.Embody}').Verify()", delayFrames=30)
+	# Ensure catalogs load on fresh-project drops too, not just onStart.
+	# Delayed past Verify() so the setup dialog isn't fighting the scan.
+	# Skip in Off mode -- see onStart() for rationale.
+	run(
+		f"op('{parent.Embody}').ext.CatalogManager.EnsureCatalogs() "
+		f"if op('{parent.Embody}').ext.Embody._tdnMode() != 'off' else None",
+		delayFrames=45)
+	# The Autoupdate-gated check on the FRESH-INSTALL path too. It was
+	# scheduled only from onStart (project open) -- but on a first install
+	# the open happened before Embody existed, so a user with 'Check and
+	# Notify' set watched Updatestatus rest at the scrub's 'Disabled' for
+	# the whole first session (field report, 2026-08-12; every fresh-load
+	# smoke flag showed the same). Background worker, no dialogs on the
+	# auto path; deferred well past Verify()'s dialog window.
+	run(
+		f"op('{parent.Embody}').op('updater').ext.UpdaterExt.StartupCheck() "
+		f"if op('{parent.Embody}').op('updater') else None",
+		delayFrames=300)
+	return
+
+def onExit():
+	# Convoy: clear this node's Envoy port on the local host app so the
+	# dispatcher stops aiming jobs at a port that dies with this process.
+	# Best-effort by contract (one attempt, 1s timeout, every outcome a
+	# value) and BLOCKING, because no run() callback will ever fire again
+	# on a TD that is closing. Costs nothing at all when Convoy was never
+	# enabled -- Unregister() returns before touching the filesystem when
+	# this process holds no node id.
+	#
+	# NOT suppressed for an in-flight Convoy-relayed job, deliberately.
+	# Two reasons: (1) node-side job records carry no Convoy provenance --
+	# only an optional idempotency_key any caller may supply -- so "is a
+	# relayed job running" is not knowable here; and (2) any job running
+	# in THIS process dies with it, so holding the stale port back would
+	# preserve a route to work that cannot survive the exit. The honest
+	# tradeoff of clearing it: the host defers dispatch to this node until
+	# it re-registers on next launch, which is exactly the Stage A
+	# landing note's position.
+	try:
+		convoy = parent.Embody.op('convoy')
+		if convoy:
+			convoy.ext.ConvoyExt.Unregister(blocking=True, reason='TD exit')
+	except Exception:
+		# A shutting-down TD must never be blocked or broken by this.
+		pass
+	return
+
+def onFrameStart(frame):
+	return
+
+def onFrameEnd(frame):
+	return
+
+def onPlayStateChange(state):
+	return
+
+def onDeviceChange():
+	return
+
+def onProjectPreSave():
+	# Wrap EVERYTHING in a fail-safe boundary. By the time onProjectPreSave
+	# fires, TD has already opened the .toe target for writing; any unhandled
+	# exception here truncates the save to 0 bytes (issue #21). The boundary
+	# must include the unstores and the Perform Mode check, not just the
+	# externalization pipeline -- a crash in any of them is equally fatal.
+	try:
+		# Clear runtime-only storage that must not bake into the .tox.
+		# _git_root is computed fresh at Start() time -- baking it in would cause
+		# every user's project to inherit the dev repo path from the release .tox.
+		parent.Embody.unstore('_git_root')
+		parent.Embody.unstore('_init_complete')
+		# Clear session-only stores before the save so they never bake into the
+		# .tox. _tdn_stripped_paths and _tdn_pane_restore are written and consumed
+		# within a single Ctrl+S cycle -- they have no meaning across sessions.
+		parent.Embody.unstore('_tdn_stripped_paths')
+		parent.Embody.unstore('_tdn_pane_restore')
+		parent.Embody.unstore('_perform_state')
+
+		# Retire any live build-visualization artifacts (the follow bot + node
+		# colour pulses) BEFORE the .toe write / .tox export, so they can never
+		# bake into a saved file. Guarded so it can never break the save.
+		try:
+			_envoy = getattr(parent.Embody.ext, 'Envoy', None)
+			if _envoy is not None:
+				_envoy._vizCleanup()
+				# Issue #86: _vizCleanup is the fast bookkeeping flush; this is
+				# the structural backstop that almost always finds zero. Every
+				# _viz_* field is a plain instance attribute reset by
+				# EnvoyExt.__init__, so an extension reinit (any .py edit
+				# hot-syncs), a COMP rename, an undo resurrection or a
+				# crash-recovered session can leave bot parts nothing points at.
+				# One traversal, inside the SAME guarded boundary -- by now TD
+				# has the .toe open for writing and an unhandled exception here
+				# truncates the save to 0 bytes (issue #21).
+				#
+				# A non-zero count is the single highest-value diagnostic this
+				# feature can emit: it means the bookkeeping flush above MISSED
+				# a real leak (and, for a user annotation that happens to carry
+				# the reserved name, that the sweep deleted an operator). Never
+				# swallow it -- a backstop that succeeds silently and fails
+				# silently is indistinguishable from one that is switched off.
+				_purged = _envoy._purgeVizArtifacts()
+				if _purged:
+					parent.Embody.ext.Embody.Log(
+						f"Purged {_purged} orphaned Embot part(s) at save "
+						f"-- viz bookkeeping missed them", "WARNING")
+		except Exception:
+			pass
+
+		# Suppress interactive modals (the Envoy onboarding prompt AND the
+		# file-cleanup / continuity prompts) for the whole save window. The
+		# post-save Refresh + Envoy restart can reach a _messageBox/ui.messageBox
+		# while the save is mid-flight; a modal then freezes TD. _suppressDialogs()
+		# reads this flag, so every gated dialog returns its safe default instead.
+		# Cleared after the save settles (onProjectPostSave, delayFrames=120) and
+		# again on next open (init). NOTE: unlike the session keys unstored above,
+		# this is set BEFORE the .toe write / release .tox export, so it DOES bake
+		# into both -- intentionally. init()'s unstore scrubs it on open before any
+		# dialog could read it (same baked-value-scrub pattern as Envoyenable).
+		parent.Embody.store('_suppress_dialogs', True)
+
+		# Skip all pre-save processing in Perform Mode.
+		# The .toe still saves normally via TD -- Embody's externalization pipeline is bypassed.
+		if parent.Embody.ext.Embody._performMode:
+			parent.Embody.ext.Embody.Log('Perform Mode -- skipping pre-save externalization', 'INFO')
+			return
+
+		_runPreSaveExternalization()
+	except Exception as e:
+		try:
+			parent.Embody.ext.Embody.Log(
+				f'Pre-save externalization failed (save will continue): {e}',
+				'ERROR')
+		except Exception:
+			# Log itself failed -- fall back to print so the message reaches textport
+			print(f'Embody > Pre-save externalization failed: {e}')
+
+
+def _runPreSaveExternalization():
+	# Suppress the delayed Refresh pulse - the continuity check must NOT
+	# fire during the strip/restore window or it will delete files for
+	# temporarily-missing operators inside TDN COMPs.
+	parent.Embody.ext.Embody.Update(suppress_refresh=True)
+
+	# Master TDN mode: when Off, skip the entire TDN pre-save pipeline
+	# (export, strip, restore). .tdn files on disk stay untouched.
+	mode = parent.Embody.ext.Embody._tdnMode()
+	if mode == 'off':
+		parent.Embody.ext.Embody.Log(
+			'TDN mode=off -- skipping pre-save TDN strip/export', 'INFO')
+		return
+
+	# TDN content safety -- detect unprotected DATs and storage before strip/restore
+	parent.Embody.ext.Embody._checkTDNContentSafety()
+
+	tdn_comps = parent.Embody.ext.Embody._getTDNStrategyComps()
+	if not tdn_comps:
+		return
+
+	# Phase 1: Export current in-memory state to .tdn files, but only
+	# if the content actually changed. Skipping unchanged COMPs avoids
+	# noisy git diffs from volatile header fields (build, generator,
+	# exported_at, td_build).
+	exported = []
+	for comp_path, rel_tdn_path in tdn_comps:
+		comp = op(comp_path)
+		if not comp:
+			continue
+		# Skip empty COMPs - nothing to export or strip
+		has_children = bool(comp.findChildren(depth=1, includeUtility=True))
+		if not has_children:
+			continue
+		try:
+			abs_path = str(parent.Embody.ext.Embody.buildAbsolutePath(rel_tdn_path))
+
+			# Export to dict only (no file write yet)
+			result = parent.Embody.ext.TDN.ExportNetwork(
+				root_path=comp_path, output_file=None)
+			if not result.get('success'):
+				parent.Embody.ext.Embody.Log(
+					f'Pre-save export failed for {comp_path}: '
+					f'{result.get("error")}', 'ERROR')
+				continue
+
+			new_tdn = result['tdn']
+
+			# Compare against existing file - skip write if content unchanged
+			existing_tdn = parent.Embody.ext.TDN._read_existing_tdn(abs_path)
+			if existing_tdn and parent.Embody.ext.TDN._tdn_content_equal(
+					new_tdn, existing_tdn):
+				exported.append((comp_path, rel_tdn_path))
+				continue
+
+			# Content changed (or first export) - write to disk
+			scan_folder = str(project.folder)
+			before_tdn = parent.Embody.ext.TDN._collectExistingTDNFiles(
+				scan_folder, comp_path)
+			# Only files Embody tracks are deletion candidates -- never
+			# reclaim a stray the user placed themselves.
+			before_tdn = parent.Embody.ext.TDN._restrictToTrackedTDN(
+				before_tdn)
+			content = parent.Embody.ext.TDN._compact_json_dumps(new_tdn)
+			write_result = parent.Embody.ext.TDN._safe_write_tdn(
+				abs_path, content, scan_folder)
+			if not write_result.get('success'):
+				parent.Embody.ext.Embody.Log(
+					f'Pre-save write failed for {comp_path}: '
+					f'{write_result.get("error")}', 'ERROR')
+				continue
+
+			# Stale file cleanup
+			protected = [abs_path]
+			other_protected = parent.Embody.ext.Embody._getAllTrackedTDNFiles(
+				exclude_path=comp_path)
+			if other_protected:
+				protected.extend(other_protected)
+			parent.Embody.ext.TDN._cleanupStaleTDNFiles(
+				before_tdn, protected, scan_folder)
+
+			# Track export and update fingerprint
+			parent.Embody.ext.TDN._trackTDNExport(
+				comp_path, abs_path,
+				build_num=new_tdn.get('build'),
+				touch_build=f'{app.version}.{app.build}')
+			parent.Embody.ext.Embody._storeTDNFingerprint(comp)
+			exported.append((comp_path, rel_tdn_path))
+		except Exception as e:
+			parent.Embody.ext.Embody.Log(
+				f'Pre-save export error for {comp_path}: {e}', 'ERROR')
+
+	# Phase 2: Strip children from exported COMPs so the .toe stays small.
+	# Only strip COMPs whose export succeeded - stripping without a valid
+	# .tdn on disk would permanently destroy the children.
+	# Gated on Tdnmode: Export mode skips strip entirely (.toe is truth).
+	# Full mode runs strip when Tdnstriponsave is on.
+	if mode != 'full':
+		parent.Embody.ext.Embody.Log(
+			'TDN mode=export -- skipping Phase 2 strip', 'DEBUG')
+		return
+	if not parent.Embody.par.Tdnstriponsave.eval():
+		return
+
+	# Save pane owner paths that fall inside TDN COMPs before stripping.
+	# After restore, we re-navigate orphaned panes back to the rebuilt COMP.
+	tdn_paths = [cp for cp, _ in exported]
+	pane_restore = {}
+	try:
+		for pane in ui.panes:
+			if hasattr(pane, 'owner') and pane.owner:
+				owner_path = pane.owner.path
+				for tp in tdn_paths:
+					if owner_path == tp or owner_path.startswith(tp + '/'):
+						pane_restore[pane.id] = owner_path
+						break
+	except Exception:
+		pass  # Non-critical -- pane restoration is best-effort
+	if pane_restore:
+		parent.Embody.store('_tdn_pane_restore', pane_restore)
+
+	# Sort deepest-first so nested TDN COMPs (e.g. /META/geo1) are
+	# stripped before their parent (/META) destroys them. Without this,
+	# the parent's StripCompChildren destroys the nested COMP before it
+	# can be tracked in stripped_info, so post-save never restores it.
+	exported_by_depth = sorted(
+		exported, key=lambda x: x[0].count('/'), reverse=True)
+
+	# Pre-stage the restore list BEFORE stripping. Each entry in `exported`
+	# corresponds to a successful .tdn export (Phase 1 only appended after
+	# successful write/track/fingerprint), so every entry is safe for post-save
+	# reconstruction. Storing up-front means a mid-strip crash -- caught by
+	# onProjectPreSave's fail-safe boundary -- still leaves post-save with a
+	# complete restore list. Entries already-stripped get rebuilt from .tdn;
+	# entries not-yet-reached are no-op rebuilds (their children survive
+	# untouched in the live session because strip never ran on them).
+	# Without this pre-stage, a mid-strip crash destroyed children with no
+	# recovery list, leaving the live session broken until manual
+	# ReconstructTDNComps() or reopen (the .tdn files on disk are still the
+	# source of truth, so saved data is never lost -- but session integrity is).
+	if exported_by_depth:
+		parent.Embody.store('_tdn_stripped_paths', list(exported_by_depth))
+	for comp_path, rel_tdn_path in exported_by_depth:
+		comp = op(comp_path)
+		if comp:
+			parent.Embody.ext.Embody.StripCompChildren(comp)
+	return
+
+def onProjectPostSave():
+	# Lift the save-time dialog suppression once the post-save restore AND the
+	# deferred Envoy restart (delayFrames=30 below) + its reinit/Verify/deferred
+	# prompt window have all elapsed. Generous delay so no late reinit re-queues a
+	# modal; scheduled up-front via run() so every return path still clears it and
+	# a stuck flag can never outlive the save.
+	run(f"op('{parent.Embody}').unstore('_suppress_dialogs')", delayFrames=120)
+
+	# The save that just completed is the strongest form of "work reached
+	# disk" -- reset the Saved counter to NOW. Only the auto-checkpoint
+	# engine and the startup seed wrote this status before, so the readout
+	# kept the last checkpoint's age straight through a Ctrl+S and told a
+	# user who had JUST saved that their work was hours old (field
+	# question, 2026-08-11; the smoke's ready flag showed the same:
+	# autosavestatus stayed 'Idle' across the harness's own save).
+	try:
+		parent.Embody.ext.Embody._setAutosaveStatus(
+			'Saved ' + parent.Embody.ext.Embody._autosaveClock())
+	except Exception as e:
+		print(f'Embody > post-save Saved stamp failed: {e}')
+	# Restore children that were stripped during pre-save.
+	# Re-import from the just-exported .tdn files to keep the session intact.
+	# In Export/Off modes no strip runs, so stripped is empty -- but we still
+	# need to re-store _init_complete and restart Envoy below.
+	stripped = parent.Embody.fetch('_tdn_stripped_paths', [], search=False)
+	if stripped:
+		parent.Embody.unstore('_tdn_stripped_paths')
+		# Sort shallowest-first so parent COMPs (e.g. /META) are restored
+		# before their nested children (/META/geo1). The parent import
+		# recreates the child COMP shell; the child import then replaces
+		# its default contents (e.g. Torus) with the correct .tdn state.
+		def _depth_key(entry):
+			p = entry[0] if isinstance(entry, (list, tuple)) else entry
+			return p.count('/')
+		stripped = sorted(stripped, key=_depth_key)
+		for entry in stripped:
+			# Unpack stored (comp_path, rel_tdn_path) tuples.
+			# Fall back to legacy format (plain string) for safety.
+			if isinstance(entry, (list, tuple)) and len(entry) == 2:
+				comp_path, rel_path = entry
+			else:
+				comp_path = entry
+				try:
+					rel_path = parent.Embody.ext.Embody._getStrategyFilePath(comp_path, 'tdn')
+				except Exception:
+					rel_path = None
+			try:
+				if not rel_path:
+					parent.Embody.ext.Embody.Log(
+						f'Post-save restore: no TDN file path for {comp_path}', 'WARNING')
+					continue
+				abs_path = parent.Embody.ext.Embody.buildAbsolutePath(rel_path)
+				if not abs_path.is_file():
+					parent.Embody.ext.Embody.Log(
+						f'Post-save restore: .tdn file missing: {rel_path}', 'WARNING')
+					continue
+				tdn_doc = parent.Embody.ext.TDN.tdn_load(
+					abs_path.read_text(encoding='utf-8'))
+				# restore_tdn_shells=False: this restore loop imports every
+				# stripped TDN COMP itself -- Phase 8.6 would double-import
+				# nested comps on every Ctrl+S.
+				parent.Embody.ext.TDN.ImportNetwork(
+					target_path=comp_path, tdn=tdn_doc, clear_first=True,
+					restore_file_links=True, restore_tdn_shells=False)
+			except Exception as e:
+				# print() as backup - Log may fail if extensions are reinitializing
+				print(f'Embody > Post-save restore failed for {comp_path}: {e}')
+				try:
+					parent.Embody.ext.Embody.Log(
+						f'Post-save restore failed for {comp_path}: {e}', 'ERROR')
+				except Exception:
+					pass
+				# Attempt rollback from backup .tdn
+				try:
+					backup_path = parent.Embody.ext.TDN._get_backup_path_instance(
+						str(abs_path))
+					if backup_path.is_file():
+						backup_tdn = parent.Embody.ext.TDN.tdn_load(
+							backup_path.read_text(encoding='utf-8'))
+						parent.Embody.ext.TDN.ImportNetwork(
+							target_path=comp_path, tdn=backup_tdn,
+							clear_first=True, restore_file_links=True,
+							restore_tdn_shells=False)
+						print(f'Embody > Rolled back {comp_path} from backup')
+				except Exception as rb_e:
+					print(f'Embody > Rollback also failed for {comp_path}: {rb_e}')
+	# Restore pane owners that were orphaned during strip
+	pane_restore = parent.Embody.fetch('_tdn_pane_restore', {}, search=False)
+	if pane_restore:
+		parent.Embody.unstore('_tdn_pane_restore')
+		try:
+			for pane in ui.panes:
+				saved_path = pane_restore.get(pane.id)
+				if saved_path:
+					target = op(saved_path)
+					if target:
+						pane.owner = target
+		except Exception:
+			pass  # Non-critical -- pane restoration is best-effort
+
+	# Re-store _init_complete -- pre-save cleared it to avoid baking into
+	# the .tox, but the running session still needs it for parexec.
+	parent.Embody.store('_init_complete', True)
+
+	# Refresh td_build pin -- the TD that just saved is the one downstream
+	# users should launch with on a fresh clone.
+	try:
+		parent.Embody.ext.Embody._writeProjectJson()
+	except Exception as e:
+		print(f'Embody > project.json update failed: {e}')
+
+	# A catalog scanned while the project was unsaved was held in memory
+	# (the unsaved-project write gate); the project now has its real
+	# root, so land it there.
+	try:
+		parent.Embody.ext.CatalogManager._flushDeferredCatalog()
+	except Exception as e:
+		print(f'Embody > deferred catalog flush failed: {e}')
+
+	# Additions deferred by the same gate (the fresh-install
+	# externalizations table, at minimum) self-heal on the next Update
+	# sweep -- but the post-save Refresh does not process additions, so
+	# on the FIRST save give them one. The never-externalized table
+	# (empty file par) is the marker of that deferred state; on every
+	# ordinary save this is False and nothing extra runs.
+	try:
+		_tbl = parent.Embody.ext.Embody.Externalizations
+		if _tbl is not None and not _tbl.par.file.eval():
+			run(f"op('{parent.Embody}').ext.Embody.Update()", delayFrames=10)
+	except Exception as e:
+		print(f'Embody > deferred additions kick failed: {e}')
+
+	# Walk the envoy.json registry forward across TD's save-time version
+	# bump (e.g. Foo-5.398.toe -> Foo-5.399.toe). When Envoy doesn't
+	# restart (Off/Export modes, no strip), the registry would otherwise
+	# stay pointed at the now-renamed .toe, leaving the bridge unable to
+	# locate the live instance. Idempotent when the basename hasn't
+	# changed.
+	try:
+		if parent.Embody.par.Envoyenable.eval():
+			parent.Embody.ext.Envoy.RefreshRegistry()
+	except Exception as e:
+		print(f'Embody > RefreshRegistry failed: {e}')
+
+	# In Perform Mode, nothing was stripped, so skip post-save refresh/restart.
+	if parent.Embody.ext.Embody._performMode:
+		return
+
+	# Safe to refresh now - all stripped COMPs have been restored
+	run(f"op('{parent.Embody}').par.Refresh.pulse()", delayFrames=1)
+
+	# Restart Envoy only if the save strip actually ran (Full mode with
+	# tracked TDN COMPs). The strip triggers an extension reinit that
+	# signals Envoy's shutdown event -- the server thread exits and must
+	# be restarted. In Off/Export modes nothing is stripped, no reinit
+	# fires, and Envoy stays healthy -- don't tear down the MCP server
+	# for no reason.
+	if stripped and parent.Embody.par.Envoyenable.eval():
+		# Clear stale state so Start() doesn't bail with "already running"
+		parent.Embody.store('envoy_running', False)
+		parent.Embody.par.Envoystatus = 'Restarting after save...'
+		run(f"op('{parent.Embody}').ext.Envoy.Start()",
+			fromOP=parent.Embody, delayFrames=30)
+	return
