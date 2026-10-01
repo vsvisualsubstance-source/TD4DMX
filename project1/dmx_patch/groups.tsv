@@ -1,3 +1,4 @@
 group	comp	select
 rig_a	dmx_audio_chase	dmx_select
 rig_b	dmx_audio_chase_b	dmx_select
+heads	moving_heads	heads_dmx

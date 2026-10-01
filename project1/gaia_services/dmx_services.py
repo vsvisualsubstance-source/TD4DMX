@@ -46,6 +46,9 @@ dmx_matrix gains a top-level 'patch' key ({services, ports}).
 Touch Out, analyzed locally) and touch_bands (bands analyzed by the sender);
 audio_<x>_sender picks the Touch sender, discovered by touch_discovery (this
 COMP) from gaia/device/+/status -- see GAIA_INTERFACE "TD/Mac-Ctrl, 2".
+
+2026-10-01: moving heads (/project1/moving_heads, a dmx_patch group) as
+'heads_*' params/services; dmx_matrix gains a top-level 'heads' key.
 """
 import json
 import time
@@ -115,6 +118,59 @@ PATCH_SERVICES = [
 
 def _patch():
 	return me.parent().parent().op('dmx_patch')
+
+
+# Moving heads (/project1/moving_heads): 'heads_*', one group per device.
+HEADS_FLOAT_PARAMS = [
+	('heads_pan', 'Pan'),
+	('heads_tilt', 'Tilt'),
+	('heads_speed', 'Speed'),
+	('heads_dimmer', 'Dimmer'),
+	('heads_white', 'White'),
+	('heads_zoom', 'Zoom'),
+	('heads_focus', 'Focus'),
+]
+
+HEADS_INT_PARAMS = [
+	('heads_count', 'Count'),
+	('heads_start_address', 'Startaddress'),
+	('heads_color_wheel', 'Colorwheel'),
+	('heads_gobo', 'Gobo'),
+]
+
+# enum options = menuNames (profile names, port ids, manual|ptz)
+HEADS_MENU_PARAMS = [
+	('heads_profile', 'Profile'),
+	('heads_output_port', 'Outputport'),
+	('heads_control', 'Control'),
+]
+
+HEADS_SERVICES = [
+	('heads_patch_enable', 'bool', 'Patchenable'),
+	('heads_shutter_open', 'bool', 'Shutteropen'),
+	('heads_home', 'action', 'Home'),
+]
+
+
+def _heads():
+	return me.parent().parent().op('moving_heads')
+
+
+def _build_heads_matrix():
+	h = _heads()
+	params = {}
+	for name, par_name in HEADS_FLOAT_PARAMS:
+		par = h.par[par_name]
+		params[name] = {'kind': 'param', 'type': 'float', 'range': _numeric_range(par), 'default': float(par.default)}
+	for name, par_name in HEADS_INT_PARAMS:
+		par = h.par[par_name]
+		params[name] = {'kind': 'param', 'type': 'int', 'range': _numeric_range(par), 'default': int(par.default)}
+	for name, par_name in HEADS_MENU_PARAMS:
+		par = h.par[par_name]
+		params[name] = {'kind': 'param', 'type': 'enum', 'options': list(par.menuNames), 'default': str(par.default)}
+	params['heads_color'] = {'kind': 'param', 'type': 'color_rgb', 'range': [0.0, 1.0]}
+	services = {name: {'kind': 'service', 'type': kind} for name, kind, _ in HEADS_SERVICES}
+	return {'params': params, 'services': services}
 
 
 def _build_patch_matrix():
@@ -264,11 +320,17 @@ def _register_value(agent, name, rig_name, par_name, cast, comp=None):
 
 
 def _register_menu(agent, name, rig_name, par_name):
+	_register_menu_on(agent, name, lambda: _rig(rig_name), par_name)
+
+
+def _register_menu_on(agent, name, comp, par_name):
+	"""Enum param on any COMP (comp = zero-arg resolver, called at use time):
+	accepts the menu name or its index."""
 	def get():
-		return str(_rig(rig_name).par[par_name].eval())
+		return str(comp().par[par_name].eval())
 
 	def set_(value):
-		par = _rig(rig_name).par[par_name]
+		par = comp().par[par_name]
 		names = list(par.menuNames)
 		if isinstance(value, str) and value in names:
 			par.val = value
@@ -287,9 +349,11 @@ def _register_menu(agent, name, rig_name, par_name):
 	agent.register_param(name, get=get, set=set_)
 
 
-def _register_color(agent, name, rig_name, base_par):
+def _register_color(agent, name, rig_name, base_par, comp=None):
+	target = comp or (lambda: _rig(rig_name))
+
 	def get():
-		rig = _rig(rig_name)
+		rig = target()
 		return [
 			float(rig.par[base_par + 'r'].eval()),
 			float(rig.par[base_par + 'g'].eval()),
@@ -297,7 +361,7 @@ def _register_color(agent, name, rig_name, base_par):
 		]
 
 	def set_(value):
-		rig = _rig(rig_name)
+		rig = target()
 		r, g, b = value
 		rig.par[base_par + 'r'] = float(r)
 		rig.par[base_par + 'g'] = float(g)
@@ -373,6 +437,7 @@ def publish_matrix():
 		'rigs': {letter: _build_matrix_for_rig(rig_name) for letter, rig_name in RIGS},
 		'audio': _build_audio_matrix(),
 		'patch': _build_patch_matrix(),
+		'heads': _build_heads_matrix(),
 		'ts': int(time.time() * 1000),
 	}
 	topic = 'gaia/devices/%s/%s_matrix' % (device_id, family.lower())
@@ -417,6 +482,23 @@ def register_all():
 			start=lambda rn=rig_name: setattr(_rig(rn).par, 'Patchenable', 1),
 			stop=lambda rn=rig_name: setattr(_rig(rn).par, 'Patchenable', 0),
 			status=lambda rn=rig_name: bool(_rig(rn).par.Patchenable.eval()))
+
+	for name, par_name in HEADS_FLOAT_PARAMS:
+		_register_value(agent, name, None, par_name, float, comp=_heads)
+	for name, par_name in HEADS_INT_PARAMS:
+		_register_value(agent, name, None, par_name, int, comp=_heads)
+	for name, par_name in HEADS_MENU_PARAMS:
+		_register_menu_on(agent, name, _heads, par_name)
+	_register_color(agent, 'heads_color', None, 'Color', comp=_heads)
+	for name, kind, par_name in HEADS_SERVICES:
+		if kind == 'action':
+			agent.register_service(name, start=lambda pn=par_name: _heads().par[pn].pulse())
+		else:
+			agent.register_service(
+				name,
+				start=lambda pn=par_name: setattr(_heads().par, pn, 1),
+				stop=lambda pn=par_name: setattr(_heads().par, pn, 0),
+				status=lambda pn=par_name: bool(_heads().par[pn].eval()))
 
 	agent.register_service(
 		'dmx_scan',

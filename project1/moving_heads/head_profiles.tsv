@@ -1,0 +1,7 @@
+name	channels	pan_range	tilt_range	defaults	notes
+Generic Spot 9ch	pan tilt color gobo shutter dimmer speed macro reset	540	270	shutter=255 speed=0	generico 8 bit -- verificare sul manuale
+Generic Spot 11ch 16bit	pan pan_fine tilt tilt_fine speed dimmer shutter color gobo macro reset	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
+Generic Wash RGBW 9ch	pan tilt speed dimmer shutter red green blue white	540	270	shutter=255 speed=0	generico 8 bit -- verificare sul manuale
+Generic Wash RGBW 14ch 16bit	pan pan_fine tilt tilt_fine speed dimmer shutter red green blue white macro macro_speed reset	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
+Generic Wash RGBWA+UV 16ch 16bit	pan pan_fine tilt tilt_fine speed dimmer shutter red green blue white amber uv zoom macro reset	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
+Generic Beam 16ch 16bit	pan pan_fine tilt tilt_fine speed dimmer shutter color gobo prism prism_rot focus frost macro reset none	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
