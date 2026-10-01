@@ -41,6 +41,11 @@ nodes/ports + one stream per universe, groups at their real start address).
 Per rig: dmx_<rig>_output_port (enum of scanned port ids) and
 dmx_<rig>_patch_enable; device-wide: dmx_scan, dmx_output, dmx_blackout.
 dmx_matrix gains a top-level 'patch' key ({services, ports}).
+
+2026-10-01: audio_<x>_type gains touch_audio (raw audio from another TD over
+Touch Out, analyzed locally) and touch_bands (bands analyzed by the sender);
+audio_<x>_sender picks the Touch sender, discovered by touch_discovery (this
+COMP) from gaia/device/+/status -- see GAIA_INTERFACE "TD/Mac-Ctrl, 2".
 """
 import json
 import time
@@ -147,6 +152,9 @@ AUDIO_FLOAT_PARAMS = [
 # its names (scheda_audio / file_demo), as agreed in GAIA_INTERFACE "Core, 14".
 AUDIO_MENU_PARAMS = [
 	('type', 'Type', False),
+	# Touch LAN sender (device_id) -- options = senders found by
+	# touch_discovery for the current type (empty unless type is touch_*)
+	('sender', 'Sender', False),
 	('driver', 'Driver', True),
 	('device', 'Device', True),
 ]

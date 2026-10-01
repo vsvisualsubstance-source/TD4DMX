@@ -55,6 +55,12 @@ def onExit():
 
 def onFrameStart(frame: int):
 	global _last_rearm
+	disc = op('touch_discovery')
+	if disc is not None:
+		try:
+			disc.module.tick()
+		except Exception as e:
+			debug('touch_discovery.tick failed:', e)
 	now = time.time()
 	if (now - _last_rearm) >= _REARM_INTERVAL_S:
 		_last_rearm = now

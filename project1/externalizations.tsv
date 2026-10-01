@@ -234,8 +234,8 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/Embody/Collection/CollectionExt	text	py	project1/Embody/Collection/CollectionExt.py	2026-08-25 09:18:32 UTC				200	0	0.9000,0.3000,0.4000
 /project1/Embody/Collection	base	tox	project1/Embody/Collection.tox	2026-08-25 09:18:32 UTC		2	2025.33070	200	-550	0.3250,0.8000,0.3000
 /project1/Embody/CatalogManagerExt	text	py	project1/Embody/CatalogManagerExt.py	2026-08-25 09:18:32 UTC				-700	500	0.9000,0.3000,0.4000
-/project1/Embody	container	tox	project1/Embody.tox	2026-10-01 11:24:35 UTC		1209	2025.33230	-275	275	0.3250,0.8000,0.3000
-/project1	container	tox	project1.tox	2026-10-01 11:24:36 UTC		31	2025.33230	200	100	0.3250,0.8000,0.3000
+/project1/Embody	container	tox	project1/Embody.tox	2026-10-01 11:37:31 UTC		1211	2025.33230	-275	275	0.3250,0.8000,0.3000
+/project1	container	tox	project1.tox	2026-10-01 11:52:09 UTC		33	2025.33230	200	100	0.3250,0.8000,0.3000
 /perform	window	tox	perform.tox	2026-08-25 09:18:33 UTC		1	2025.33070	-200	40	0.3250,0.8000,0.3000
 /	base	tdn	dmx.tdn	2026-08-29 10:23:19 UTC			099.2025.33070			
 /project1/dmx_audio_chase/bars_preview_callbacks	text	py	project1/dmx_audio_chase/bars_preview_callbacks.py	2026-08-25 11:55:50 UTC				450	880	0.9000,0.3000,0.4000
@@ -263,12 +263,12 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/gaia_client/beacon_probe_callbacks	text	py	gaia_client/beacon_probe_callbacks.py	2026-10-01 08:19:09 UTC				0	-4820	0.9000,0.3000,0.4000
 /project1/gaia_client/beacon_discovery	text	py	gaia_client/beacon_discovery.py	2026-10-01 08:19:09 UTC				400	-4700	0.9000,0.3000,0.4000
 /project1/gaia_client/agent_lifecycle	execute	py	gaia_client/agent_lifecycle.py	2026-10-01 08:19:09 UTC				800	-3200	0.9000,0.3000,0.4000
-/project1/gaia_client	base	tox	project1/gaia_client.tox	2026-10-01 11:24:35 UTC		68	2025.33230	670	-430	0.6700,0.6700,0.6700
-/project1/audio_engine	base	tox	project1/audio_engine.tox	2026-10-01 11:19:25 UTC		5	2025.33230	-600	-400	0.3250,0.8000,0.3000
+/project1/gaia_client	base	tox	project1/gaia_client.tox	2026-10-01 11:37:31 UTC		71	2025.33230	670	-430	0.6700,0.6700,0.6700
+/project1/audio_engine	base	tox	project1/audio_engine.tox	2026-10-01 11:52:09 UTC		7	2025.33230	-600	-400	0.3250,0.8000,0.3000
 /project1/audio_panel	container	tox	project1/audio_panel.tox	2026-10-01 09:58:06 UTC		3	2025.33230	-200	-400	0.3250,0.8000,0.3000
 /project1/gaia_services/dmx_services	text	py	project1/gaia_services/dmx_services.py	2026-10-01 09:41:57 UTC				0	0	0.9000,0.3000,0.4000
 /project1/gaia_services/lifecycle	execute	py	project1/gaia_services/lifecycle.py	2026-10-01 09:41:57 UTC				400	0	0.9000,0.3000,0.4000
-/project1/gaia_services	base	tox	project1/gaia_services.tox	2026-10-01 11:19:25 UTC		4	2025.33230	1000	-430	0.3250,0.8000,0.3000
+/project1/gaia_services	base	tox	project1/gaia_services.tox	2026-10-01 11:52:09 UTC		6	2025.33230	1000	-430	0.3250,0.8000,0.3000
 /project1/audio_engine/source_a/source_callbacks	parexec	py	project1/audio_engine/source_a/source_callbacks.py	2026-10-01 09:57:36 UTC				0	-400	0.9000,0.3000,0.4000
 /project1/dmx_patch/scan_logic	text	py	project1/dmx_patch/scan_logic.py	2026-10-01 11:19:25 UTC				400	0	0.9000,0.3000,0.4000
 /project1/dmx_patch/patch_report_callbacks	text	py	project1/dmx_patch/patch_report_callbacks.py	2026-10-01 11:19:26 UTC				400	-1520	0.9000,0.3000,0.4000
@@ -280,3 +280,5 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/dmx_patch/groups	table	tsv	project1/dmx_patch/groups.tsv	2026-10-01 11:22:26 UTC				0	-1400	0.9000,0.3000,0.4000
 /project1/dmx_patch	base	tox	project1/dmx_patch.tox	2026-10-01 11:23:15 UTC		1	2025.33230	-600	-1200	0.3250,0.8000,0.3000
 /project1/patch_panel	container	tox	project1/patch_panel.tox	2026-10-01 11:23:54 UTC		1	2025.33230	-200	-1200	0.3250,0.8000,0.3000
+/project1/gaia_services/touch_discovery	text	py	project1/gaia_services/touch_discovery.py	2026-10-01 11:36:06 UTC				400	-800	0.9000,0.3000,0.4000
+/project1/gaia_services/mqtt_discovery_callbacks	text	py		2026-10-01 11:36:52 UTC				0	-920	0.9000,0.3000,0.4000
