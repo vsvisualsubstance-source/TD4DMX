@@ -35,6 +35,12 @@ both rigs on 'a' = one shared source, 'a' + 'b' = two different sources.
 Published under a top-level 'audio' key of dmx_matrix ({'sources': {a, b}});
 the 'rigs' key gains only dmx_audio_source. dmx_<rig>_use_file_input still
 works: it switches the Type of the source THAT rig is listening to.
+
+2026-10-01: DMX output is centralized in /project1/dmx_patch (scan of Art-Net
+nodes/ports + one stream per universe, groups at their real start address).
+Per rig: dmx_<rig>_output_port (enum of scanned port ids) and
+dmx_<rig>_patch_enable; device-wide: dmx_scan, dmx_output, dmx_blackout.
+dmx_matrix gains a top-level 'patch' key ({services, ports}).
 """
 import json
 import time
@@ -74,6 +80,8 @@ MENU_PARAMS = [
 	('dmx_palette', 'Palette'),
 	('dmx_fixture_profile', 'Fixtureprofile'),
 	('dmx_audio_source', 'Audiobus'),
+	# options = port ids found by the dmx_patch scan ("<node ip>:<port>")
+	('dmx_output_port', 'Outputport'),
 ]
 
 COLOR_PARAMS = [
@@ -88,7 +96,32 @@ SERVICES = [
 	('dmx_kick_enable', 'bool'),
 	('dmx_use_file_input', 'bool'),
 	('dmx_apply_fixture_profile', 'action'),
+	('dmx_patch_enable', 'bool'),
 ]
+
+# Centralized DMX output + network scan (/project1/dmx_patch), one per
+# device, unprefixed: dmx_scan (action), dmx_output / dmx_blackout (bool).
+PATCH_SERVICES = [
+	('dmx_scan', 'action', 'Scan'),
+	('dmx_output', 'bool', 'Output'),
+	('dmx_blackout', 'bool', 'Blackout'),
+]
+
+
+def _patch():
+	return me.parent().parent().op('dmx_patch')
+
+
+def _build_patch_matrix():
+	"""Services + the ports found by the last scan (read-only info for UIs)."""
+	ports = _patch().op('ports')
+	rows = []
+	if ports is not None and ports.numRows > 1:
+		head = [c.val for c in ports.row(0)]
+		for r in range(1, ports.numRows):
+			rows.append({h: ports[r, h].val for h in head})
+	services = {name: {'kind': 'service', 'type': kind} for name, kind, _ in PATCH_SERVICES}
+	return {'services': services, 'ports': rows}
 
 
 # Audio engine sources (/project1/audio_engine/source_a|source_b): names are
@@ -331,6 +364,7 @@ def publish_matrix():
 		'device_id': device_id,
 		'rigs': {letter: _build_matrix_for_rig(rig_name) for letter, rig_name in RIGS},
 		'audio': _build_audio_matrix(),
+		'patch': _build_patch_matrix(),
 		'ts': int(time.time() * 1000),
 	}
 	topic = 'gaia/devices/%s/%s_matrix' % (device_id, family.lower())
@@ -369,6 +403,22 @@ def register_all():
 		agent.register_service(
 			prefix + 'apply_fixture_profile',
 			start=lambda rn=rig_name: _rig(rn).par.Applyfixture.pulse())
+
+		agent.register_service(
+			prefix + 'patch_enable',
+			start=lambda rn=rig_name: setattr(_rig(rn).par, 'Patchenable', 1),
+			stop=lambda rn=rig_name: setattr(_rig(rn).par, 'Patchenable', 0),
+			status=lambda rn=rig_name: bool(_rig(rn).par.Patchenable.eval()))
+
+	agent.register_service(
+		'dmx_scan',
+		start=lambda: _patch().par.Scan.pulse())
+	for name, kind, par_name in PATCH_SERVICES[1:]:
+		agent.register_service(
+			name,
+			start=lambda pn=par_name: setattr(_patch().par, pn, 1),
+			stop=lambda pn=par_name: setattr(_patch().par, pn, 0),
+			status=lambda pn=par_name: bool(_patch().par[pn].eval()))
 
 	for letter, src_name in SOURCES:
 		prefix = 'audio_%s_' % letter

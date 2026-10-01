@@ -1,7 +1,13 @@
 
-# Tiene allineati dmx_select e dmx_out ai parametri della pagina "Fixture".
-# Un Parameter Execute DAT si scrive il codice addosso (.text), non ha un
-# parametro che punta a un DAT esterno.
+# Tiene allineata la pagina "Fixture" (menu profili) e stampa il riepilogo
+# della patch. Un Parameter Execute DAT si scrive il codice addosso (.text),
+# non ha un parametro che punta a un DAT esterno.
+#
+# 2026-10-01: dmx_select.channames NON si scrive piu' da qui -- e' un'
+# espressione che legge profilo/Nbars del rig, cosi' vale anche nel clone
+# dmx_audio_chase_b (un valore costante scritto qui veniva risincronizzato
+# dal master). Lo start address lo applica /project1/dmx_patch (il DMX Out
+# CHOP manda sempre dal canale 1, non ha un parametro di start).
 
 def profile_channels(comp):
 	tbl = comp.op('fixture_profiles')
@@ -29,19 +35,6 @@ def apply(comp):
 	chans = profile_channels(comp)
 	n = max(1, int(comp.par.Nbars.eval()))
 	start = int(comp.par.Startaddress.eval())
-	names = ['bar{}_{}'.format(i + 1, ch) for i in range(n) for ch in chans]
-
-	sel = comp.op('dmx_select')
-	if sel is not None:
-		# l'ordine dei nomi = l'ordine degli indirizzi DMX
-		sel.par.channames = ' '.join(names)
-
-	out = comp.op('dmx_out')
-	if out is not None:
-		try:
-			out.par.dmxstart = start
-		except Exception as e:
-			print('WARNING: dmx_out.par.dmxstart non impostato:', e)
 
 	gen = comp.op('dmx_generator')
 	if gen is not None:
