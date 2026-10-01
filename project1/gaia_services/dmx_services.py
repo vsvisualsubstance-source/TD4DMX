@@ -49,6 +49,9 @@ COMP) from gaia/device/+/status -- see GAIA_INTERFACE "TD/Mac-Ctrl, 2".
 
 2026-10-01: moving heads (/project1/moving_heads, a dmx_patch group) as
 'heads_*' params/services; dmx_matrix gains a top-level 'heads' key.
+
+2026-10-01: PTZ (/project1/ptz) as 'ptz_*' -- XY pad, mocap follow (pose
+landmark from Gaia channel 7), calibration, presets; dmx_matrix gains 'ptz'.
 """
 import json
 import time
@@ -154,6 +157,91 @@ HEADS_SERVICES = [
 
 def _heads():
 	return me.parent().parent().op('moving_heads')
+
+
+# PTZ (/project1/ptz): aim of the moving heads from the XY pad or the
+# mediapipe pose (Gaia channel 7). Effective while heads_control = ptz.
+PTZ_FLOAT_PARAMS = [
+	('ptz_pad_x', 'Padu'),
+	('ptz_pad_y', 'Padv'),
+	('ptz_smooth', 'Smooth'),
+	('ptz_deadzone', 'Deadzone'),
+	('ptz_min_visibility', 'Visibility'),
+	('ptz_lost_timeout', 'Losttimeout'),
+	('ptz_pan_center', 'Pancenter'),
+	('ptz_pan_span', 'Panspan'),
+	('ptz_tilt_center', 'Tiltcenter'),
+	('ptz_tilt_span', 'Tiltspan'),
+]
+
+PTZ_INT_PARAMS = [
+	('ptz_person', 'Person'),
+]
+
+PTZ_MENU_PARAMS = [
+	('ptz_mode', 'Mode'),          # pad | mocap
+	('ptz_landmark', 'Landmark'),  # body_center | nose | shoulders | left/right_wrist | left/right_index
+	('ptz_lost', 'Lost'),          # hold | home
+	('ptz_sender', 'Sender'),      # mocap sender device_id ('' = any)
+]
+
+PTZ_SERVICES = [
+	('ptz_mirror', 'bool', 'Mirror'),
+	('ptz_simulate', 'bool', 'Simulate'),
+	('ptz_invert_pan', 'bool', 'Invertpan'),
+	('ptz_invert_tilt', 'bool', 'Inverttilt'),
+	('ptz_home', 'action', 'Home'),
+]
+
+
+def _ptz():
+	return me.parent().parent().op('ptz')
+
+
+def _build_ptz_matrix():
+	p = _ptz()
+	params = {}
+	for name, par_name in PTZ_FLOAT_PARAMS:
+		par = p.par[par_name]
+		params[name] = {'kind': 'param', 'type': 'float', 'range': _numeric_range(par), 'default': float(par.default)}
+	for name, par_name in PTZ_INT_PARAMS:
+		par = p.par[par_name]
+		params[name] = {'kind': 'param', 'type': 'int', 'range': _numeric_range(par), 'default': int(par.default)}
+	for name, par_name in PTZ_MENU_PARAMS:
+		par = p.par[par_name]
+		params[name] = {'kind': 'param', 'type': 'enum', 'options': list(par.menuNames), 'default': str(par.default)}
+	params['ptz_preset'] = {'kind': 'param', 'type': 'int', 'range': [1, 8], 'default': 1}
+	services = {name: {'kind': 'service', 'type': kind} for name, kind, _ in PTZ_SERVICES}
+	services['ptz_store_preset'] = {'kind': 'service', 'type': 'action'}
+	return {'params': params, 'services': services}
+
+
+def _register_ptz(agent):
+	for name, par_name in PTZ_FLOAT_PARAMS:
+		_register_value(agent, name, None, par_name, float, comp=_ptz)
+	for name, par_name in PTZ_INT_PARAMS:
+		_register_value(agent, name, None, par_name, int, comp=_ptz)
+	for name, par_name in PTZ_MENU_PARAMS:
+		if name == 'ptz_sender':
+			# free text allowed ('' = any sender), not only the menu entries
+			_register_value(agent, name, None, par_name, str, comp=_ptz)
+		else:
+			_register_menu_on(agent, name, _ptz, par_name)
+	for name, kind, par_name in PTZ_SERVICES:
+		if kind == 'action':
+			agent.register_service(name, start=lambda pn=par_name: _ptz().par[pn].pulse())
+		else:
+			agent.register_service(
+				name,
+				start=lambda pn=par_name: setattr(_ptz().par, pn, 1),
+				stop=lambda pn=par_name: setattr(_ptz().par, pn, 0),
+				status=lambda pn=par_name: bool(_ptz().par[pn].eval()))
+
+	def recall(value):
+		_ptz().par.Presetslot = int(value)
+		_ptz().par.Recallpreset.pulse()
+	agent.register_param('ptz_preset', get=lambda: int(_ptz().par.Presetslot.eval()), set=recall)
+	agent.register_service('ptz_store_preset', start=lambda: _ptz().par.Storepreset.pulse())
 
 
 def _build_heads_matrix():
@@ -438,6 +526,7 @@ def publish_matrix():
 		'audio': _build_audio_matrix(),
 		'patch': _build_patch_matrix(),
 		'heads': _build_heads_matrix(),
+		'ptz': _build_ptz_matrix(),
 		'ts': int(time.time() * 1000),
 	}
 	topic = 'gaia/devices/%s/%s_matrix' % (device_id, family.lower())
@@ -499,6 +588,8 @@ def register_all():
 				start=lambda pn=par_name: setattr(_heads().par, pn, 1),
 				stop=lambda pn=par_name: setattr(_heads().par, pn, 0),
 				status=lambda pn=par_name: bool(_heads().par[pn].eval()))
+
+	_register_ptz(agent)
 
 	agent.register_service(
 		'dmx_scan',

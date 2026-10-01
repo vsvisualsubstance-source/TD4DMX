@@ -234,8 +234,8 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/Embody/Collection/CollectionExt	text	py	project1/Embody/Collection/CollectionExt.py	2026-08-25 09:18:32 UTC				200	0	0.9000,0.3000,0.4000
 /project1/Embody/Collection	base	tox	project1/Embody/Collection.tox	2026-08-25 09:18:32 UTC		2	2025.33070	200	-550	0.3250,0.8000,0.3000
 /project1/Embody/CatalogManagerExt	text	py	project1/Embody/CatalogManagerExt.py	2026-08-25 09:18:32 UTC				-700	500	0.9000,0.3000,0.4000
-/project1/Embody	container	tox	project1/Embody.tox	2026-10-01 12:03:31 UTC		1214	2025.33230	-275	275	0.3250,0.8000,0.3000
-/project1	container	tox	project1.tox	2026-10-01 12:03:31 UTC		39	2025.33230	200	100	0.3250,0.8000,0.3000
+/project1/Embody	container	tox	project1/Embody.tox	2026-10-01 12:24:05 UTC		1221	2025.33230	-275	275	0.3250,0.8000,0.3000
+/project1	container	tox	project1.tox	2026-10-01 12:24:05 UTC		47	2025.33230	200	100	0.3250,0.8000,0.3000
 /perform	window	tox	perform.tox	2026-08-25 09:18:33 UTC		1	2025.33070	-200	40	0.3250,0.8000,0.3000
 /	base	tdn	dmx.tdn	2026-08-29 10:23:19 UTC			099.2025.33070			
 /project1/dmx_audio_chase/bars_preview_callbacks	text	py	project1/dmx_audio_chase/bars_preview_callbacks.py	2026-08-25 11:55:50 UTC				450	880	0.9000,0.3000,0.4000
@@ -263,12 +263,12 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/gaia_client/beacon_probe_callbacks	text	py	gaia_client/beacon_probe_callbacks.py	2026-10-01 08:19:09 UTC				0	-4820	0.9000,0.3000,0.4000
 /project1/gaia_client/beacon_discovery	text	py	gaia_client/beacon_discovery.py	2026-10-01 08:19:09 UTC				400	-4700	0.9000,0.3000,0.4000
 /project1/gaia_client/agent_lifecycle	execute	py	gaia_client/agent_lifecycle.py	2026-10-01 08:19:09 UTC				800	-3200	0.9000,0.3000,0.4000
-/project1/gaia_client	base	tox	project1/gaia_client.tox	2026-10-01 12:03:31 UTC		75	2025.33230	670	-430	0.6700,0.6700,0.6700
+/project1/gaia_client	base	tox	project1/gaia_client.tox	2026-10-01 12:24:05 UTC		83	2025.33230	670	-430	0.6700,0.6700,0.6700
 /project1/audio_engine	base	tox	project1/audio_engine.tox	2026-10-01 12:00:13 UTC		8	2025.33230	-600	-400	0.3250,0.8000,0.3000
 /project1/audio_panel	container	tox	project1/audio_panel.tox	2026-10-01 09:58:06 UTC		3	2025.33230	-200	-400	0.3250,0.8000,0.3000
 /project1/gaia_services/dmx_services	text	py	project1/gaia_services/dmx_services.py	2026-10-01 09:41:57 UTC				0	0	0.9000,0.3000,0.4000
 /project1/gaia_services/lifecycle	execute	py	project1/gaia_services/lifecycle.py	2026-10-01 09:41:57 UTC				400	0	0.9000,0.3000,0.4000
-/project1/gaia_services	base	tox	project1/gaia_services.tox	2026-10-01 12:00:13 UTC		7	2025.33230	1000	-430	0.3250,0.8000,0.3000
+/project1/gaia_services	base	tox	project1/gaia_services.tox	2026-10-01 12:20:17 UTC		8	2025.33230	1000	-430	0.3250,0.8000,0.3000
 /project1/audio_engine/source_a/source_callbacks	parexec	py	project1/audio_engine/source_a/source_callbacks.py	2026-10-01 09:57:36 UTC				0	-400	0.9000,0.3000,0.4000
 /project1/dmx_patch/scan_logic	text	py	project1/dmx_patch/scan_logic.py	2026-10-01 11:19:25 UTC				400	0	0.9000,0.3000,0.4000
 /project1/dmx_patch/patch_report_callbacks	text	py	project1/dmx_patch/patch_report_callbacks.py	2026-10-01 11:19:26 UTC				400	-1520	0.9000,0.3000,0.4000
@@ -286,4 +286,11 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/moving_heads/head_config	table	tsv	project1/moving_heads/head_config.tsv	2026-10-01 12:00:47 UTC				0	-200	0.9000,0.3000,0.4000
 /project1/moving_heads/heads_dmx_callbacks	text	py	project1/moving_heads/heads_dmx_callbacks.py	2026-10-01 12:01:21 UTC				800	-120	0.9000,0.3000,0.4000
 /project1/moving_heads/heads_callbacks	parexec	py	project1/moving_heads/heads_callbacks.py	2026-10-01 12:01:55 UTC				0	-600	0.9000,0.3000,0.4000
-/project1/moving_heads	base	tox	project1/moving_heads.tox	2026-10-01 12:02:41 UTC		1	2025.33230	-600	-2100	0.3250,0.8000,0.3000
+/project1/moving_heads	base	tox	project1/moving_heads.tox	2026-10-01 12:20:17 UTC		2	2025.33230	-600	-2100	0.3250,0.8000,0.3000
+/project1/ptz/ptz_logic	text	py	project1/ptz/ptz_logic.py	2026-10-01 12:20:17 UTC				400	0	0.9000,0.3000,0.4000
+/project1/ptz/targets_callbacks	text	py	project1/ptz/targets_callbacks.py	2026-10-01 12:20:47 UTC				800	-120	0.9000,0.3000,0.4000
+/project1/ptz/osc_mocap_callbacks	text	py	project1/ptz/osc_mocap_callbacks.py	2026-10-01 12:21:17 UTC				0	-120	0.9000,0.3000,0.4000
+/project1/ptz/ptz_callbacks	parexec	py	project1/ptz/ptz_callbacks.py	2026-10-01 12:21:47 UTC				0	-400	0.9000,0.3000,0.4000
+/project1/ptz/presets	table	tsv	project1/ptz/presets.tsv	2026-10-01 12:22:18 UTC				400	-400	0.9000,0.3000,0.4000
+/project1/ptz	base	tox	project1/ptz.tox	2026-10-01 12:22:48 UTC		1	2025.33230	-200	-2100	0.3250,0.8000,0.3000
+/project1/ptz_panel	container	tox	project1/ptz_panel.tox	2026-10-01 12:23:18 UTC		1	2025.33230	200	-2100	0.3250,0.8000,0.3000
