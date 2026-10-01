@@ -1,4 +1,42 @@
 device_id	name	stanza	role	service	state	offline
+install-msi-02	test	test	installation		unknown	False
+minipc-core-node-0	core	salotto	core	mediaplayer	inactive	False
+minipc-core-node-0	core	salotto	core	kiosk	inactive	False
+minipc-core-node-0	core	salotto	core	yolo	inactive	False
+minipc-core-node-0	core	salotto	core	mediapipe	inactive	False
+minipc-core-node-0	core	salotto	core	scene	active	False
+minipc-core-node-0	core	salotto	core	mosquitto	active	False
+minipc-core-node-0	core	salotto	core	qdrant	active	False
+minipc-core-node-0	core	salotto	core	ollama	inactive	False
+minipc-core-node-0	core	salotto	core	openhab	active	False
+ops-silvermini2	ops	soggiorno	ops	camera	active	False
+ops-silvermini2	ops	soggiorno	ops	yolo	inactive	False
+ops-silvermini2	ops	soggiorno	ops	mediapipe	active	False
+ops-silvermini2	ops	soggiorno	ops	voice	inactive	False
+ops-silvermini2	ops	soggiorno	ops	kiosk	inactive	False
+ops-silvermini2	ops	soggiorno	ops	mediaplayer	inactive	False
+ops-silvermini2	ops	soggiorno	ops	touchdesigner	inactive	False
+ops-silvermini2	ops	soggiorno	ops	touchdesigner_herbarium	inactive	False
+ops-silvermini2	ops	soggiorno	ops	touchdesigner_yolo	inactive	False
+ops-silvermini2	ops	soggiorno	ops	ollama	active	False
+pi-fd75d8	Ingresso	ingresso	pi	yolo	inactive	False
+pi-fd75d8	Ingresso	ingresso	pi	mediapipe	inactive	False
+pi-fd75d8	Ingresso	ingresso	pi	voice	inactive	False
+pi-fd75d8	Ingresso	ingresso	pi	camera	active	False
+pi-fd75d8	Ingresso	ingresso	pi	screen	inactive	False
+pi-fd75d8	Ingresso	ingresso	pi	kiosk	inactive	False
+pi-fd75d8	Ingresso	ingresso	pi	mediaplayer	inactive	False
+pi-fd75d8	Ingresso	ingresso	pi	herbarium	inactive	False
+pi-fd75d8	Ingresso	ingresso	pi	herbsim	inactive	False
+pi-fd75d8	Ingresso	ingresso	pi	herbmp	inactive	False
+pi-fd75d8	Ingresso	ingresso	pi	livestream	inactive	False
 solaro-qr1	Solaro QR1-UC		device		unknown	False
 tccm-ceiling	TCC M (Sennheiser)	zona-giorno	device		unknown	False
-td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner		unknown	False
+td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_a_kick_enable	active	False
+td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_a_use_file_input	inactive	False
+td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_a_apply_fixture_profile	unknown	False
+td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_b_kick_enable	active	False
+td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_b_use_file_input	inactive	False
+td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_b_apply_fixture_profile	unknown	False
+td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	audio_active	active	False
+td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	audio_use_file	inactive	False
