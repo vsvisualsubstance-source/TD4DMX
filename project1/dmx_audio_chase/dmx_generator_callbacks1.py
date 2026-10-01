@@ -96,7 +96,10 @@ def onCook(scriptOp):
 		vals = chop[0].vals
 		if len(vals) == 0:
 			return 0.0
-		return sum(abs(v) for v in vals) / len(vals)
+		v = sum(abs(v) for v in vals) / len(vals)
+		# un solo Inf/NaN in ingresso (es. un filtro audio che si
+		# riconfigura) resterebbe per sempre nello stato a livello di modulo
+		return v if math.isfinite(v) else 0.0
 
 	def palette_color(t, palette, stepped=False):
 		t = t % 1.0  # ciclico: con la fase attiva puo' avvolgersi oltre l'ultimo colore
@@ -124,6 +127,11 @@ def onCook(scriptOp):
 	high_raw = band_level(scriptOp.inputs[2]) if len(scriptOp.inputs) > 2 else 0.0
 
 	st = _state
+	# stato avvelenato da un Inf/NaN (vedi band_level): si riparte da zero
+	# invece di restare bloccati a dimmer pieno per sempre
+	if st is not None and not all(math.isfinite(st[k]) for k in
+			('bass_env', 'mid_env', 'high_env', 'smooth_level', 'punch', 'punch_smooth', 'prev_bass_env')):
+		st = None
 	if st is None:
 		st = {'bass_env': 0.0, 'mid_env': 0.0, 'high_env': 0.0, 'smooth_level': 0.0,
 		       'level_min': None, 'level_max': None,
