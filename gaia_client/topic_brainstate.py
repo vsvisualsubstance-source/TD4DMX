@@ -3,7 +3,7 @@
   "lifeIndex": 70,
   "gamification": {
     "level": 10,
-    "xp": 9582,
+    "xp": 9622,
     "xpNextLevel": 22400,
     "activeClass": "Guerriero",
     "unlockedAssets": [
@@ -19,12 +19,12 @@
     "stats": {
       "mago": 2128,
       "bardo": 332,
-      "guerriero": 3228,
+      "guerriero": 3236,
       "druido": 1866
     },
     "_cd": {
       "natura": 1790358336360,
-      "movimento": 1790848034401,
+      "movimento": 1790853597301,
       "voce": 1790844179174,
       "pensiero": 1790775649080,
       "presenza": 1790775770666,
@@ -106,25 +106,25 @@
         "hue_temperature_sensor_5_temperatura": 20.49
       },
       "temperature": 20.8,
-      "lastMotion": 1790848069928
+      "lastMotion": 1790853769068
     },
     "ingresso": {
       "people": [],
       "objects": {},
-      "ambient_light": 6.832820313691988,
+      "ambient_light": 4.739145036236972,
       "darkness": true,
       "_temps": {
-        "hue_temperature_sensor_4_temperatura": 19.63
+        "hue_temperature_sensor_4_temperatura": 19.78
       },
-      "temperature": 19.6,
-      "lastMotion": 1790846608898
+      "temperature": 19.8,
+      "lastMotion": 1790853566608
     },
     "soggiorno": {
       "id": "soggiorno",
       "name": "soggiorno",
       "persons_count": 2,
       "objects": {},
-      "lastUpdate": 1790848724039,
+      "lastUpdate": 1790853977302,
       "people": [
         "mauro"
       ],
@@ -150,7 +150,7 @@
       "name": "salotto",
       "persons_count": 1,
       "objects": {},
-      "lastUpdate": 1790848704146,
+      "lastUpdate": 1790853956024,
       "people": [],
       "main_user": null,
       "_mediapipe": true,
@@ -181,28 +181,36 @@
         "ts": 1790783416342
       },
       "_touchdesigner": true,
-      "lastTd": 1790848704146,
+      "lastTd": 1790853956024,
       "audioKick": 0,
-      "audioKickTs": 1790848723680,
+      "audioKickTs": 1790853976653,
       "dmxPaletteA": "Warm"
-    },
-    "zona-giorno": {
-      "people": [],
-      "persons_count": 0,
-      "objects": {},
-      "lastUpdate": 1790834420724,
-      "_tccmActive": false
     },
     "ConsolleDmx": {
       "people": [],
       "persons_count": 0,
       "objects": {},
-      "lastUpdate": 1790848724380,
+      "lastUpdate": 1790853956300,
       "_touchdesigner": true,
-      "lastTd": 1790848724380,
+      "lastTd": 1790853956300,
       "dmxPaletteA": "Amber",
       "dmxPaletteB": "Fire"
+    },
+    "test": {
+      "people": [],
+      "persons_count": 0,
+      "objects": {},
+      "lastUpdate": 1790849049092,
+      "_touchdesigner": true,
+      "lastTd": 1790849049092
+    },
+    "zona-giorno": {
+      "people": [],
+      "persons_count": 0,
+      "objects": {},
+      "lastUpdate": 1790849117341,
+      "_tccmActive": false
     }
   },
-  "ts": 1790848724394
+  "ts": 1790853977622
 }

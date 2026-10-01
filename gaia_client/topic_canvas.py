@@ -32,9 +32,9 @@
     "ingresso": {
       "presence_count": 0,
       "activity": "idle",
-      "temperature": 19.6,
+      "temperature": 19.8,
       "humidity": null,
-      "ambient_light": 6.832820313691988,
+      "ambient_light": 4.739145036236972,
       "darkness": true,
       "emotion": null,
       "pose": null,
@@ -77,21 +77,6 @@
       },
       "audioKick": 0
     },
-    "zona-giorno": {
-      "presence_count": 0,
-      "activity": "idle",
-      "temperature": null,
-      "humidity": null,
-      "ambient_light": null,
-      "darkness": false,
-      "emotion": null,
-      "pose": null,
-      "gesture": null,
-      "objects": {},
-      "touchdesignerActive": false,
-      "dmxPalette": null,
-      "audioKick": 0
-    },
     "ConsolleDmx": {
       "presence_count": 0,
       "activity": "idle",
@@ -108,6 +93,36 @@
         "a": "Amber",
         "b": "Fire"
       },
+      "audioKick": 0
+    },
+    "test": {
+      "presence_count": 0,
+      "activity": "idle",
+      "temperature": null,
+      "humidity": null,
+      "ambient_light": null,
+      "darkness": false,
+      "emotion": null,
+      "pose": null,
+      "gesture": null,
+      "objects": {},
+      "touchdesignerActive": false,
+      "dmxPalette": null,
+      "audioKick": 0
+    },
+    "zona-giorno": {
+      "presence_count": 0,
+      "activity": "idle",
+      "temperature": null,
+      "humidity": null,
+      "ambient_light": null,
+      "darkness": false,
+      "emotion": null,
+      "pose": null,
+      "gesture": null,
+      "objects": {},
+      "touchdesignerActive": false,
+      "dmxPalette": null,
       "audioKick": 0
     }
   },
@@ -593,140 +608,140 @@
   "memories": [],
   "diary": [
     {
-      "ts": 1790848449534,
+      "ts": 1790853862733,
       "source": "hue",
-      "category": "battery_level",
-      "value": 67,
+      "category": "color_temperature_abs",
+      "value": 2147483373.85,
       "person": null
     },
     {
-      "ts": 1790848449535,
+      "ts": 1790853892920,
       "source": "hue",
-      "category": "battery_low",
+      "category": "color",
+      "value": "0,0,0",
+      "person": null
+    },
+    {
+      "ts": 1790853892925,
+      "source": "hue",
+      "category": "brightness",
+      "value": 0,
+      "person": null
+    },
+    {
+      "ts": 1790853892926,
+      "source": "hue",
+      "category": "power",
       "value": false,
       "person": null
     },
     {
-      "ts": 1790848545691,
+      "ts": 1790853892936,
       "source": "hue",
-      "category": "temperature",
-      "value": 20.49,
+      "category": "color_temperature",
+      "value": 0,
       "person": null
     },
     {
-      "ts": 1790848545737,
+      "ts": 1790853892936,
       "source": "hue",
-      "category": "battery_level",
-      "value": 67,
+      "category": "color_temperature_abs",
+      "value": 2147483373.85,
       "person": null
     },
     {
-      "ts": 1790848545738,
+      "ts": 1790853892936,
       "source": "hue",
-      "category": "battery_low",
+      "category": "color",
+      "value": "0,0,0",
+      "person": null
+    },
+    {
+      "ts": 1790853892936,
+      "source": "hue",
+      "category": "brightness",
+      "value": 0,
+      "person": null
+    },
+    {
+      "ts": 1790853892936,
+      "source": "hue",
+      "category": "power",
       "value": false,
       "person": null
     },
     {
-      "ts": 1790848596946,
+      "ts": 1790853892937,
       "source": "hue",
-      "category": "temperature",
-      "value": 19.63,
+      "category": "color_temperature",
+      "value": 0,
       "person": null
     },
     {
-      "ts": 1790848596994,
+      "ts": 1790853892958,
       "source": "hue",
-      "category": "battery_level",
-      "value": 100,
+      "category": "color_temperature_abs",
+      "value": 2147483373.85,
       "person": null
     },
     {
-      "ts": 1790848596994,
-      "source": "hue",
-      "category": "battery_low",
-      "value": false,
-      "person": null
-    },
-    {
-      "ts": 1790848684323,
+      "ts": 1790853925011,
       "source": "hue",
       "category": "ambient_light",
       "value": 0,
       "person": null
     },
     {
-      "ts": 1790848684329,
+      "ts": 1790853925011,
       "source": "hue",
       "category": "ambient_light",
       "value": 0.9997697679981565,
       "person": null
     },
     {
-      "ts": 1790848684329,
+      "ts": 1790853925011,
       "source": "hue",
       "category": "darkness",
       "value": true,
       "person": null
     },
     {
-      "ts": 1790848684329,
+      "ts": 1790853925011,
       "source": "hue",
       "category": "daylight",
       "value": false,
       "person": null
     },
     {
-      "ts": 1790848684330,
+      "ts": 1790853925024,
       "source": "hue",
       "category": "battery_level",
       "value": 67,
       "person": null
     },
     {
-      "ts": 1790848684348,
+      "ts": 1790853925025,
       "source": "hue",
       "category": "battery_low",
       "value": false,
       "person": null
     },
     {
-      "ts": 1790848710182,
+      "ts": 1790853934721,
       "source": "hue",
-      "category": "ambient_light",
-      "value": 8347,
+      "category": "temperature",
+      "value": 20.49,
       "person": null
     },
     {
-      "ts": 1790848710186,
-      "source": "hue",
-      "category": "ambient_light",
-      "value": 6.832820313691988,
-      "person": null
-    },
-    {
-      "ts": 1790848710186,
-      "source": "hue",
-      "category": "darkness",
-      "value": true,
-      "person": null
-    },
-    {
-      "ts": 1790848710186,
-      "source": "hue",
-      "category": "daylight",
-      "value": false,
-      "person": null
-    },
-    {
-      "ts": 1790848710197,
+      "ts": 1790853934726,
       "source": "hue",
       "category": "battery_level",
-      "value": 100,
+      "value": 67,
       "person": null
     },
     {
-      "ts": 1790848710197,
+      "ts": 1790853934726,
       "source": "hue",
       "category": "battery_low",
       "value": false,
@@ -741,5 +756,5 @@
       "ts": 1790844197692
     }
   ],
-  "ts": 1790848725066
+  "ts": 1790853977593
 }
