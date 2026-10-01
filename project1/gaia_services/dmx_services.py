@@ -27,11 +27,14 @@ Moved 2026-10-01 (TD/Win-PD) out of gaia_client into /project1/gaia_services,
 same layout as PatchDeck's /PATCHDECK/gaia_services: gaia_client is now the
 unmodified portable 1.2.1 .tox, reached via its global shortcut op.Gaia.
 
-2026-10-01: also registers the shared audio engine (/project1/audio_engine,
-one audio input for both rigs) as unprefixed 'audio_*' params/services, and
-publishes it under a top-level 'audio' key of dmx_matrix (the 'rigs' key is
-unchanged). dmx_{a,b}_use_file_input still work: each rig's Usefileinput is
-bound to audio_engine.Usefile, so they now switch the SHARED source.
+2026-10-01: also registers the audio engine (/project1/audio_engine). It has
+TWO independent sources (source_a, source_b; source_b is a clone of
+source_a) registered as 'audio_a_*' / 'audio_b_*', and each rig picks which
+one drives it via its Audiobus par ('dmx_<rig>_audio_source', enum a|b):
+both rigs on 'a' = one shared source, 'a' + 'b' = two different sources.
+Published under a top-level 'audio' key of dmx_matrix ({'sources': {a, b}});
+the 'rigs' key gains only dmx_audio_source. dmx_<rig>_use_file_input still
+works: it switches the Type of the source THAT rig is listening to.
 """
 import json
 import time
@@ -70,6 +73,7 @@ INT_PARAMS = [
 MENU_PARAMS = [
 	('dmx_palette', 'Palette'),
 	('dmx_fixture_profile', 'Fixtureprofile'),
+	('dmx_audio_source', 'Audiobus'),
 ]
 
 COLOR_PARAMS = [
@@ -87,29 +91,35 @@ SERVICES = [
 ]
 
 
-# Shared audio engine (/project1/audio_engine, one input for BOTH rigs) --
-# registered once, unprefixed by rig: 'audio_*'.
-AUDIO_FLOAT_PARAMS = [
-	('audio_gain', 'Gain'),
-	('audio_bass_cutoff', 'Basscutoff'),
-	('audio_mid_low', 'Midlow'),
-	('audio_mid_high', 'Midhigh'),
-	('audio_high_cutoff', 'Highcutoff'),
-	('audio_bass_gain', 'Bassgain'),
-	('audio_mid_gain', 'Midgain'),
-	('audio_high_gain', 'Highgain'),
+# Audio engine sources (/project1/audio_engine/source_a|source_b): names are
+# 'audio_<letter>_<suffix>', e.g. audio_a_gain, audio_b_type.
+SOURCES = [
+	('a', 'source_a'),
+	('b', 'source_b'),
 ]
 
-# Device menus: options are the human LABELS (device names), not TD's
-# internal GUID-style menuNames -- a remote UI shows/sends names.
+AUDIO_FLOAT_PARAMS = [
+	('gain', 'Gain'),
+	('bass_cutoff', 'Basscutoff'),
+	('mid_low', 'Midlow'),
+	('mid_high', 'Midhigh'),
+	('high_cutoff', 'Highcutoff'),
+	('bass_gain', 'Bassgain'),
+	('mid_gain', 'Midgain'),
+	('high_gain', 'Highgain'),
+]
+
+# (suffix, par, publish_labels): device menus publish the human LABELS
+# (device names), not TD's internal GUID-style menuNames; 'type' publishes
+# its names (scheda_audio / file_demo), as agreed in GAIA_INTERFACE "Core, 14".
 AUDIO_MENU_PARAMS = [
-	('audio_driver', 'Driver'),
-	('audio_device', 'Device'),
+	('type', 'Type', False),
+	('driver', 'Driver', True),
+	('device', 'Device', True),
 ]
 
 AUDIO_SERVICES = [
-	('audio_active', 'bool', 'Active'),
-	('audio_use_file', 'bool', 'Usefile'),
+	('active', 'bool', 'Active'),
 ]
 
 
@@ -117,15 +127,26 @@ def _engine():
 	return me.parent().parent().op('audio_engine')
 
 
-def _register_engine_menu(agent, name, par_name):
+def _source(src_name):
+	return _engine().op(src_name)
+
+
+def _source_for_rig(rig_name):
+	"""The audio source COMP the rig is listening to (its Audiobus)."""
+	return _source('source_' + str(_rig(rig_name).par.Audiobus.eval()))
+
+
+def _register_source_menu(agent, name, src_name, par_name, labels_out):
 	def get():
-		par = _engine().par[par_name]
+		par = _source(src_name).par[par_name]
 		val = str(par.eval())
 		names = list(par.menuNames)
-		return par.menuLabels[names.index(val)] if val in names else val
+		if labels_out and val in names:
+			return par.menuLabels[names.index(val)]
+		return val
 
 	def set_(value):
-		par = _engine().par[par_name]
+		par = _source(src_name).par[par_name]
 		names, labels = list(par.menuNames), list(par.menuLabels)
 		if isinstance(value, str) and value in labels:
 			par.val = names[labels.index(value)]
@@ -146,29 +167,39 @@ def _register_engine_menu(agent, name, par_name):
 	agent.register_param(name, get=get, set=set_)
 
 
-def _build_audio_matrix():
-	eng = _engine()
+def _build_source_matrix(letter, src_name):
+	src = _source(src_name)
+	prefix = 'audio_%s_' % letter
 	params = {}
-	for name, par_name in AUDIO_FLOAT_PARAMS:
-		par = eng.par[par_name]
-		params[name] = {
+	for suffix, par_name in AUDIO_FLOAT_PARAMS:
+		par = src.par[par_name]
+		params[prefix + suffix] = {
 			'kind': 'param',
 			'type': 'float',
 			'range': _numeric_range(par),
 			'default': float(par.default),
 		}
-	for name, par_name in AUDIO_MENU_PARAMS:
-		par = eng.par[par_name]
+	for suffix, par_name, labels_out in AUDIO_MENU_PARAMS:
+		par = src.par[par_name]
 		names = list(par.menuNames)
 		default = str(par.default)
-		params[name] = {
+		if labels_out:
+			options = list(par.menuLabels)
+			default = par.menuLabels[names.index(default)] if default in names else default
+		else:
+			options = names
+		params[prefix + suffix] = {
 			'kind': 'param',
 			'type': 'enum',
-			'options': list(par.menuLabels),
-			'default': par.menuLabels[names.index(default)] if default in names else default,
+			'options': options,
+			'default': default,
 		}
-	services = {name: {'kind': 'service', 'type': kind} for name, kind, _ in AUDIO_SERVICES}
+	services = {prefix + suffix: {'kind': 'service', 'type': kind} for suffix, kind, _ in AUDIO_SERVICES}
 	return {'params': params, 'services': services}
+
+
+def _build_audio_matrix():
+	return {'sources': {letter: _build_source_matrix(letter, src_name) for letter, src_name in SOURCES}}
 
 
 def _rig(rig_name):
@@ -331,24 +362,27 @@ def register_all():
 
 		agent.register_service(
 			prefix + 'use_file_input',
-			start=lambda rn=rig_name: setattr(_rig(rn).par, 'Usefileinput', 1),
-			stop=lambda rn=rig_name: setattr(_rig(rn).par, 'Usefileinput', 0),
-			status=lambda rn=rig_name: bool(_rig(rn).par.Usefileinput.eval()))
+			start=lambda rn=rig_name: setattr(_source_for_rig(rn).par, 'Type', 'file_demo'),
+			stop=lambda rn=rig_name: setattr(_source_for_rig(rn).par, 'Type', 'scheda_audio'),
+			status=lambda rn=rig_name: _source_for_rig(rn).par.Type.eval() == 'file_demo')
 
 		agent.register_service(
 			prefix + 'apply_fixture_profile',
 			start=lambda rn=rig_name: _rig(rn).par.Applyfixture.pulse())
 
-	for name, par_name in AUDIO_FLOAT_PARAMS:
-		_register_value(agent, name, None, par_name, float, comp=_engine)
-	for name, par_name in AUDIO_MENU_PARAMS:
-		_register_engine_menu(agent, name, par_name)
-	for name, _kind, par_name in AUDIO_SERVICES:
-		agent.register_service(
-			name,
-			start=lambda pn=par_name: setattr(_engine().par, pn, 1),
-			stop=lambda pn=par_name: setattr(_engine().par, pn, 0),
-			status=lambda pn=par_name: bool(_engine().par[pn].eval()))
+	for letter, src_name in SOURCES:
+		prefix = 'audio_%s_' % letter
+		for suffix, par_name in AUDIO_FLOAT_PARAMS:
+			_register_value(agent, prefix + suffix, None, par_name, float,
+				comp=lambda sn=src_name: _source(sn))
+		for suffix, par_name, labels_out in AUDIO_MENU_PARAMS:
+			_register_source_menu(agent, prefix + suffix, src_name, par_name, labels_out)
+		for suffix, _kind, par_name in AUDIO_SERVICES:
+			agent.register_service(
+				prefix + suffix,
+				start=lambda sn=src_name, pn=par_name: setattr(_source(sn).par, pn, 1),
+				stop=lambda sn=src_name, pn=par_name: setattr(_source(sn).par, pn, 0),
+				status=lambda sn=src_name, pn=par_name: bool(_source(sn).par[pn].eval()))
 
 	print('[DMX Services] %d services/params registered' % (
 		len(agent._services) + len(agent._params)))
