@@ -33,12 +33,12 @@ pi-fd75d8	Ingresso	ingresso	pi	livestream	inactive	False
 solaro-qr1	Solaro QR1-UC		device		unknown	False
 tccm-ceiling	TCC M (Sennheiser)	zona-giorno	device		unknown	False
 td-controller-macmauro	Controller	salotto	touchdesigner	audio_device	active	False
-td-controller-macmauro	Controller	salotto	touchdesigner	audio_source_live	active	False
-td-controller-macmauro	Controller	salotto	touchdesigner	audio_source_file	inactive	False
+td-controller-macmauro	Controller	salotto	touchdesigner	audio_source_live	inactive	False
+td-controller-macmauro	Controller	salotto	touchdesigner	audio_source_file	active	False
 td-controller-macmauro	Controller	salotto	touchdesigner	touch_bands	active	False
 td-controller-macmauro	Controller	salotto	touchdesigner	touch_audio	active	False
 td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_a_kick_enable	active	False
-td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_a_use_file_input	active	False
+td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_a_use_file_input	inactive	False
 td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_a_apply_fixture_profile	unknown	False
 td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_a_patch_enable	active	False
 td-dmx-win	DMXRIG	ConsolleDmx	touchdesigner	dmx_b_kick_enable	active	False
