@@ -3,7 +3,7 @@
   "lifeIndex": 70,
   "gamification": {
     "level": 10,
-    "xp": 9527,
+    "xp": 9567,
     "xpNextLevel": 22400,
     "activeClass": "Guerriero",
     "unlockedAssets": [
@@ -17,22 +17,22 @@
       "phoenix_core"
     ],
     "stats": {
-      "mago": 2127,
+      "mago": 2128,
       "bardo": 332,
-      "guerriero": 3222,
+      "guerriero": 3225,
       "druido": 1866
     },
     "_cd": {
       "natura": 1790358336360,
-      "movimento": 1790841131422,
-      "voce": 1790703510989,
+      "movimento": 1790844712520,
+      "voce": 1790844179174,
       "pensiero": 1790775649080,
       "presenza": 1790775770666,
       "riflessione": 1786827611348,
       "rituale": 1790834427676
     },
     "_lastMemCount": 3,
-    "_lastVoiceTs": 1790703527803,
+    "_lastVoiceTs": 1790844197692,
     "_lastThoughtTs": 1790775648467
   },
   "presence": {
@@ -99,24 +99,24 @@
     "corridoio": {
       "people": [],
       "objects": {},
-      "ambient_light": 1.2122717925364968,
+      "ambient_light": 0.9997697679981565,
       "darkness": true,
       "_temps": {
-        "hue_temperature_sensor_3_temperatura": 20.99,
-        "hue_temperature_sensor_5_temperatura": 20.35
+        "hue_temperature_sensor_3_temperatura": 21.28,
+        "hue_temperature_sensor_5_temperatura": 20.49
       },
-      "temperature": 20.7,
-      "lastMotion": 1790841170105
+      "temperature": 20.9,
+      "lastMotion": 1790844714670
     },
     "ingresso": {
       "people": [],
       "objects": {},
-      "ambient_light": 10.24943675649866,
+      "ambient_light": 6.282029912455565,
       "darkness": true,
       "_temps": {
-        "hue_temperature_sensor_4_temperatura": 18.93
+        "hue_temperature_sensor_4_temperatura": 19.49
       },
-      "temperature": 18.9,
+      "temperature": 19.5,
       "lastMotion": 1790840629900
     },
     "soggiorno": {
@@ -124,7 +124,7 @@
       "name": "soggiorno",
       "persons_count": 2,
       "objects": {},
-      "lastUpdate": 1790843164976,
+      "lastUpdate": 1790845078769,
       "people": [
         "mauro"
       ],
@@ -150,7 +150,7 @@
       "name": "salotto",
       "persons_count": 1,
       "objects": {},
-      "lastUpdate": 1790843144241,
+      "lastUpdate": 1790845065692,
       "people": [],
       "main_user": null,
       "_mediapipe": true,
@@ -181,7 +181,7 @@
         "ts": 1790783416342
       },
       "_touchdesigner": true,
-      "lastTd": 1790843144241,
+      "lastTd": 1790845065692,
       "audioKick": 1,
       "audioKickTs": 1790783387954,
       "dmxPaletteA": "Warm"
@@ -197,12 +197,12 @@
       "people": [],
       "persons_count": 0,
       "objects": {},
-      "lastUpdate": 1790843164470,
+      "lastUpdate": 1790845078473,
       "_touchdesigner": true,
-      "lastTd": 1790843164470,
+      "lastTd": 1790845078473,
       "dmxPaletteA": "Amber",
       "dmxPaletteB": "Amber"
     }
   },
-  "ts": 1790843165134
+  "ts": 1790845079211
 }
