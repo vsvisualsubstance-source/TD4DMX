@@ -17,9 +17,9 @@
     "corridoio": {
       "presence_count": 0,
       "activity": "idle",
-      "temperature": 20.7,
+      "temperature": 20.8,
       "humidity": null,
-      "ambient_light": 2.203941181810109,
+      "ambient_light": 0.9997697679981565,
       "darkness": true,
       "emotion": null,
       "pose": null,
@@ -32,9 +32,9 @@
     "ingresso": {
       "presence_count": 0,
       "activity": "idle",
-      "temperature": 19.5,
+      "temperature": 19.6,
       "humidity": null,
-      "ambient_light": 7.053424142580969,
+      "ambient_light": 6.832820313691988,
       "darkness": true,
       "emotion": null,
       "pose": null,
@@ -70,8 +70,11 @@
       "pose": "standing",
       "gesture": null,
       "objects": {},
-      "touchdesignerActive": false,
-      "dmxPalette": null,
+      "touchdesignerActive": true,
+      "dmxPalette": {
+        "a": "Warm",
+        "b": null
+      },
       "audioKick": 0
     },
     "zona-giorno": {
@@ -111,7 +114,7 @@
   "lights": {
     "Luce_Corridoio_Luminosita": {
       "power": false,
-      "brightness": 38,
+      "brightness": 0,
       "color": "0,0,0",
       "colorTemp": null,
       "colorTempKelvin": null,
@@ -128,21 +131,21 @@
     "Tutte_le_luci_Colore": {
       "power": false,
       "brightness": 0,
-      "color": "0,0,38",
+      "color": "0,0,0",
       "colorTemp": null,
       "colorTempKelvin": null,
       "room": null
     },
     "Tutte_le_luci_Luminosita": {
       "power": false,
-      "brightness": 38,
+      "brightness": 0,
       "color": "0,0,0",
       "colorTemp": null,
       "colorTempKelvin": null,
       "room": null
     },
     "Tutte_le_luci_Potenza": {
-      "power": true,
+      "power": false,
       "brightness": 0,
       "color": "0,0,0",
       "colorTemp": null,
@@ -430,7 +433,7 @@
       "room": null
     },
     "Luce_Corridoio_Potenza": {
-      "power": true,
+      "power": false,
       "brightness": 0,
       "color": "0,0,0",
       "colorTemp": null,
@@ -440,7 +443,7 @@
     "Luce_Corridoio_Colore": {
       "power": false,
       "brightness": 0,
-      "color": "0,0,38",
+      "color": "0,0,0",
       "colorTemp": null,
       "colorTempKelvin": null,
       "room": "corridoio"
@@ -590,140 +593,140 @@
   "memories": [],
   "diary": [
     {
-      "ts": 1790848050592,
+      "ts": 1790848449534,
       "source": "hue",
       "category": "battery_level",
       "value": 67,
       "person": null
     },
     {
-      "ts": 1790848050592,
+      "ts": 1790848449535,
       "source": "hue",
       "category": "battery_low",
       "value": false,
       "person": null
     },
     {
-      "ts": 1790848067226,
+      "ts": 1790848545691,
       "source": "hue",
-      "category": "motion",
-      "value": true,
+      "category": "temperature",
+      "value": 20.49,
       "person": null
     },
     {
-      "ts": 1790848067275,
+      "ts": 1790848545737,
       "source": "hue",
       "category": "battery_level",
       "value": 67,
       "person": null
     },
     {
-      "ts": 1790848067275,
+      "ts": 1790848545738,
       "source": "hue",
       "category": "battery_low",
       "value": false,
       "person": null
     },
     {
-      "ts": 1790848069928,
+      "ts": 1790848596946,
       "source": "hue",
-      "category": "motion",
-      "value": true,
+      "category": "temperature",
+      "value": 19.63,
       "person": null
     },
     {
-      "ts": 1790848069932,
-      "source": "hue",
-      "category": "battery_level",
-      "value": 67,
-      "person": null
-    },
-    {
-      "ts": 1790848069932,
-      "source": "hue",
-      "category": "battery_low",
-      "value": false,
-      "person": null
-    },
-    {
-      "ts": 1790848081801,
-      "source": "hue",
-      "category": "motion",
-      "value": false,
-      "person": null
-    },
-    {
-      "ts": 1790848081801,
-      "source": "hue",
-      "category": "battery_level",
-      "value": 67,
-      "person": null
-    },
-    {
-      "ts": 1790848081801,
-      "source": "hue",
-      "category": "battery_low",
-      "value": false,
-      "person": null
-    },
-    {
-      "ts": 1790848085021,
-      "source": "hue",
-      "category": "motion",
-      "value": false,
-      "person": null
-    },
-    {
-      "ts": 1790848085025,
-      "source": "hue",
-      "category": "battery_level",
-      "value": 67,
-      "person": null
-    },
-    {
-      "ts": 1790848085025,
-      "source": "hue",
-      "category": "battery_low",
-      "value": false,
-      "person": null
-    },
-    {
-      "ts": 1790848111517,
-      "source": "hue",
-      "category": "ambient_light",
-      "value": 8485,
-      "person": null
-    },
-    {
-      "ts": 1790848111522,
-      "source": "hue",
-      "category": "ambient_light",
-      "value": 7.053424142580969,
-      "person": null
-    },
-    {
-      "ts": 1790848111522,
-      "source": "hue",
-      "category": "darkness",
-      "value": true,
-      "person": null
-    },
-    {
-      "ts": 1790848111522,
-      "source": "hue",
-      "category": "daylight",
-      "value": false,
-      "person": null
-    },
-    {
-      "ts": 1790848111522,
+      "ts": 1790848596994,
       "source": "hue",
       "category": "battery_level",
       "value": 100,
       "person": null
     },
     {
-      "ts": 1790848111538,
+      "ts": 1790848596994,
+      "source": "hue",
+      "category": "battery_low",
+      "value": false,
+      "person": null
+    },
+    {
+      "ts": 1790848684323,
+      "source": "hue",
+      "category": "ambient_light",
+      "value": 0,
+      "person": null
+    },
+    {
+      "ts": 1790848684329,
+      "source": "hue",
+      "category": "ambient_light",
+      "value": 0.9997697679981565,
+      "person": null
+    },
+    {
+      "ts": 1790848684329,
+      "source": "hue",
+      "category": "darkness",
+      "value": true,
+      "person": null
+    },
+    {
+      "ts": 1790848684329,
+      "source": "hue",
+      "category": "daylight",
+      "value": false,
+      "person": null
+    },
+    {
+      "ts": 1790848684330,
+      "source": "hue",
+      "category": "battery_level",
+      "value": 67,
+      "person": null
+    },
+    {
+      "ts": 1790848684348,
+      "source": "hue",
+      "category": "battery_low",
+      "value": false,
+      "person": null
+    },
+    {
+      "ts": 1790848710182,
+      "source": "hue",
+      "category": "ambient_light",
+      "value": 8347,
+      "person": null
+    },
+    {
+      "ts": 1790848710186,
+      "source": "hue",
+      "category": "ambient_light",
+      "value": 6.832820313691988,
+      "person": null
+    },
+    {
+      "ts": 1790848710186,
+      "source": "hue",
+      "category": "darkness",
+      "value": true,
+      "person": null
+    },
+    {
+      "ts": 1790848710186,
+      "source": "hue",
+      "category": "daylight",
+      "value": false,
+      "person": null
+    },
+    {
+      "ts": 1790848710197,
+      "source": "hue",
+      "category": "battery_level",
+      "value": 100,
+      "person": null
+    },
+    {
+      "ts": 1790848710197,
       "source": "hue",
       "category": "battery_low",
       "value": false,
@@ -738,5 +741,5 @@
       "ts": 1790844197692
     }
   ],
-  "ts": 1790848112995
+  "ts": 1790848725066
 }

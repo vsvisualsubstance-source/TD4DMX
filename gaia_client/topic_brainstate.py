@@ -99,24 +99,24 @@
     "corridoio": {
       "people": [],
       "objects": {},
-      "ambient_light": 2.203941181810109,
+      "ambient_light": 0.9997697679981565,
       "darkness": true,
       "_temps": {
-        "hue_temperature_sensor_3_temperatura": 20.99,
+        "hue_temperature_sensor_3_temperatura": 21.13,
         "hue_temperature_sensor_5_temperatura": 20.49
       },
-      "temperature": 20.7,
+      "temperature": 20.8,
       "lastMotion": 1790848069928
     },
     "ingresso": {
       "people": [],
       "objects": {},
-      "ambient_light": 7.053424142580969,
+      "ambient_light": 6.832820313691988,
       "darkness": true,
       "_temps": {
-        "hue_temperature_sensor_4_temperatura": 19.49
+        "hue_temperature_sensor_4_temperatura": 19.63
       },
-      "temperature": 19.5,
+      "temperature": 19.6,
       "lastMotion": 1790846608898
     },
     "soggiorno": {
@@ -124,7 +124,7 @@
       "name": "soggiorno",
       "persons_count": 2,
       "objects": {},
-      "lastUpdate": 1790848111990,
+      "lastUpdate": 1790848724039,
       "people": [
         "mauro"
       ],
@@ -150,7 +150,7 @@
       "name": "salotto",
       "persons_count": 1,
       "objects": {},
-      "lastUpdate": 1790845245838,
+      "lastUpdate": 1790848704146,
       "people": [],
       "main_user": null,
       "_mediapipe": true,
@@ -181,9 +181,9 @@
         "ts": 1790783416342
       },
       "_touchdesigner": true,
-      "lastTd": 1790845245838,
-      "audioKick": 1,
-      "audioKickTs": 1790783387954,
+      "lastTd": 1790848704146,
+      "audioKick": 0,
+      "audioKickTs": 1790848723680,
       "dmxPaletteA": "Warm"
     },
     "zona-giorno": {
@@ -197,12 +197,12 @@
       "people": [],
       "persons_count": 0,
       "objects": {},
-      "lastUpdate": 1790848111924,
+      "lastUpdate": 1790848724380,
       "_touchdesigner": true,
-      "lastTd": 1790848111924,
+      "lastTd": 1790848724380,
       "dmxPaletteA": "Amber",
       "dmxPaletteB": "Fire"
     }
   },
-  "ts": 1790848112359
+  "ts": 1790848724394
 }
