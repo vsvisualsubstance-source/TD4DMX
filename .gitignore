@@ -15,3 +15,6 @@ __pycache__/
 .DS_Store
 /TDPyEnvManagerContext.yaml
 Backup/TDPyEnvManagerContext.yaml
+
+# Windows / Google Drive folder metadata
+desktop.ini
