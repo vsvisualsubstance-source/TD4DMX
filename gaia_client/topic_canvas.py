@@ -17,7 +17,7 @@
     "corridoio": {
       "presence_count": 0,
       "activity": "idle",
-      "temperature": 20.7,
+      "temperature": 20.9,
       "humidity": null,
       "ambient_light": 0.9997697679981565,
       "darkness": true,
@@ -32,9 +32,9 @@
     "ingresso": {
       "presence_count": 0,
       "activity": "idle",
-      "temperature": 19.9,
+      "temperature": 20.1,
       "humidity": null,
-      "ambient_light": 4.518559443749224,
+      "ambient_light": 4.9590672750490405,
       "darkness": true,
       "emotion": null,
       "pose": null,
@@ -608,140 +608,140 @@
   "memories": [],
   "diary": [
     {
-      "ts": 1790855276848,
+      "ts": 1790856179901,
       "source": "hue",
       "category": "ambient_light",
-      "value": 0.9997697679981565,
+      "value": 1.653103327237014,
       "person": null
     },
     {
-      "ts": 1790855276848,
+      "ts": 1790856179901,
       "source": "hue",
       "category": "darkness",
       "value": true,
       "person": null
     },
     {
-      "ts": 1790855276848,
+      "ts": 1790856179901,
       "source": "hue",
       "category": "daylight",
       "value": false,
       "person": null
     },
     {
-      "ts": 1790855276848,
+      "ts": 1790856179901,
       "source": "hue",
       "category": "battery_level",
       "value": 67,
       "person": null
     },
     {
-      "ts": 1790855276862,
+      "ts": 1790856179902,
       "source": "hue",
       "category": "battery_low",
       "value": false,
       "person": null
     },
     {
-      "ts": 1790855336233,
-      "source": "hue",
-      "category": "temperature",
-      "value": 20.99,
-      "person": null
-    },
-    {
-      "ts": 1790855336237,
-      "source": "hue",
-      "category": "battery_level",
-      "value": 67,
-      "person": null
-    },
-    {
-      "ts": 1790855336238,
-      "source": "hue",
-      "category": "battery_low",
-      "value": false,
-      "person": null
-    },
-    {
-      "ts": 1790855422324,
+      "ts": 1790856234236,
       "source": "hue",
       "category": "ambient_light",
       "value": 0,
       "person": null
     },
     {
-      "ts": 1790855422330,
+      "ts": 1790856234236,
       "source": "hue",
       "category": "ambient_light",
       "value": 0.9997697679981565,
       "person": null
     },
     {
-      "ts": 1790855422330,
+      "ts": 1790856234236,
       "source": "hue",
       "category": "darkness",
       "value": true,
       "person": null
     },
     {
-      "ts": 1790855422330,
+      "ts": 1790856234236,
       "source": "hue",
       "category": "daylight",
       "value": false,
       "person": null
     },
     {
-      "ts": 1790855422330,
+      "ts": 1790856234237,
       "source": "hue",
       "category": "battery_level",
       "value": 67,
       "person": null
     },
     {
-      "ts": 1790855422330,
+      "ts": 1790856234238,
       "source": "hue",
       "category": "battery_low",
       "value": false,
       "person": null
     },
     {
-      "ts": 1790855431756,
+      "ts": 1790856234759,
+      "source": "hue",
+      "category": "temperature",
+      "value": 21.28,
+      "person": null
+    },
+    {
+      "ts": 1790856234764,
+      "source": "hue",
+      "category": "battery_level",
+      "value": 67,
+      "person": null
+    },
+    {
+      "ts": 1790856234764,
+      "source": "hue",
+      "category": "battery_low",
+      "value": false,
+      "person": null
+    },
+    {
+      "ts": 1790856330312,
       "source": "hue",
       "category": "temperature",
       "value": 20.49,
       "person": null
     },
     {
-      "ts": 1790855431760,
+      "ts": 1790856330317,
       "source": "hue",
       "category": "battery_level",
       "value": 67,
       "person": null
     },
     {
-      "ts": 1790855431760,
+      "ts": 1790856330317,
       "source": "hue",
       "category": "battery_low",
       "value": false,
       "person": null
     },
     {
-      "ts": 1790855485001,
+      "ts": 1790856383215,
       "source": "hue",
       "category": "temperature",
-      "value": 19.92,
+      "value": 20.06,
       "person": null
     },
     {
-      "ts": 1790855485005,
+      "ts": 1790856383221,
       "source": "hue",
       "category": "battery_level",
       "value": 100,
       "person": null
     },
     {
-      "ts": 1790855485006,
+      "ts": 1790856383221,
       "source": "hue",
       "category": "battery_low",
       "value": false,
@@ -756,5 +756,5 @@
       "ts": 1790844197692
     }
   ],
-  "ts": 1790855547731
+  "ts": 1790856469811
 }

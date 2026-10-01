@@ -3,7 +3,7 @@
   "lifeIndex": 70,
   "gamification": {
     "level": 10,
-    "xp": 9622,
+    "xp": 9627,
     "xpNextLevel": 22400,
     "activeClass": "Guerriero",
     "unlockedAssets": [
@@ -19,12 +19,12 @@
     "stats": {
       "mago": 2128,
       "bardo": 332,
-      "guerriero": 3236,
+      "guerriero": 3237,
       "druido": 1866
     },
     "_cd": {
       "natura": 1790358336360,
-      "movimento": 1790853597301,
+      "movimento": 1790855868926,
       "voce": 1790844179174,
       "pensiero": 1790775649080,
       "presenza": 1790775770666,
@@ -102,21 +102,21 @@
       "ambient_light": 0.9997697679981565,
       "darkness": true,
       "_temps": {
-        "hue_temperature_sensor_3_temperatura": 20.99,
+        "hue_temperature_sensor_3_temperatura": 21.28,
         "hue_temperature_sensor_5_temperatura": 20.49
       },
-      "temperature": 20.7,
-      "lastMotion": 1790853769068
+      "temperature": 20.9,
+      "lastMotion": 1790855928492
     },
     "ingresso": {
       "people": [],
       "objects": {},
-      "ambient_light": 4.518559443749224,
+      "ambient_light": 4.9590672750490405,
       "darkness": true,
       "_temps": {
-        "hue_temperature_sensor_4_temperatura": 19.92
+        "hue_temperature_sensor_4_temperatura": 20.06
       },
-      "temperature": 19.9,
+      "temperature": 20.1,
       "lastMotion": 1790853566608
     },
     "soggiorno": {
@@ -124,7 +124,7 @@
       "name": "soggiorno",
       "persons_count": 2,
       "objects": {},
-      "lastUpdate": 1790855545989,
+      "lastUpdate": 1790856467390,
       "people": [
         "mauro"
       ],
@@ -150,7 +150,7 @@
       "name": "salotto",
       "persons_count": 1,
       "objects": {},
-      "lastUpdate": 1790855546327,
+      "lastUpdate": 1790856459302,
       "people": [],
       "main_user": null,
       "_mediapipe": true,
@@ -181,18 +181,18 @@
         "ts": 1790783416342
       },
       "_touchdesigner": true,
-      "lastTd": 1790855546327,
+      "lastTd": 1790856459302,
       "audioKick": 0,
-      "audioKickTs": 1790855546223,
+      "audioKickTs": 1790856467226,
       "dmxPaletteA": "Warm"
     },
     "ConsolleDmx": {
       "people": [],
       "persons_count": 0,
       "objects": {},
-      "lastUpdate": 1790855546672,
+      "lastUpdate": 1790856466735,
       "_touchdesigner": true,
-      "lastTd": 1790855546672,
+      "lastTd": 1790856466735,
       "dmxPaletteA": "Amber",
       "dmxPaletteB": "Fire"
     },
@@ -212,5 +212,5 @@
       "_tccmActive": false
     }
   },
-  "ts": 1790855546680
+  "ts": 1790856467734
 }
