@@ -234,10 +234,35 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/Embody/Collection/CollectionExt	text	py	project1/Embody/Collection/CollectionExt.py	2026-08-25 09:18:32 UTC				200	0	0.9000,0.3000,0.4000
 /project1/Embody/Collection	base	tox	project1/Embody/Collection.tox	2026-08-25 09:18:32 UTC		2	2025.33070	200	-550	0.3250,0.8000,0.3000
 /project1/Embody/CatalogManagerExt	text	py	project1/Embody/CatalogManagerExt.py	2026-08-25 09:18:32 UTC				-700	500	0.9000,0.3000,0.4000
-/project1/Embody	container	tox	project1/Embody.tox	2026-08-29 10:21:13 UTC		1196	2025.33070	-275	275	0.3250,0.8000,0.3000
-/project1	container	tox	project1.tox	2026-08-29 10:21:13 UTC		15	2025.33070	200	100	0.3250,0.8000,0.3000
+/project1/Embody	container	tox	project1/Embody.tox	2026-10-01 08:16:11 UTC		1197	2025.33230	-275	275	0.3250,0.8000,0.3000
+/project1	container	tox	project1.tox	2026-10-01 08:19:09 UTC		17	2025.33230	200	100	0.3250,0.8000,0.3000
 /perform	window	tox	perform.tox	2026-08-25 09:18:33 UTC		1	2025.33070	-200	40	0.3250,0.8000,0.3000
 /	base	tdn	dmx.tdn	2026-08-29 10:23:19 UTC			099.2025.33070			
 /project1/dmx_audio_chase/bars_preview_callbacks	text	py	project1/dmx_audio_chase/bars_preview_callbacks.py	2026-08-25 11:55:50 UTC				450	880	0.9000,0.3000,0.4000
 /project1/gaia_client/dmx_services	text	py	project1/gaia_client/dmx_services.py	2026-08-29 09:51:50 UTC				0	-6300	0.9000,0.3000,0.4000
 /project1/gaia_client/dmx_services_lifecycle	execute	py	project1/gaia_client/dmx_services_lifecycle.py	2026-08-29 09:51:50 UTC				400	-6300	0.9000,0.3000,0.4000
+/project1/gaia_client/topic_dream	text	py	gaia_client/topic_dream.py	2026-10-01 08:19:09 UTC				400	-100	0.9000,0.3000,0.4000
+/project1/gaia_client/topic_canvas	text	py	gaia_client/topic_canvas.py	2026-10-01 08:19:09 UTC				400	700	0.9000,0.3000,0.4000
+/project1/gaia_client/topic_brainstate	text	py	gaia_client/topic_brainstate.py	2026-10-01 08:19:09 UTC				400	300	0.9000,0.3000,0.4000
+/project1/gaia_client/script_soul_callbacks	text	py	gaia_client/script_soul_callbacks.py	2026-10-01 08:19:09 UTC				800	580	0.9000,0.3000,0.4000
+/project1/gaia_client/reregister_watch	parexec	py	gaia_client/reregister_watch.py	2026-10-01 08:19:09 UTC				1200	-3200	0.9000,0.3000,0.4000
+/project1/gaia_client/pre_release	text	py	gaia_client/pre_release.py	2026-10-01 08:19:09 UTC				0	-5500	0.9000,0.3000,0.4000
+/project1/gaia_client/mqtt_ingest_callbacks	text	py	gaia_client/mqtt_ingest_callbacks.py	2026-10-01 08:19:09 UTC				0	580	0.9000,0.3000,0.4000
+/project1/gaia_client/mqtt_device_callbacks	text	py	gaia_client/mqtt_device_callbacks.py	2026-10-01 08:19:09 UTC				0	-3320	0.9000,0.3000,0.4000
+/project1/gaia_client/mqtt_control_callbacks	text	py	gaia_client/mqtt_control_callbacks.py	2026-10-01 08:19:09 UTC				0	-4320	0.9000,0.3000,0.4000
+/project1/gaia_client/mocap_lifecycle	execute	py	gaia_client/mocap_lifecycle.py	2026-10-01 08:19:09 UTC				0	-1400	0.9000,0.3000,0.4000
+/project1/gaia_client/gaia_fleet_control	text	py	gaia_client/gaia_fleet_control.py	2026-10-01 08:19:09 UTC				400	-4200	0.9000,0.3000,0.4000
+/project1/gaia_client/gaia_device_agent	text	py	gaia_client/gaia_device_agent.py	2026-10-01 08:19:09 UTC				400	-3200	0.9000,0.3000,0.4000
+/project1/gaia_client/fleet_lifecycle	execute	py	gaia_client/fleet_lifecycle.py	2026-10-01 08:19:09 UTC				800	-4700	0.9000,0.3000,0.4000
+/project1/gaia_client/devices_table	table	tsv	gaia_client/devices_table.tsv	2026-10-01 08:19:09 UTC				800	-4200	0.9000,0.3000,0.4000
+/project1/gaia_client/dat_words_callbacks	text	py	gaia_client/dat_words_callbacks.py	2026-10-01 08:19:09 UTC				800	180	0.9000,0.3000,0.4000
+/project1/gaia_client/dat_word_current_callbacks	text	py	gaia_client/dat_word_current_callbacks.py	2026-10-01 08:19:09 UTC				1200	180	0.9000,0.3000,0.4000
+/project1/gaia_client/dat_thought_callbacks	text	py	gaia_client/dat_thought_callbacks.py	2026-10-01 08:19:09 UTC				800	-220	0.9000,0.3000,0.4000
+/project1/gaia_client/chop_pose_callbacks	text	py	gaia_client/chop_pose_callbacks.py	2026-10-01 08:19:09 UTC				800	-1920	0.9000,0.3000,0.4000
+/project1/gaia_client/chop_meta_callbacks	text	py	gaia_client/chop_meta_callbacks.py	2026-10-01 08:19:09 UTC				800	-2320	0.9000,0.3000,0.4000
+/project1/gaia_client/chop_hand_callbacks	text	py	gaia_client/chop_hand_callbacks.py	2026-10-01 08:19:09 UTC				800	-1520	0.9000,0.3000,0.4000
+/project1/gaia_client/chop_face_callbacks	text	py	gaia_client/chop_face_callbacks.py	2026-10-01 08:19:09 UTC				800	-1120	0.9000,0.3000,0.4000
+/project1/gaia_client/beacon_probe_callbacks	text	py	gaia_client/beacon_probe_callbacks.py	2026-10-01 08:19:09 UTC				0	-4820	0.9000,0.3000,0.4000
+/project1/gaia_client/beacon_discovery	text	py	gaia_client/beacon_discovery.py	2026-10-01 08:19:09 UTC				400	-4700	0.9000,0.3000,0.4000
+/project1/gaia_client/agent_lifecycle	execute	py	gaia_client/agent_lifecycle.py	2026-10-01 08:19:09 UTC				800	-3200	0.9000,0.3000,0.4000
+/project1/gaia_client	base	tox	project1/gaia_client.tox	2026-10-01 08:19:09 UTC		54	2025.33230	670	-430	0.6700,0.6700,0.6700
