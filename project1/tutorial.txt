@@ -1,0 +1,347 @@
+================================================================================
+ DMX V8 -- TUTORIAL: finestra Config, patch fixture, timeline dello show
+================================================================================
+
+Indice
+  0. Aprire la finestra Config
+  1. Concetti base (gruppi, unit, profili, porte)
+  2. Tab Patch DMX -- trovare i nodi Art-Net
+  3. Tab Fixture -- patchare le luci
+  4. Patch rapida (i vecchi parametri Nbars / Startaddress / profilo)
+  5. Tab Timeline -- scene
+  6. Tab Timeline -- cue e crossfade
+  7. Tab Timeline -- automazioni
+  8. Riprodurre lo show (trasporto, loop, live)
+  9. Controllo remoto da Gaia
+ 10. Dove stanno i dati (git) e problemi comuni
+
+
+--------------------------------------------------------------------------------
+ 0. APRIRE LA FINESTRA CONFIG
+--------------------------------------------------------------------------------
+ - In /project1 seleziona il COMP "config_window" e premi
+   "Open as Separate Window" (pagina Window).
+ - La finestra (1440 x 940) ha una barra a sinistra con le tab:
+     Audio        sorgenti audio A/B e quale sorgente pilota ogni rig
+     Patch DMX    scan della rete Art-Net, uscita, blackout
+     Fixture      patch luce per luce: pianta palco, mappa universo, inspector
+     Timeline     scene, cue, automazioni dello show
+     Teste / PTZ  pad XY, preset, mocap, parametri delle teste mobili
+     Gaia / Rete  connessione al broker Gaia
+ - Click su una voce = cambia tab. La tab attiva e' il parametro Tab del
+   COMP /project1/config.
+ - Le tab Audio, Patch DMX e Teste/PTZ mostrano i pannelli gia' esistenti
+   (audio_panel, patch_panel, ptz_panel): si usano esattamente come prima.
+
+
+--------------------------------------------------------------------------------
+ 1. CONCETTI BASE
+--------------------------------------------------------------------------------
+ GRUPPO   Chi genera i valori DMX:
+            rig_a  = dmx_audio_chase      (barre audio-reattive A)
+            rig_b  = dmx_audio_chase_b    (barre audio-reattive B)
+            heads  = moving_heads         (teste mobili, anche via PTZ)
+ UNIT     L'uscita del generatore che pilota la luce: bar1, bar2... per i
+          rig, head1, head2... per le teste. L'ordine delle unit e' l'ordine
+          del chase (la fase tra barre va da unit 1 in su).
+          Due luci sulla stessa unit = copie identiche (specchio).
+ PROFILO  La mappa canali della luce (es. "ZQ006018 4CH RGBW" =
+          rosso verde blu bianco). Ogni luce ha il suo: in un gruppo puoi
+          mischiare barre 4CH, 6CH, 8CH, oppure teste di modelli diversi.
+          Le librerie: dmx_audio_chase/fixture_profiles (rig) e
+          moving_heads/head_profiles (teste).
+ PORTA    L'uscita Art-Net fisica: "<ip nodo>:<porta>" = un universo.
+ INDIRIZZO  Il canale DMX iniziale (1..512) della luce su quella porta.
+            Una luce da N canali occupa indirizzo .. indirizzo+N-1.
+
+ La patch vera e' la tabella /project1/dmx_patch/fixtures (una riga per
+ luce). Tutto il resto (finestra, Gaia, patch rapida) scrive li'.
+
+
+--------------------------------------------------------------------------------
+ 2. TAB PATCH DMX -- TROVARE I NODI
+--------------------------------------------------------------------------------
+ 1. Controlla "Art-Net Interface IP" = l'IP di QUESTO PC sulla rete dei nodi.
+ 2. Premi "Scan Network". In "Scan Status" vedi nodi e porte trovati.
+ 3. Le porte trovate compaiono nei menu "Output Port" (tab Fixture) e nella
+    mappa universo. Una porta gia' vista resta in lista anche se il nodo e'
+    spento (marcata OFFLINE): la patch non si perde.
+ 4. "DMX Output Active" = interruttore generale dell'uscita,
+    "Blackout" = manda 0 su tutti i canali patchati.
+ 5. Per ogni gruppo, "Patch Enable" deve essere On perche' le sue luci
+    escano (pagina Fixture del rig / pagina Heads delle teste).
+
+
+--------------------------------------------------------------------------------
+ 3. TAB FIXTURE -- PATCHARE LE LUCI
+--------------------------------------------------------------------------------
+ La tab ha tre zone.
+
+ A) PIANTA PALCO (in alto)
+    - Ogni riquadro e' una luce, nella posizione X/Y sul palco (in celle;
+      il pubblico/fronte palco e' in basso).
+    - Colore del bordo = gruppo (azzurro rig_a, arancio rig_b, viola heads).
+    - Riempimento = colore che la luce sta mandando ADESSO.
+    - Riquadro vuoto con scritta OFF = la luce o il suo gruppo non inviano
+      (Patch Enable spento o luce disabilitata). Bordo rosso = problema
+      (porta mancante, conflitto, oltre 512).
+    - Testo: nome, "U<unit> @<indirizzo>".
+    - CLICK = seleziona. TRASCINA = sposta (aggancio a mezza cella).
+      La posizione si salva al rilascio del mouse.
+
+ B) MAPPA UNIVERSO (in basso a sinistra)
+    - 512 celle (32 x 16) della porta indicata in alto. Ogni luce e' un
+      blocco dei suoi canali, colorato col gruppo; il primo canale ha una
+      tacca scura e il numero.
+    - Rosso = due luci che inviano sullo stesso canale (CONFLITTO).
+      Colori spenti = luci in patch ma non inviate.
+    - In alto: porta, nodo, canali usati / liberi, eventuali conflitti.
+    - CLICK su un blocco = seleziona la luce.
+      TRASCINA un blocco = cambia indirizzo (si salva al rilascio).
+    - "Universe Map Port" (inspector): "Segui selezione" mostra la porta
+      della luce selezionata, oppure scegli una porta fissa.
+
+ C) INSPECTOR (in basso a destra) -- modifica la luce selezionata
+    Selected Fixture   id della luce (si aggiorna cliccando sulle viste)
+    Status             stato della luce: OK / OFF / CONFLICT / OVERFLOW...,
+                       range DMX e universo
+    Message            errore dell'ultima modifica (vuoto = applicata)
+    Group, Name, Unit, Profile, Output Port, DMX Address, Plan X/Y, Enabled
+                       ogni campo si applica subito alla luce selezionata
+    Add Fixture        aggiunge una luce al Group indicato: unit successiva,
+                       stesso profilo della selezionata, primo indirizzo
+                       libero sulla porta
+    Duplicate          copia la luce selezionata accanto
+    Remove             toglie la luce selezionata
+    Auto Address Group rinumera il gruppo della luce selezionata in ordine
+                       di unit, consecutivo dal suo indirizzo piu' basso
+                       (con profili misti li impacchetta senza buchi)
+
+ ESEMPIO -- rig A con 4 barre 4CH + 2 barre 8CH
+  1. Seleziona una barra del rig A, Profile = "ZQ006018 4CH RGBW".
+  2. Add Fixture due volte: nascono unit 5 e 6.
+  3. Seleziona la unit 5 e metti Profile = "ZQ006018 8CH"; idem la 6.
+  4. Auto Address Group: indirizzi 1, 5, 9, 13, 17, 25.
+  5. Controlla la mappa universo: nessun rosso. Imposta gli stessi
+     indirizzi sui dip/display delle luci.
+
+ Regole che l'inspector fa rispettare: indirizzo 1..512 e la luce deve
+ finire entro il canale 512; il profilo deve esistere nella libreria del
+ gruppo. Se un valore e' rifiutato lo vedi in Message.
+
+
+--------------------------------------------------------------------------------
+ 4. PATCH RAPIDA
+--------------------------------------------------------------------------------
+ I parametri di sempre restano e servono per patchare in un colpo un
+ gruppo UNIFORME:
+   rig:   pagina Fixture  -> Fixture Profile, Numero Fixture (Nbars),
+                             Start Address, Output Port
+                             (Apply / Refresh Profiles = riapplica)
+   teste: pagina Heads    -> Head Profile, Number of Heads, Start Address,
+                             Output Port
+ - Cambiare profilo / numero / start address RISCRIVE il gruppo come
+   blocco di indirizzi consecutivi tutti con quel profilo (nomi e
+   posizioni sulla pianta delle luci esistenti si conservano).
+ - Cambiare Output Port sposta tutte le luci del gruppo su quella porta,
+   indirizzi invariati.
+ - Al contrario, le modifiche fatte nella tab Fixture tornano su questi
+   parametri (numero = unit del gruppo, start/porta/profilo = prima luce)
+   senza riscrivere niente.
+ ATTENZIONE: se hai fatto una patch mista luce per luce, toccare
+ Nbars / Start Address / profilo del gruppo la riporta uniforme.
+
+
+--------------------------------------------------------------------------------
+ 5. TIMELINE -- SCENE
+--------------------------------------------------------------------------------
+ Una SCENA e' una fotografia dei parametri, divisa in 4 categorie:
+   Look rig A/B        pagina DMX Reactive di entrambi i rig (palette,
+                       colori custom, dimmer min/max/boost, velocita' e
+                       fase colore, kick...)
+   Teste mobili        posizione (Control, Pan, Tilt, Speed), look
+                       (dimmer, shutter, colore, gobo, zoom, focus) e PTZ
+                       (Mode, Pad X, Pad Y)
+   Accensioni gruppi   Patch Enable di rig A, rig B, teste + Blackout
+   Sorgente audio      quale sorgente (A/B) pilota ogni rig
+
+ Pagina Scene (colonna sinistra degli inspector, sotto il Transport):
+   Scene               scena selezionata
+   Label               nome mostrato sulla timeline
+   Apply ...           quali categorie la scena applica (es. una scena che
+                       muove solo le teste: lascia On solo Apply Moving Heads)
+   Recall Now          applica la scena subito (uso live)
+   Capture (overwrite) riscrive la scena con i valori ATTUALI
+   New Scene Name +
+   New Scene From Live crea una nuova scena dai valori attuali
+   Delete Scene        cancella (rifiutato se delle cue la usano)
+
+ COME SI PROGRAMMA UNA SCENA
+  1. Metti "Timeline Drives Output" su Off (modalita' live, cosi' la
+     timeline non ti cambia i valori mentre li regoli).
+  2. Regola a mano rig, teste, PTZ, accensioni (pannelli Audio, Teste/PTZ,
+     parametri dei COMP) finche' il look e' quello giusto.
+  3. Scrivi il nome in New Scene Name e premi New Scene From Live.
+  4. Ripeti per ogni look. Per correggere una scena: Recall Now, ritocca,
+     Capture (overwrite).
+
+
+--------------------------------------------------------------------------------
+ 6. TIMELINE -- CUE E CROSSFADE
+--------------------------------------------------------------------------------
+ Una CUE dice: "al tempo T vai alla scena S con un fade di F secondi".
+
+ Sul canvas:
+   - Riga in alto: stato (PLAY/STOP, tempo, cue corrente, % di fade).
+   - Righello: CLICK = sposta il playhead li', TRASCINA = scrub.
+   - Corsia cue: ogni cue e' un blocco dal suo tempo fino alla cue dopo,
+     colorato per scena; il triangolo all'inizio e' il fade.
+     CLICK = seleziona, TRASCINA = sposta nel tempo (passi di 0.1 s).
+   - Linea rossa = playhead.
+
+ Pagina Cue (colonna centrale):
+   Selected Cue, Time, Scene, Fade, Label   modificano la cue selezionata
+   Add Cue At Playhead   nuova cue al tempo del playhead con la scena
+                         selezionata nella pagina Scene
+   Go To Cue             porta il playhead sulla cue
+   Delete Cue
+
+ COME FUNZIONA IL FADE
+   - Numeri (dimmer, colori, pan/tilt, pad...) sfumano dalla scena della
+     cue precedente a quella nuova in F secondi.
+   - Menu, toggle e testi (palette, Patch Enable, modalita' PTZ,
+     sorgente audio) cambiano a META' del fade.
+   - Fade 0 = taglio secco.
+   - Prima della prima cue la timeline non tocca niente: metti sempre una
+     cue a 0:00 con la scena di partenza.
+
+ ESEMPIO
+   0:00  scena "intro"   fade 0    (stato iniziale)
+   0:20  scena "strofa"  fade 6    (6 secondi di passaggio)
+   0:45  scena "drop"    fade 1.5
+
+
+--------------------------------------------------------------------------------
+ 7. TIMELINE -- AUTOMAZIONI
+--------------------------------------------------------------------------------
+ Una CORSIA di automazione muove UN parametro nel tempo con dei keyframe,
+ SOPRA la scena attiva (es. il dimmer massimo che sale tra 1:20 e 1:45
+ mentre la scena resta la stessa).
+
+ Pagina Automation (colonna destra):
+   Parameter            parametro della corsia (es. "rig_b Maxdimmer",
+                        "heads Pan")
+   Add Key At Playhead  nuovo keyframe al tempo del playhead, con il valore
+                        ATTUALE del parametro (regolalo prima, poi premi)
+   Selected Key, Time, Value, Interpolation   modificano il key selezionato
+                        Interpolation = curva verso il key successivo:
+                        Linear, Smooth (morbida), Step (tiene, poi salta)
+   Delete Key
+
+ Sul canvas ogni corsia ha nome, range e curva gialla.
+   CLICK su un key = seleziona; TRASCINA = sposta in tempo (orizzontale)
+   e valore (verticale). Si salva al rilascio.
+
+ REGOLA: la corsia comanda il parametro solo dal suo PRIMO al suo ULTIMO
+ key; fuori da quell'intervallo vale la scena. Una corsia con un solo key
+ comanda solo in quell'istante: mettine almeno due.
+
+
+--------------------------------------------------------------------------------
+ 8. RIPRODURRE LO SHOW
+--------------------------------------------------------------------------------
+ Pagina Transport (colonna sinistra):
+   Play                 avvia / ferma il clock (orologio interno, secondi)
+   Time                 posizione; trascinalo per lo scrub
+   Rewind               torna a 0 e riapplica tutto
+   Loop                 alla fine (Length) riparte da 0
+   Length               durata dello show in secondi
+   Timeline Drives Output   On = la timeline comanda; Off = live, la
+                        timeline non scrive niente
+   View Start / View Length / Follow Playhead / Fit Show
+                        zoom e scorrimento della vista (non cambiano lo show)
+
+ COMPORTAMENTO IMPORTANTE
+   - Lo stato dipende solo dal tempo: saltando in qualsiasi punto ottieni
+     esattamente quello che c'e' programmato li'.
+   - La timeline scrive un parametro solo quando il SUO valore programmato
+     cambia. Se durante lo show ritocchi qualcosa a mano (o da Gaia), il
+     ritocco resta finche' la timeline non porta quel parametro a un nuovo
+     valore (prossimo fade, prossima cue che lo cambia, automazione).
+   - Gli effetti audio-reattivi continuano a reagire alla musica: la
+     timeline cambia i LORO parametri, non sostituisce l'audio.
+
+ CHECKLIST PRIMA DELLO SHOW
+   [ ] Scan fatto, porte online, Patch Enable dei gruppi corretti
+   [ ] Nessun rosso sulla mappa universo
+   [ ] Cue a 0:00 presente
+   [ ] Timeline Drives Output = On, Length giusta, Loop come serve
+   [ ] Rewind, poi Play
+
+
+--------------------------------------------------------------------------------
+ 9. CONTROLLO REMOTO DA GAIA
+--------------------------------------------------------------------------------
+ Tutto sul device Gaia di questo PC (tab Gaia / Rete). Valori JSON.
+
+ Patch fixture
+   dmx_fixtures              lettura/scrittura della patch completa
+                             [{id, name, group, unit, profile, port_id,
+                               address, x, y, enabled}, ...]
+   dmx_fixture_add           {"group": "rig_a", "profile": "...", ...}
+                             (i campi mancanti prendono valori sensati)
+   dmx_fixture_update        {"id": 3, "address": 25}
+   dmx_fixture_remove        3
+   dmx_fixture_auto_address  {"group": "rig_a", "start": 1}
+   dmx_patch_report          stato per luce (sola lettura)
+   dmx_<rig>_fixture_count / start_address / fixture_profile /
+   output_port               = patch rapida del gruppo (vedi punto 4)
+
+ Show
+   show_play, show_loop, show_active      servizi on/off
+   show_rewind                            azione
+   show_time, show_length                 secondi
+   show_status                            testo di stato (lettura)
+   show_scene_recall                      nome scena -> applicata subito
+   show_scene_capture                     nome -> scena dai valori attuali
+   show_scenes                            elenco scene (lettura)
+   show_cues   [{"time": 0, "scene": "intro", "fade": 0, "label": ""}, ...]
+   show_keys   [{"lane": "rig_a.Maxdimmer", "time": 80, "value": 120,
+                 "interp": "smooth"}, ...]
+   (scrivere show_cues / show_keys sostituisce l'elenco intero)
+
+ Un valore non valido (scena inesistente, indirizzo fuori range...) viene
+ rifiutato: l'errore compare nel campo last_error dello status Gaia.
+ La "matrix" pubblicata da Gaia (sezioni fixtures e show) elenca profili,
+ scene e parametri automatizzabili.
+
+
+--------------------------------------------------------------------------------
+ 10. DOVE STANNO I DATI E PROBLEMI COMUNI
+--------------------------------------------------------------------------------
+ File nel progetto (versionati in git):
+   project1/dmx_patch/fixtures.tsv     la patch, una riga per luce
+   project1/show/scenes.tsv            elenco scene e categorie
+   project1/show/scene_values.tsv      valori di ogni scena
+   project1/show/cues.tsv              cue
+   project1/show/keys.tsv              keyframe delle automazioni
+ Si possono anche modificare a mano con un editor: TD li ricarica.
+
+ Problemi comuni
+   La luce non si accende
+     -> Status della luce nell'inspector: OFF = Patch Enable del gruppo o
+        Enabled spenti; NO_PORT = porta non trovata (rifai Scan); CONFLICT
+        = canali sovrapposti (mappa universo rossa).
+   Colori sbagliati / canali scalati
+     -> profilo diverso da quello impostato sulla luce reale, o indirizzo
+        sul dip della luce diverso da quello in patch.
+   La timeline non cambia niente
+     -> Timeline Drives Output Off, oppure sei prima della prima cue, oppure
+        la scena ha la categoria spenta (Apply ...).
+   Ho ritoccato un valore e la timeline non lo riporta indietro
+     -> normale: lo riprende al prossimo cambio programmato. Per forzare:
+        Rewind, oppure un salto di Time.
+   La patch mista e' tornata uniforme
+     -> hai toccato Nbars / Start Address / profilo del gruppo (patch
+        rapida, punto 4).
+================================================================================
