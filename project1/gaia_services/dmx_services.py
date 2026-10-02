@@ -52,6 +52,34 @@ COMP) from gaia/device/+/status -- see GAIA_INTERFACE "TD/Mac-Ctrl, 2".
 
 2026-10-01: PTZ (/project1/ptz) as 'ptz_*' -- XY pad, mocap follow (pose
 landmark from Gaia channel 7), calibration, presets; dmx_matrix gains 'ptz'.
+
+2026-10-02: fixture patch (/project1/dmx_patch/fixtures, one row per light,
+mixed profiles per group) as 'dmx_fixture*' params, all JSON values:
+  dmx_fixtures              rw  full list [{id,name,group,unit,profile,
+                                port_id,address,x,y,enabled}]; set = replace
+                                the whole patch (validated before writing)
+  dmx_fixture_add           w   {group, profile?, port_id?, address?, unit?,
+                                name?, x?, y?} -- missing = sensible defaults
+  dmx_fixture_update        w   {id, <any field>...}
+  dmx_fixture_remove        w   id
+  dmx_fixture_auto_address  w   {group, start?, port_id?} -- consecutive
+  dmx_patch_report          r   [{id,status,port_id,universe,start,end}]
+Invalid values raise -> reported in the status 'last_error'. dmx_matrix gains
+'fixtures' ({params, columns, groups: [{group, profiles: [{name, channels}]}]}).
+The per-rig dmx_<rig>_fixture_count / start_address / fixture_profile /
+output_port are the QUICK PATCH of that group (rewrite it as a uniform block).
+
+2026-10-02: show timeline (/project1/show: scenes, cues with crossfade,
+automation lanes, internal clock) as 'show_*':
+  services  show_play, show_loop, show_active (timeline drives the output;
+            off = live), show_rewind (action)
+  params    show_time / show_length (float s), show_status (r),
+            show_scene_recall (enum = scene names; set = apply now),
+            show_scene_capture (w: name -> scene from the live values),
+            show_scenes (r json), show_cues / show_keys (rw json, set =
+            replace all; cue {time, scene, fade?, label?}, key {lane, time,
+            value, interp?})
+dmx_matrix gains 'show' ({params, services, scenes, lanes}).
 """
 import json
 import time
@@ -121,6 +149,135 @@ PATCH_SERVICES = [
 
 def _patch():
 	return me.parent().parent().op('dmx_patch')
+
+
+def _fixtures():
+	"""fixture_logic module of dmx_patch (resolved at call time)."""
+	return _patch().op('fixture_logic').module
+
+
+def _json_arg(value):
+	"""Gaia UIs may send JSON as an object or as a string."""
+	if isinstance(value, (bytes, str)):
+		return json.loads(value)
+	return value
+
+
+def _patch_report():
+	rep = _patch().op('patch_report')
+	out = []
+	for r in range(1, rep.numRows):
+		out.append({
+			'id': int(rep[r, 'id'].val),
+			'status': rep[r, 'status'].val,
+			'port_id': rep[r, 'port_id'].val,
+			'universe': rep[r, 'universe'].val,
+			'start': int(rep[r, 'start'].val),
+			'end': int(rep[r, 'end'].val),
+		})
+	return out
+
+
+def _register_fixtures(agent):
+	fl = _fixtures
+	agent.register_param('dmx_fixtures', get=lambda: fl().to_list(),
+		set=lambda v: fl().set_all(_json_arg(v)))
+
+	def add(v):
+		d = dict(_json_arg(v))
+		fl().add_fixture(d.pop('group'), **d)
+
+	def update(v):
+		d = dict(_json_arg(v))
+		fl().update_fixture(int(d.pop('id')), **d)
+
+	def auto(v):
+		d = dict(_json_arg(v))
+		fl().auto_address(d['group'], int(d.get('start', 1)), d.get('port_id'))
+
+	agent.register_param('dmx_fixture_add', get=lambda: None, set=add)
+	agent.register_param('dmx_fixture_update', get=lambda: None, set=update)
+	agent.register_param('dmx_fixture_remove', get=lambda: None,
+		set=lambda v: fl().remove_fixture(int(_json_arg(v))))
+	agent.register_param('dmx_fixture_auto_address', get=lambda: None, set=auto)
+	agent.register_param('dmx_patch_report', get=_patch_report)
+
+
+def _show():
+	return me.parent().parent().op('show')
+
+
+def _show_logic():
+	return _show().op('show_logic').module
+
+
+SHOW_SERVICES = [
+	('show_play', 'bool', 'Play'),
+	('show_loop', 'bool', 'Loop'),
+	('show_active', 'bool', 'Active'),
+]
+
+
+def _register_show(agent):
+	sl = _show_logic
+	for name, kind, par_name in SHOW_SERVICES:
+		agent.register_service(
+			name,
+			start=lambda pn=par_name: setattr(_show().par, pn, 1),
+			stop=lambda pn=par_name: setattr(_show().par, pn, 0),
+			status=lambda pn=par_name: bool(_show().par[pn].eval()))
+	agent.register_service('show_rewind', start=lambda: _show().par.Rewind.pulse())
+	_register_value(agent, 'show_time', None, 'Time', float, comp=_show)
+	_register_value(agent, 'show_length', None, 'Length', float, comp=_show)
+	agent.register_param('show_status', get=lambda: str(_show().par.Status.eval()))
+
+	def recall(v):
+		sl().recall(str(v))
+
+	agent.register_param('show_scene_recall', get=lambda: None, set=recall)
+	agent.register_param('show_scene_capture', get=lambda: None, set=lambda v: sl().capture(str(v)))
+	agent.register_param('show_scenes', get=lambda: sl().scenes())
+	agent.register_param('show_cues', get=lambda: sl().cues(), set=lambda v: sl().set_cues(_json_arg(v)))
+	agent.register_param('show_keys', get=lambda: sl().keys(), set=lambda v: sl().set_keys(_json_arg(v)))
+
+
+def _build_show_matrix():
+	sl = _show_logic()
+	s = _show()
+	params = {
+		'show_time': {'kind': 'param', 'type': 'float', 'range': _numeric_range(s.par.Time), 'default': 0.0},
+		'show_length': {'kind': 'param', 'type': 'float', 'range': _numeric_range(s.par.Length), 'default': float(s.par.Length.default)},
+		'show_status': {'kind': 'param', 'type': 'str', 'access': 'r'},
+		'show_scene_recall': {'kind': 'param', 'type': 'enum', 'options': sl.scene_names(), 'access': 'w'},
+		'show_scene_capture': {'kind': 'param', 'type': 'str', 'access': 'w'},
+		'show_scenes': {'kind': 'param', 'type': 'json', 'access': 'r'},
+		'show_cues': {'kind': 'param', 'type': 'json', 'access': 'rw'},
+		'show_keys': {'kind': 'param', 'type': 'json', 'access': 'rw'},
+	}
+	services = {name: {'kind': 'service', 'type': kind} for name, kind, _ in SHOW_SERVICES}
+	services['show_rewind'] = {'kind': 'service', 'type': 'action'}
+	return {'params': params, 'services': services, 'scenes': sl.scenes(),
+		'lanes': sl.automatable(), 'interps': list(sl.INTERPS)}
+
+
+def _build_fixtures_matrix():
+	fl = _fixtures()
+	groups = []
+	for g in fl.groups():
+		groups.append({
+			'group': g['group'],
+			'profiles': [{'name': n, 'channels': fl.profile_channels(g['group'], n)}
+				for n in fl.profile_names(g['group'])],
+		})
+	params = {
+		'dmx_fixtures': {'kind': 'param', 'type': 'json', 'access': 'rw'},
+		'dmx_fixture_add': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'dmx_fixture_update': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'dmx_fixture_remove': {'kind': 'param', 'type': 'int', 'access': 'w'},
+		'dmx_fixture_auto_address': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'dmx_patch_report': {'kind': 'param', 'type': 'json', 'access': 'r'},
+	}
+	return {'params': params, 'columns': list(fl.COLUMNS), 'groups': groups}
 
 
 # Moving heads (/project1/moving_heads): 'heads_*', one group per device.
@@ -527,6 +684,8 @@ def publish_matrix():
 		'patch': _build_patch_matrix(),
 		'heads': _build_heads_matrix(),
 		'ptz': _build_ptz_matrix(),
+		'fixtures': _build_fixtures_matrix(),
+		'show': _build_show_matrix(),
 		'ts': int(time.time() * 1000),
 	}
 	topic = 'gaia/devices/%s/%s_matrix' % (device_id, family.lower())
@@ -590,6 +749,8 @@ def register_all():
 				status=lambda pn=par_name: bool(_heads().par[pn].eval()))
 
 	_register_ptz(agent)
+	_register_fixtures(agent)
+	_register_show(agent)
 
 	agent.register_service(
 		'dmx_scan',
