@@ -1,21 +1,24 @@
-
-# Tiene allineata la pagina "Fixture" (menu profili) e stampa il riepilogo
-# della patch. Un Parameter Execute DAT si scrive il codice addosso (.text),
-# non ha un parametro che punta a un DAT esterno.
+# Pagina "Fixture" del rig = PATCH RAPIDA del gruppo nella patch fixture
+# (/project1/dmx_patch/fixtures, vedi fixture_logic). Un Parameter Execute
+# DAT si scrive il codice addosso (.text), non ha un parametro che punta a un
+# DAT esterno.
 #
-# 2026-10-01: dmx_select.channames NON si scrive piu' da qui -- e' un'
-# espressione che legge profilo/Nbars del rig, cosi' vale anche nel clone
-# dmx_audio_chase_b (un valore costante scritto qui veniva risincronizzato
-# dal master). Lo start address lo applica /project1/dmx_patch (il DMX Out
-# CHOP manda sempre dal canale 1, non ha un parametro di start).
+# - Fixtureprofile / Nbars / Startaddress / Applyfixture: riscrivono il
+#   gruppo come blocco uniforme di indirizzi consecutivi (le fixture gia'
+#   esistenti tengono nome e posizione sulla pianta).
+# - Outputport: sposta tutte le fixture del gruppo su quella porta,
+#   indirizzi invariati.
+# Le modifiche fatte dalla finestra Config (fixture singole, profili misti)
+# tornano su questi par tramite fixture_logic.sync_quick_pars(): quel valore
+# e' un "eco" (is_echo) e qui non si ripatcha.
+#
+# dmx_select seleziona bar* (ordine DMX per unita'), vale anche per il clone
+# dmx_audio_chase_b.
 
-def profile_channels(comp):
-	tbl = comp.op('fixture_profiles')
-	if tbl is not None:
-		cell = tbl[str(comp.par.Fixtureprofile.eval()), 'channels']
-		if cell is not None and str(cell.val).strip():
-			return str(cell.val).split()
-	return ['red', 'green', 'blue']
+def _logic(comp):
+	fx = comp.parent().op('dmx_patch/fixture_logic')
+	return fx.module if fx is not None else None
+
 
 def refresh_menu(comp):
 	tbl = comp.op('fixture_profiles')
@@ -30,33 +33,31 @@ def refresh_menu(comp):
 	if par.eval() not in names:
 		par.val = names[0]
 
-def apply(comp):
+
+def apply(par):
+	comp, par_name = par.owner, par.name
+	fl = _logic(comp)
+	if fl is None or (par.style != 'Pulse' and fl.is_echo(par)):
+		return
 	refresh_menu(comp)
-	chans = profile_channels(comp)
-	n = max(1, int(comp.par.Nbars.eval()))
-	start = int(comp.par.Startaddress.eval())
+	group = fl.group_of(comp)
+	if group is None:
+		return
+	if par_name == 'Outputport':
+		port = str(comp.par.Outputport.eval())
+		for f in fl.rows(group):
+			if f['port_id'] != port:
+				fl.update_fixture(f['id'], port_id=port)
+		return
+	fl.quick_patch(comp)
+	print('Fixture %s: %s' % (group, fl.addresses_text(comp)))
 
-	gen = comp.op('dmx_generator')
-	if gen is not None:
-		gen.cook(force=True)
-
-	total = n * len(chans)
-	last = start + total - 1
-	print('Fixture: {} x {}CH -> DMX {}-{} ({} canali)'.format(
-		n, len(chans), start, last, total))
-	print('  indirizzi da impostare sulle fixture:',
-	      ', '.join(str(start + i * len(chans)) for i in range(n)))
-	if last > 512:
-		print('  ATTENZIONE: sfori i 512 canali dell universo.'
-		      ' Riduci le fixture o abbassa lo start address.')
-	if 'dimmer' not in chans:
-		print('  profilo senza canale dimmer: il livello viene moltiplicato'
-		      ' dentro l RGB (Dimmer Gamma attiva)')
 
 def onPulse(par):
-	apply(par.owner)
+	apply(par)
 	return
 
+
 def onValueChange(par, prev):
-	apply(par.owner)
+	apply(par)
 	return

@@ -18,21 +18,32 @@ def onCook(scriptOp):
 	scriptOp.isTimeSlice = False
 	scriptOp.clear()
 
-	# --- fixture: numero e mappa canali arrivano dalla pagina "Fixture" e
-	# dalla tabella fixture_profiles, quindi si cambiano live -----------------
+	# --- fixture: una unita' (bar<N>) per ogni unit della patch fixture
+	# (/project1/dmx_patch/fixtures), ognuna col PROPRIO profilo, quindi un
+	# rig puo' mischiare profili diversi. Senza dmx_patch: Nbars x Fixtureprofile
 	_parent = scriptOp.parent()
-	try:
-		N_BARS = max(1, int(_parent.par.Nbars.eval()))
-	except:
-		N_BARS = 6
-	CHANNELS = ['red', 'green', 'blue', 'white']
-	try:
-		_tbl = _parent.op('fixture_profiles')
-		_cell = _tbl[str(_parent.par.Fixtureprofile.eval()), 'channels'] if _tbl else None
-		if _cell is not None and str(_cell.val).strip():
-			CHANNELS = str(_cell.val).split()
-	except:
-		pass
+	UNIT_CHANNELS = None
+	_fx = _parent.parent().op('dmx_patch/fixture_logic')
+	if _fx is not None:
+		try:
+			UNIT_CHANNELS = _fx.module.unit_channels(_parent) or None
+		except Exception as e:
+			debug('fixture_logic.unit_channels:', e)
+	if UNIT_CHANNELS is None:
+		try:
+			_n = max(1, int(_parent.par.Nbars.eval()))
+		except:
+			_n = 6
+		_chans = ['red', 'green', 'blue', 'white']
+		try:
+			_tbl = _parent.op('fixture_profiles')
+			_cell = _tbl[str(_parent.par.Fixtureprofile.eval()), 'channels'] if _tbl else None
+			if _cell is not None and str(_cell.val).strip():
+				_chans = str(_cell.val).split()
+		except:
+			pass
+		UNIT_CHANNELS = [_chans] * _n
+	N_BARS = len(UNIT_CHANNELS)
 	ALL_PALETTES = {'Rainbow (Daslight)': [(0, 0, 255), (0, 255, 255), (0, 255, 0), (255, 255, 0), (255, 128, 0), (255, 0, 0), (0, 0, 255)], 'Warm': [(255, 0, 0), (255, 90, 0), (255, 170, 0), (255, 220, 0), (255, 90, 0), (255, 0, 0)], 'Cool': [(0, 0, 255), (0, 140, 255), (0, 255, 200), (120, 0, 255), (0, 0, 255)], 'Fire': [(255, 0, 0), (255, 100, 0), (255, 180, 0), (255, 40, 0), (255, 0, 0)], 'Fire Inverted': [(0, 255, 255), (0, 155, 255), (0, 75, 255), (0, 215, 255), (0, 255, 255)], 'Ocean': [(0, 0, 180), (0, 130, 180), (0, 210, 160), (0, 130, 180), (0, 0, 180)], 'Magenta-Cyan': [(255, 0, 150), (150, 0, 255), (0, 150, 255), (0, 255, 200), (255, 0, 150)], 'Plasma': [(13, 8, 135), (126, 3, 168), (204, 71, 120), (248, 149, 64), (240, 249, 33), (13, 8, 135)], 'Basic': [(255, 0, 0), (0, 0, 255), (255, 255, 0), (0, 255, 0), (255, 0, 255), (255, 0, 0)], 'Basic 2': [(255, 0, 0), (0, 0, 255), (255, 255, 0), (0, 255, 0), (255, 0, 255)], 'Neon Party': [(255, 0, 120), (0, 60, 255), (180, 255, 0), (255, 210, 0), (255, 0, 120)], 'Sunset': [(0, 0, 150), (120, 0, 180), (255, 0, 120), (255, 90, 0), (255, 200, 0), (0, 0, 150)], 'Forest': [(0, 100, 0), (60, 180, 0), (170, 220, 0), (0, 180, 120), (0, 100, 0)], 'Deep Purple': [(60, 0, 120), (140, 0, 200), (255, 0, 150), (80, 0, 255), (60, 0, 120)], 'Red': [(255, 0, 0), (255, 0, 0)], 'Blue': [(0, 0, 255), (0, 0, 255)], 'Yellow': [(255, 255, 0), (255, 255, 0)], 'Amber': [(255, 150, 0), (255, 150, 0)]}
 	DEFAULT_PALETTE_NAME = 'Rainbow (Daslight)'
 	STEPPED_PALETTES = {'Basic 2'}
@@ -88,7 +99,6 @@ def onCook(scriptOp):
 	KICK_COOLDOWN = get_par(p, 'Kickcooldown', 0.22)
 	KICK_SMOOTH = max(0.001, min(1.0, get_par(p, 'Kicksmooth', 0.3) * GLOBAL_SMOOTH))
 	DIMMER_GAMMA = get_par(p, 'Dimmergamma', 2.2)
-	HAS_DIMMER = 'dimmer' in CHANNELS
 
 	def band_level(chop):
 		if chop is None or chop.numChans == 0:
@@ -235,7 +245,8 @@ def onCook(scriptOp):
 		# --- se il profilo HA un canale dimmer, l'RGB resta pieno e a dimmerare
 		# ci pensa la fixture. Se NON ce l'ha (es. 4CH RGBW), il livello va
 		# moltiplicato dentro l'RGB, con gamma per non perdere la parte bassa -
-		k = 1.0 if HAS_DIMMER else (dimmer_val / 255.0) ** DIMMER_GAMMA
+		CHANNELS = UNIT_CHANNELS[i]
+		k = 1.0 if 'dimmer' in CHANNELS else (dimmer_val / 255.0) ** DIMMER_GAMMA
 
 		values = {
 			'dimmer': dimmer_val,

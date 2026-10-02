@@ -1,7 +1,8 @@
 """heads_dmx -- DMX channels of all moving heads, in DMX address order:
 head1_<attr> ... head1_<last>, head2_<attr> ... (attribute order = the
 profile 'channels' column of head_profiles). This CHOP is the patch group
-output read by /project1/dmx_patch (groups row 'heads').
+output read by /project1/dmx_patch (groups row 'heads'). One head per unit of
+the fixture patch, each with its OWN profile (mixed head models are fine).
 
 Position (degrees from the head center):
 - Control = manual: every head gets Pan/Tilt pars;
@@ -16,9 +17,22 @@ the open value -- check the fixture manual) or 0.
 """
 
 
-def _profile(comp):
+def _unit_profiles(comp):
+	"""Profile name per head (index 0 = head 1) from the fixture patch
+	(/project1/dmx_patch/fixtures); without it: Count x Profile."""
+	fx = comp.parent().op('dmx_patch/fixture_logic')
+	if fx is not None:
+		try:
+			names = fx.module.unit_profiles(comp, cached=False)
+			if names:
+				return names
+		except Exception as e:
+			debug('fixture_logic.unit_profiles:', e)
+	return [str(comp.par.Profile.eval())] * max(1, int(comp.par.Count.eval()))
+
+
+def _profile(comp, name):
 	t = comp.op('head_profiles')
-	name = str(comp.par.Profile.eval())
 	if t is None or t[name, 'channels'] is None:
 		return ['pan', 'tilt', 'dimmer'], 540.0, 270.0, {}
 	chans = str(t[name, 'channels'].val).split()
@@ -69,8 +83,7 @@ def onCook(scriptOp):
 	scriptOp.isTimeSlice = False
 	scriptOp.numSamples = 1
 	comp = parent()
-	chans, pan_range, tilt_range, defaults = _profile(comp)
-	count = max(1, int(comp.par.Count.eval()))
+	profiles = _unit_profiles(comp)
 	ptz = str(comp.par.Control.eval()) == 'ptz' and len(scriptOp.inputs) > 0
 	targets = scriptOp.inputs[0] if ptz else None
 	p = comp.par
@@ -87,7 +100,8 @@ def onCook(scriptOp):
 		'speed': (1.0 - float(p.Speed.eval())) * 255.0,
 	}
 	shutter_open = bool(p.Shutteropen.eval())
-	for n in range(1, count + 1):
+	for n in range(1, len(profiles) + 1):
+		chans, pan_range, tilt_range, defaults = _profile(comp, profiles[n - 1])
 		cfg = _head_cfg(comp, n, pan_range, tilt_range)
 		pan, tilt = float(p.Pan.eval()), float(p.Tilt.eval())
 		if targets is not None:
