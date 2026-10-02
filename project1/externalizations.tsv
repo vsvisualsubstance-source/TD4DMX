@@ -234,8 +234,8 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/Embody/Collection/CollectionExt	text	py	project1/Embody/Collection/CollectionExt.py	2026-08-25 09:18:32 UTC				200	0	0.9000,0.3000,0.4000
 /project1/Embody/Collection	base	tox	project1/Embody/Collection.tox	2026-08-25 09:18:32 UTC		2	2025.33070	200	-550	0.3250,0.8000,0.3000
 /project1/Embody/CatalogManagerExt	text	py	project1/Embody/CatalogManagerExt.py	2026-08-25 09:18:32 UTC				-700	500	0.9000,0.3000,0.4000
-/project1/Embody	container	tox	project1/Embody.tox	2026-10-02 11:45:19 UTC		1230	2025.33230	-275	275	0.3250,0.8000,0.3000
-/project1	container	tox	project1.tox	2026-10-02 11:45:19 UTC		56	2025.33230	250	150	0.3250,0.8000,0.3000
+/project1/Embody	container	tox	project1/Embody.tox	2026-10-02 13:08:47 UTC		1231	2025.33230	-275	275	0.3250,0.8000,0.3000
+/project1	container	tox	project1.tox	2026-10-02 13:08:47 UTC		58	2025.33230	250	150	0.3250,0.8000,0.3000
 /perform	window	tox	perform.tox	2026-08-25 09:18:33 UTC		1	2025.33070	-200	40	0.3250,0.8000,0.3000
 /	base	tdn	dmx.tdn	2026-08-29 10:23:19 UTC			099.2025.33070			
 /project1/dmx_audio_chase/bars_preview_callbacks	text	py	project1/dmx_audio_chase/bars_preview_callbacks.py	2026-08-25 11:55:50 UTC				450	880	0.9000,0.3000,0.4000
@@ -263,7 +263,7 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/gaia_client/beacon_probe_callbacks	text	py	gaia_client/beacon_probe_callbacks.py	2026-10-01 08:19:09 UTC				0	-4820	0.9000,0.3000,0.4000
 /project1/gaia_client/beacon_discovery	text	py	gaia_client/beacon_discovery.py	2026-10-01 08:19:09 UTC				400	-4700	0.9000,0.3000,0.4000
 /project1/gaia_client/agent_lifecycle	execute	py	gaia_client/agent_lifecycle.py	2026-10-01 08:19:09 UTC				800	-3200	0.9000,0.3000,0.4000
-/project1/gaia_client	base	tox	project1/gaia_client.tox	2026-10-02 11:45:19 UTC		92	2025.33230	670	-430	0.6700,0.6700,0.6700
+/project1/gaia_client	base	tox	project1/gaia_client.tox	2026-10-02 13:08:47 UTC		94	2025.33230	670	-430	0.6700,0.6700,0.6700
 /project1/audio_engine	base	tox	project1/audio_engine.tox	2026-10-01 12:00:13 UTC		8	2025.33230	-600	-400	0.3250,0.8000,0.3000
 /project1/audio_panel	container	tox	project1/audio_panel.tox	2026-10-01 09:58:06 UTC		3	2025.33230	-200	-400	0.3250,0.8000,0.3000
 /project1/gaia_services/dmx_services	text	py	project1/gaia_services/dmx_services.py	2026-10-01 09:41:57 UTC				0	0	0.9000,0.3000,0.4000
@@ -292,7 +292,7 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/ptz/osc_mocap_callbacks	text	py	project1/ptz/osc_mocap_callbacks.py	2026-10-01 12:21:17 UTC				0	-120	0.9000,0.3000,0.4000
 /project1/ptz/ptz_callbacks	parexec	py	project1/ptz/ptz_callbacks.py	2026-10-01 12:21:47 UTC				0	-400	0.9000,0.3000,0.4000
 /project1/ptz/presets	table	tsv	project1/ptz/presets.tsv	2026-10-01 12:22:18 UTC				400	-400	0.9000,0.3000,0.4000
-/project1/ptz	base	tox	project1/ptz.tox	2026-10-02 11:37:59 UTC		2	2025.33230	-200	-2100	0.3250,0.8000,0.3000
+/project1/ptz	base	tox	project1/ptz.tox	2026-10-02 12:49:16 UTC		3	2025.33230	-200	-2100	0.3250,0.8000,0.3000
 /project1/ptz_panel	container	tox	project1/ptz_panel.tox	2026-10-01 12:23:18 UTC		1	2025.33230	200	-2100	0.3250,0.8000,0.3000
 /project1/dmx_patch/fixtures	table	tsv	project1/dmx_patch/fixtures.tsv	2026-10-02 10:10:56 UTC				0	-1600	0.9000,0.3000,0.4000
 /project1/dmx_patch/fixture_logic	text	py	project1/dmx_patch/fixture_logic.py	2026-10-02 10:10:57 UTC				0	-1800	0.9000,0.3000,0.4000
@@ -306,7 +306,7 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/config/tab_fixtures/plan/render_plan_callbacks	text	py	project1/config/tab_fixtures/plan/render_plan_callbacks.py	2026-10-02 10:24:56 UTC				0	-120	0.9000,0.3000,0.4000
 /project1/config/tab_fixtures/umap/umap_input	panelexec	py	project1/config/tab_fixtures/umap/umap_input.py	2026-10-02 10:24:56 UTC				400	0	0.9000,0.3000,0.4000
 /project1/config/tab_fixtures/umap/render_umap_callbacks	text	py	project1/config/tab_fixtures/umap/render_umap_callbacks.py	2026-10-02 10:24:56 UTC				0	-120	0.9000,0.3000,0.4000
-/project1/config	container	tox	project1/config.tox	2026-10-02 11:45:19 UTC		4	2025.33230	600	-1200	0.3250,0.8000,0.3000
+/project1/config	container	tox	project1/config.tox	2026-10-02 12:49:16 UTC		5	2025.33230	600	-1200	0.3250,0.8000,0.3000
 /project1/config_window	window	tox	project1/config_window.tox	2026-10-02 10:26:04 UTC		1	2025.33230	1000	-1200	0.3250,0.8000,0.3000
 /project1/show	base	tox	project1/show.tox	2026-10-02 11:39:45 UTC		4	2025.33230	1000	-2100	0.3250,0.8000,0.3000
 /project1/show/scenes	table	tsv	project1/show/scenes.tsv	2026-10-02 11:37:59 UTC				0	0	0.9000,0.3000,0.4000
@@ -320,3 +320,4 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/config/tab_timeline/timeline_ui	text	py	project1/config/tab_timeline/timeline_ui.py	2026-10-02 11:38:59 UTC				0	0	0.9000,0.3000,0.4000
 /project1/config/tab_timeline/canvas/render_timeline_callbacks	text	py	project1/config/tab_timeline/canvas/render_timeline_callbacks.py	2026-10-02 11:38:59 UTC				0	-120	0.9000,0.3000,0.4000
 /project1/config/tab_timeline/canvas/canvas_input	panelexec	py	project1/config/tab_timeline/canvas/canvas_input.py	2026-10-02 11:38:59 UTC				400	0	0.9000,0.3000,0.4000
+/project1/tutorial	text	txt	project1/tutorial.txt	2026-10-02 12:49:16 UTC				1200	-1200	0.9000,0.3000,0.4000

@@ -3,7 +3,7 @@
   "lifeIndex": 70,
   "gamification": {
     "level": 10,
-    "xp": 9851,
+    "xp": 9876,
     "xpNextLevel": 22400,
     "activeClass": "Guerriero",
     "unlockedAssets": [
@@ -19,12 +19,12 @@
     "stats": {
       "mago": 2131,
       "bardo": 332,
-      "guerriero": 3272,
+      "guerriero": 3277,
       "druido": 1866
     },
     "_cd": {
       "natura": 1790358336360,
-      "movimento": 1790940820775,
+      "movimento": 1790945037348,
       "voce": 1790936699219,
       "pensiero": 1790775649080,
       "presenza": 1790775770666,
@@ -106,18 +106,18 @@
         "hue_temperature_sensor_5_temperatura": 20.49
       },
       "temperature": 20.7,
-      "lastMotion": 1790941047743
+      "lastMotion": 1790944322578
     },
     "ingresso": {
       "people": [],
       "objects": {},
-      "ambient_light": 3.857447286724761,
+      "ambient_light": 2.755497364626803,
       "darkness": true,
       "_temps": {
-        "hue_temperature_sensor_4_temperatura": 19.92
+        "hue_temperature_sensor_4_temperatura": 20.2
       },
-      "temperature": 19.9,
-      "lastMotion": 1790940820775
+      "temperature": 20.2,
+      "lastMotion": 1790945174262
     },
     "soggiorno": {
       "id": "soggiorno",
@@ -150,21 +150,21 @@
       "name": "salotto",
       "persons_count": 1,
       "objects": {},
-      "lastUpdate": 1790941576084,
+      "lastUpdate": 1790946545294,
       "people": [],
       "main_user": null,
       "_mediapipe": true,
       "activity": "present",
       "currentEmotion": null,
-      "currentPose": "standing",
+      "currentPose": "arms_up",
       "mediapipe": {
         "emotion": null,
-        "pose": "standing",
+        "pose": "arms_up",
         "attention": "unknown",
         "smile_score": 0,
         "mouth_open": false,
         "eyes_open": true,
-        "gesture": "fist",
+        "gesture": null,
         "people_count": 1,
         "people": [
           {
@@ -174,29 +174,27 @@
             "attention": "unknown",
             "mouth_open": false,
             "eyes_open": true,
-            "pose": "standing",
-            "gestures": [
-              "fist"
-            ]
+            "pose": "arms_up",
+            "gestures": []
           }
         ],
-        "ts": 1790941576084
+        "ts": 1790946545294
       },
       "_touchdesigner": true,
-      "lastTd": 1790941565530,
+      "lastTd": 1790946518618,
       "audioKick": 0,
-      "audioKickTs": 1790941575295,
+      "audioKickTs": 1790946544449,
       "dmxPaletteA": "Warm"
     },
     "ConsolleDmx": {
       "people": [],
       "persons_count": 0,
       "objects": {},
-      "lastUpdate": 1790941571105,
+      "lastUpdate": 1790946544426,
       "_touchdesigner": true,
-      "lastTd": 1790941571105,
+      "lastTd": 1790946544426,
       "dmxPaletteA": "Amber",
-      "dmxPaletteB": "Fire"
+      "dmxPaletteB": "Deep Purple"
     },
     "zona-giorno": {
       "people": [],
@@ -208,41 +206,17 @@
     "ingresso1": {
       "id": "ingresso1",
       "name": "ingresso1",
-      "persons_count": 1,
+      "persons_count": 0,
       "objects": {},
-      "lastUpdate": 1790941576256,
+      "lastUpdate": 1790946544415,
       "people": [],
       "main_user": null,
       "_mediapipe": true,
-      "activity": "present",
+      "activity": "idle",
       "currentEmotion": null,
-      "currentPose": "standing",
-      "mediapipe": {
-        "emotion": null,
-        "pose": "standing",
-        "attention": "unknown",
-        "smile_score": 0,
-        "mouth_open": false,
-        "eyes_open": true,
-        "gesture": "victory",
-        "people_count": 1,
-        "people": [
-          {
-            "id": 0,
-            "emotion": null,
-            "smile_score": 0,
-            "attention": "unknown",
-            "mouth_open": false,
-            "eyes_open": true,
-            "pose": "standing",
-            "gestures": [
-              "victory"
-            ]
-          }
-        ],
-        "ts": 1790941576256
-      }
+      "currentPose": "arms_up",
+      "mediapipe": null
     }
   },
-  "ts": 1790941576256
+  "ts": 1790946545294
 }

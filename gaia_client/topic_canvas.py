@@ -32,9 +32,9 @@
     "ingresso": {
       "presence_count": 0,
       "activity": "idle",
-      "temperature": 19.9,
+      "temperature": 20.2,
       "humidity": null,
-      "ambient_light": 3.857447286724761,
+      "ambient_light": 2.755497364626803,
       "darkness": true,
       "emotion": null,
       "pose": null,
@@ -66,9 +66,9 @@
       "humidity": null,
       "ambient_light": null,
       "darkness": false,
-      "emotion": "neutral",
-      "pose": "standing",
-      "gesture": "open_hand",
+      "emotion": null,
+      "pose": "sitting",
+      "gesture": null,
       "objects": {},
       "touchdesignerActive": true,
       "dmxPalette": {
@@ -91,7 +91,7 @@
       "touchdesignerActive": true,
       "dmxPalette": {
         "a": "Amber",
-        "b": "Fire"
+        "b": "Deep Purple"
       },
       "audioKick": 0
     },
@@ -118,7 +118,7 @@
       "ambient_light": null,
       "darkness": false,
       "emotion": null,
-      "pose": "standing",
+      "pose": "arms_up",
       "gesture": null,
       "objects": {},
       "touchdesignerActive": false,
@@ -608,143 +608,143 @@
   "memories": [],
   "diary": [
     {
-      "ts": 1790941530818,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": "neutral",
-      "person": "unknown"
+      "ts": 1790946465596,
+      "source": "hue",
+      "category": "temperature",
+      "value": 20.49,
+      "person": null
     },
     {
-      "ts": 1790941531327,
+      "ts": 1790946465600,
+      "source": "hue",
+      "category": "battery_level",
+      "value": 67,
+      "person": null
+    },
+    {
+      "ts": 1790946465600,
+      "source": "hue",
+      "category": "battery_low",
+      "value": false,
+      "person": null
+    },
+    {
+      "ts": 1790946473333,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941532296,
+      "ts": 1790946505856,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941532433,
+      "ts": 1790946514354,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941533486,
+      "ts": 1790946515418,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941536502,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": "neutral",
-      "person": "unknown"
-    },
-    {
-      "ts": 1790941538235,
+      "ts": 1790946521818,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941538767,
+      "ts": 1790946522900,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941541025,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": "neutral",
-      "person": "unknown"
-    },
-    {
-      "ts": 1790941542857,
+      "ts": 1790946526154,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941551818,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": "neutral",
-      "person": "unknown"
-    },
-    {
-      "ts": 1790941562500,
+      "ts": 1790946528265,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941564319,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": "neutral",
-      "person": "unknown"
-    },
-    {
-      "ts": 1790941565666,
+      "ts": 1790946530359,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941566054,
+      "ts": 1790946531426,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941567288,
+      "ts": 1790946532076,
+      "source": "hue",
+      "category": "temperature",
+      "value": 20.2,
+      "person": null
+    },
+    {
+      "ts": 1790946532080,
+      "source": "hue",
+      "category": "battery_level",
+      "value": 100,
+      "person": null
+    },
+    {
+      "ts": 1790946532081,
+      "source": "hue",
+      "category": "battery_low",
+      "value": false,
+      "person": null
+    },
+    {
+      "ts": 1790946534623,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941570901,
+      "ts": 1790946535692,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941571917,
+      "ts": 1790946539953,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790941574055,
+      "ts": 1790946541030,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
-      "person": "unknown"
-    },
-    {
-      "ts": 1790941575056,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": "neutral",
       "person": "unknown"
     }
   ],
@@ -756,5 +756,5 @@
       "ts": 1790936717361
     }
   ],
-  "ts": 1790941575879
+  "ts": 1790946544639
 }
