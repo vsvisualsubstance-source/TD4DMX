@@ -17,7 +17,7 @@
     "corridoio": {
       "presence_count": 0,
       "activity": "idle",
-      "temperature": 20.7,
+      "temperature": 21.6,
       "humidity": null,
       "ambient_light": 0.9997697679981565,
       "darkness": true,
@@ -32,9 +32,9 @@
     "ingresso": {
       "presence_count": 0,
       "activity": "idle",
-      "temperature": 20.2,
+      "temperature": 21.1,
       "humidity": null,
-      "ambient_light": 2.755497364626803,
+      "ambient_light": 0.9997697679981565,
       "darkness": true,
       "emotion": null,
       "pose": null,
@@ -52,8 +52,8 @@
       "ambient_light": null,
       "darkness": false,
       "emotion": null,
-      "pose": "standing",
-      "gesture": null,
+      "pose": "unknown",
+      "gesture": "fist",
       "objects": {},
       "touchdesignerActive": false,
       "dmxPalette": null,
@@ -68,7 +68,7 @@
       "darkness": false,
       "emotion": null,
       "pose": "sitting",
-      "gesture": null,
+      "gesture": "open_hand",
       "objects": {},
       "touchdesignerActive": true,
       "dmxPalette": {
@@ -104,21 +104,6 @@
       "darkness": false,
       "emotion": null,
       "pose": null,
-      "gesture": null,
-      "objects": {},
-      "touchdesignerActive": false,
-      "dmxPalette": null,
-      "audioKick": 0
-    },
-    "ingresso1": {
-      "presence_count": 0,
-      "activity": "idle",
-      "temperature": null,
-      "humidity": null,
-      "ambient_light": null,
-      "darkness": false,
-      "emotion": null,
-      "pose": "arms_up",
       "gesture": null,
       "objects": {},
       "touchdesignerActive": false,
@@ -180,7 +165,7 @@
       "brightness": 0,
       "color": "0,0,0",
       "colorTemp": null,
-      "colorTempKelvin": 2702,
+      "colorTempKelvin": 2890,
       "room": null
     },
     "Zona_Notte_Zone_Colore": {
@@ -300,7 +285,7 @@
       "brightness": 0,
       "color": "0,0,0",
       "colorTemp": null,
-      "colorTempKelvin": 2702,
+      "colorTempKelvin": 2890,
       "room": "ingresso"
     },
     "Luce_Salotto_Colore": {
@@ -601,160 +586,153 @@
   "dream": null,
   "thought": "",
   "thoughts": [],
-  "tts": "Non ho capito. Puoi ripetere?",
-  "ttsTs": 1790936698741,
-  "ttsRoom": "minipc",
+  "tts": "",
+  "ttsTs": 0,
+  "ttsRoom": null,
   "lastMemory": "",
   "memories": [],
   "diary": [
     {
-      "ts": 1790946465596,
-      "source": "hue",
-      "category": "temperature",
-      "value": 20.49,
-      "person": null
-    },
-    {
-      "ts": 1790946465600,
-      "source": "hue",
-      "category": "battery_level",
-      "value": 67,
-      "person": null
-    },
-    {
-      "ts": 1790946465600,
-      "source": "hue",
-      "category": "battery_low",
-      "value": false,
-      "person": null
-    },
-    {
-      "ts": 1790946473333,
+      "ts": 1790958849076,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946505856,
+      "ts": 1790958850081,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946514354,
+      "ts": 1790958850704,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946515418,
+      "ts": 1790958851111,
+      "source": "mediapipe",
+      "category": "emotion",
+      "value": "neutral",
+      "person": "unknown"
+    },
+    {
+      "ts": 1790958852168,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946521818,
+      "ts": 1790958852781,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946522900,
+      "ts": 1790958854836,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946526154,
+      "ts": 1790958855305,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946528265,
+      "ts": 1790958856336,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946530359,
+      "ts": 1790958856901,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946531426,
+      "ts": 1790958857405,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946532076,
-      "source": "hue",
-      "category": "temperature",
-      "value": 20.2,
-      "person": null
-    },
-    {
-      "ts": 1790946532080,
-      "source": "hue",
-      "category": "battery_level",
-      "value": 100,
-      "person": null
-    },
-    {
-      "ts": 1790946532081,
-      "source": "hue",
-      "category": "battery_low",
-      "value": false,
-      "person": null
-    },
-    {
-      "ts": 1790946534623,
+      "ts": 1790958859473,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946535692,
+      "ts": 1790958863302,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946539953,
+      "ts": 1790958865528,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790946541030,
+      "ts": 1790958869406,
+      "source": "mediapipe",
+      "category": "emotion",
+      "value": null,
+      "person": "unknown"
+    },
+    {
+      "ts": 1790958869632,
+      "source": "mediapipe",
+      "category": "emotion",
+      "value": null,
+      "person": "unknown"
+    },
+    {
+      "ts": 1790958870437,
+      "source": "mediapipe",
+      "category": "emotion",
+      "value": null,
+      "person": "unknown"
+    },
+    {
+      "ts": 1790958872577,
+      "source": "mediapipe",
+      "category": "emotion",
+      "value": null,
+      "person": "unknown"
+    },
+    {
+      "ts": 1790958873595,
+      "source": "mediapipe",
+      "category": "emotion",
+      "value": null,
+      "person": "unknown"
+    },
+    {
+      "ts": 1790958874715,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     }
   ],
-  "voiceCommands": [
-    {
-      "text": "snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.  gaia, snipele, la prima cosa \u00e8 un'acqua.",
-      "stanza": "minipc",
-      "intent": "sconosciuto",
-      "ts": 1790936717361
-    }
-  ],
-  "ts": 1790946544639
+  "voiceCommands": [],
+  "ts": 1790958874926
 }
