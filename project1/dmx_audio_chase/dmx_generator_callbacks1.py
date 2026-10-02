@@ -61,24 +61,39 @@ def onCook(scriptOp):
 	except:
 		palette_name = DEFAULT_PALETTE_NAME
 
-	if palette_name == 'Custom':
-		custom = []
-		for idx in range(1, 6):
-			try:
-				r = float(p.par['Custompalette{}r'.format(idx)].eval()) * 255.0
-				g = float(p.par['Custompalette{}g'.format(idx)].eval()) * 255.0
-				b = float(p.par['Custompalette{}b'.format(idx)].eval()) * 255.0
-				custom.append((r, g, b))
-			except:
-				pass
-		if len(custom) >= 2:
-			PALETTE = custom + [custom[0]]  # richiude il ciclo sul primo colore
-		else:
-			PALETTE = ALL_PALETTES[DEFAULT_PALETTE_NAME]
-		STEPPED = False
-	else:
-		PALETTE = ALL_PALETTES.get(palette_name, ALL_PALETTES[DEFAULT_PALETTE_NAME])
-		STEPPED = palette_name in STEPPED_PALETTES
+	def resolve_palette(name):
+		"""(colori, stepped) di una palette per nome; 'Custom' = i 5 colori
+		custom del rig."""
+		if name == 'Custom':
+			custom = []
+			for idx in range(1, 6):
+				try:
+					r = float(p.par['Custompalette{}r'.format(idx)].eval()) * 255.0
+					g = float(p.par['Custompalette{}g'.format(idx)].eval()) * 255.0
+					b = float(p.par['Custompalette{}b'.format(idx)].eval()) * 255.0
+					custom.append((r, g, b))
+				except:
+					pass
+			if len(custom) >= 2:
+				return custom + [custom[0]], False  # richiude il ciclo sul primo colore
+			return ALL_PALETTES[DEFAULT_PALETTE_NAME], False
+		return ALL_PALETTES.get(name, ALL_PALETTES[DEFAULT_PALETTE_NAME]), name in STEPPED_PALETTES
+
+	PALETTE, STEPPED = resolve_palette(palette_name)
+
+	# --- palette per luce: una fixture puo' avere la sua palette (colonna
+	# 'palette' della patch); vuoto = quella del rig. Velocita', fase,
+	# dimmer e kick restano quelli del rig.
+	UNIT_PALETTES = []
+	if _fx is not None:
+		try:
+			UNIT_PALETTES = _fx.module.unit_palettes(_parent)
+		except Exception as e:
+			debug('fixture_logic.unit_palettes:', e)
+	_resolved = {}
+	for _name in set(UNIT_PALETTES):
+		if _name:
+			_resolved[_name] = resolve_palette(_name)
 
 	MIN_DIMMER = get_par(p, 'Mindimmer', 30)
 	MAX_DIMMER = get_par(p, 'Maxdimmer', 255)
@@ -226,7 +241,9 @@ def onCook(scriptOp):
 		# --- fase tra le barre: ognuna legge un punto diverso della palette,
 		# spostato di i*BAR_PHASE rispetto alle altre (0 = tutte identiche) ---
 		bar_t = (color_t + i * BAR_PHASE) % 1.0
-		r_raw, g_raw, b_raw = palette_color(bar_t, PALETTE, stepped=STEPPED)
+		_own = UNIT_PALETTES[i] if i < len(UNIT_PALETTES) else ''
+		_pal, _stepped = _resolved.get(_own, (PALETTE, STEPPED))
+		r_raw, g_raw, b_raw = palette_color(bar_t, _pal, stepped=_stepped)
 
 		# --- fade indipendente per barra: anche se bar_t salta, il colore
 		# effettivo in uscita insegue morbidamente (niente cambi a scatti) ---

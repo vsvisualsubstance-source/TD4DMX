@@ -222,6 +222,8 @@ def render_plan(scriptOp):
 		_text(img, f['name'], p1[0] + 6, p1[1] + 17, tc, 0.45)
 		_text(img, 'U%d  @%d' % (f['unit'], f['address']) if sending else '%s @%d' % (st.upper(), f['address']),
 			p1[0] + 6, p2[1] - 7, tc, 0.38)
+		if f['palette']:   # own palette (not the rig's): name above the tile
+			_text(img, f['palette'][:14], p1[0], p1[1] - 5, gcol, 0.36)
 
 	# header: legend
 	x = 10
@@ -394,13 +396,21 @@ def on_release(view, panel):
 FIELDS = [  # (par, column)
 	('Fgroup', 'group'), ('Fname', 'name'), ('Funit', 'unit'), ('Fprofile', 'profile'),
 	('Fport', 'port_id'), ('Faddress', 'address'), ('Fx', 'x'), ('Fy', 'y'), ('Fenabled', 'enabled'),
+	('Fpalette', 'palette'),
 ]
+RIG_PALETTE = '_rig'   # Fpalette menu entry for "use the rig's palette" (table: '')
 
 
 def profile_menu():
 	"""menuSource of Fprofile: the library of the inspector's group."""
 	t = _fl().profile_table(str(_tab().par.Fgroup.eval()))
 	return tdu.TableMenu(t) if t is not None else tdu.TableMenu(_patch().op('groups'))
+
+
+def palette_menu():
+	"""menuSource of Fpalette: the rig's palettes + 'use the rig's'."""
+	names = _fl().palette_names(str(_tab().par.Fgroup.eval()))
+	return _Menu([RIG_PALETTE] + names, ['(palette del rig)'] + names)
 
 
 def port_menu():
@@ -438,6 +448,8 @@ def load_selected():
 		v = f[col]
 		if p.style == 'Toggle':
 			v = bool(v)
+		if par_name == 'Fpalette' and not v:
+			v = RIG_PALETTE
 		if str(p.eval()) != str(v):
 			p.val = v
 	tab.par.Message = ''
@@ -455,6 +467,8 @@ def on_field_change(par):
 	val = par.eval()
 	if par.style == 'Toggle':
 		val = 1 if val else 0
+	if par.name == 'Fpalette' and val == RIG_PALETTE:
+		val = ''
 	if str(val) == str(f[col]) or (par.style == 'Float' and abs(float(val) - float(f[col])) < 1e-6):
 		return
 	changes = {col: val}
@@ -464,6 +478,8 @@ def on_field_change(par):
 			names = fl.profile_names(val)
 			changes['profile'] = names[0] if names else ''
 		changes['unit'] = max([0] + [x['unit'] for x in fl.rows(val)]) + 1
+		if f['palette'] and f['palette'] not in fl.palette_names(val):
+			changes['palette'] = ''   # e.g. moved to the heads: no palette there
 	try:
 		fl.update_fixture(fid, **changes)
 		_tab().par.Message = ''

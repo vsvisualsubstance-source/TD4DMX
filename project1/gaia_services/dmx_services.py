@@ -56,7 +56,8 @@ landmark from Gaia channel 7), calibration, presets; dmx_matrix gains 'ptz'.
 2026-10-02: fixture patch (/project1/dmx_patch/fixtures, one row per light,
 mixed profiles per group) as 'dmx_fixture*' params, all JSON values:
   dmx_fixtures              rw  full list [{id,name,group,unit,profile,
-                                port_id,address,x,y,enabled}]; set = replace
+                                port_id,address,x,y,enabled,palette}] (palette
+                                '' = the rig's); set = replace
                                 the whole patch (validated before writing)
   dmx_fixture_add           w   {group, profile?, port_id?, address?, unit?,
                                 name?, x?, y?} -- missing = sensible defaults
@@ -268,6 +269,8 @@ def _build_fixtures_matrix():
 			'group': g['group'],
 			'profiles': [{'name': n, 'channels': fl.profile_channels(g['group'], n)}
 				for n in fl.profile_names(g['group'])],
+			# per-fixture palette options ('' = the rig's palette); [] = none
+			'palettes': fl.palette_names(g['group']),
 		})
 	params = {
 		'dmx_fixtures': {'kind': 'param', 'type': 'json', 'access': 'rw'},

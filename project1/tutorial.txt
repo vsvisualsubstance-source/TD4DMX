@@ -8,6 +8,7 @@ Indice
   2. Tab Patch DMX -- trovare i nodi Art-Net
   3. Tab Fixture -- patchare le luci
   4. Patch rapida (i vecchi parametri Nbars / Startaddress / profilo)
+  4b. Tab Look Rig -- palette e look dei rig (live)
   5. Tab Timeline -- scene
   6. Tab Timeline -- cue e crossfade
   7. Tab Timeline -- automazioni
@@ -25,6 +26,7 @@ Indice
      Audio        sorgenti audio A/B e quale sorgente pilota ogni rig
      Patch DMX    scan della rete Art-Net, uscita, blackout
      Fixture      patch luce per luce: pianta palco, mappa universo, inspector
+     Look Rig     palette, colori custom, dimmer, colore, kick dei rig A e B
      Timeline     scene, cue, automazioni dello show
      Teste / PTZ  pad XY, preset, mocap, parametri delle teste mobili
      Gaia / Rete  connessione al broker Gaia
@@ -108,6 +110,10 @@ Indice
     Message            errore dell'ultima modifica (vuoto = applicata)
     Group, Name, Unit, Profile, Output Port, DMX Address, Plan X/Y, Enabled
                        ogni campo si applica subito alla luce selezionata
+    Palette            solo rig: "(palette del rig)" = segue la palette del
+                       rig (tab Look Rig); un altro nome = questa luce usa
+                       quella palette (vedi 4b). Sulla pianta il nome della
+                       palette propria compare sopra il riquadro.
     Add Fixture        aggiunge una luce al Group indicato: unit successiva,
                        stesso profilo della selezionata, primo indirizzo
                        libero sulla porta
@@ -150,6 +156,50 @@ Indice
    senza riscrivere niente.
  ATTENZIONE: se hai fatto una patch mista luce per luce, toccare
  Nbars / Start Address / profilo del gruppo la riporta uniforme.
+
+
+--------------------------------------------------------------------------------
+ 4b. TAB LOOK RIG -- PALETTE E LOOK DEI RIG
+--------------------------------------------------------------------------------
+ Due colonne, rig A (dmx_audio_chase) e rig B (dmx_audio_chase_b). In alto
+ l'anteprima live delle barre (una colonna per barra, colore reale), sotto
+ la pagina DMX Reactive del rig.
+
+ PALETTE DEL RIG E PALETTE PER LUCE
+   Di base tutte le barre di un rig leggono la palette del rig; "Bar Phase"
+   sposta ogni barra in un punto diverso della palette (0 = tutte uguali,
+   piu' alto = barre di colori diversi che si inseguono).
+   Una singola luce puo' avere la SUA palette: tab Fixture, seleziona la
+   luce, campo Palette (es. le barre laterali "Ocean" e le centrali con la
+   palette del rig). Velocita', fase, dimmer e kick restano quelli del rig.
+   La palette per luce fa parte della PATCH, non delle scene: non cambia
+   con le cue (per cambiarla nel tempo usa le due palette dei rig).
+   Le teste mobili hanno il loro colore: tab Teste / PTZ, pagina Look.
+
+ Parametri principali
+   Palette            palette preimpostata (Rainbow, Warm, Cool, Fire...),
+                      oppure "Custom" = usa i 5 Custom Color
+   Custom Color 1..5  i colori della palette Custom (servono almeno 2)
+   Color Speed        velocita' di scorrimento lungo la palette
+   Color Phase        punto di partenza nella palette
+   Bar Phase          sfasamento tra una barra e l'altra
+   Color Fade         morbidezza dei passaggi di colore
+   Min/Max Dimmer, Dimmer Boost   intensita' (Max Dimmer = tetto)
+   Kick ...           flash sulla cassa (Kick Enable, soglia, boost, decay)
+ Live: cambi questi valori e le luci rispondono subito (con la timeline
+ accesa, il valore resta finche' la timeline non lo cambia, vedi punto 8).
+
+ PALETTE DIVERSA PER OGNI CUE
+   La palette fa parte della scena (categoria "Look rig A/B"):
+   1. Timeline Drives Output = Off.
+   2. Tab Look Rig: scegli la palette (e i colori) del momento.
+   3. Tab Timeline, pagina Scene: New Scene From Live.
+   4. Ripeti per ogni palette, poi metti le scene nelle cue.
+   Nel fade la palette (un menu) cambia a META' del fade; i 5 Custom Color
+   invece sfumano davvero da una scena all'altra. Per un passaggio di
+   colore morbido usa Palette = Custom in entrambe le scene.
+   Puoi anche cambiare un solo colore nel tempo con un'automazione
+   (Parameter = "rig_a Custompalette1r", ecc.).
 
 
 --------------------------------------------------------------------------------
@@ -287,10 +337,12 @@ Indice
  Patch fixture
    dmx_fixtures              lettura/scrittura della patch completa
                              [{id, name, group, unit, profile, port_id,
-                               address, x, y, enabled}, ...]
+                               address, x, y, enabled, palette}, ...]
+                             (palette "" = quella del rig)
    dmx_fixture_add           {"group": "rig_a", "profile": "...", ...}
                              (i campi mancanti prendono valori sensati)
    dmx_fixture_update        {"id": 3, "address": 25}
+                             {"id": 3, "palette": "Ocean"}
    dmx_fixture_remove        3
    dmx_fixture_auto_address  {"group": "rig_a", "start": 1}
    dmx_patch_report          stato per luce (sola lettura)
@@ -313,7 +365,12 @@ Indice
  Un valore non valido (scena inesistente, indirizzo fuori range...) viene
  rifiutato: l'errore compare nel campo last_error dello status Gaia.
  La "matrix" pubblicata da Gaia (sezioni fixtures e show) elenca profili,
- scene e parametri automatizzabili.
+ palette, scene e parametri automatizzabili.
+
+ Se il broker si riavvia o era irraggiungibile (tab Gaia / Rete: stato
+ "connect failed ... timeout"), quando torna su premi "Reregister" su
+ gaia_client (pagina Services): ripubblica servizi, parametri e matrix
+ aggiornata (nuove scene, palette, profili).
 
 
 --------------------------------------------------------------------------------

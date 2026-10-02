@@ -12,6 +12,9 @@ source of truth: one row per physical light.
   address  DMX start address 1..512
   x, y     position on the stage plan (grid cells, y up)
   enabled  0 = kept in the patch but not sent
+  palette  rigs only: palette of THIS light (a name of the rig's Palette
+           menu, 'Custom' = the rig's custom colours); empty = the rig's
+           palette. Speed, phase, dimmer and kick stay the rig's.
 
 Mixed profiles: each unit is generated with the profile of its fixture, so a
 group can mix 4CH and 8CH bars (or different heads).
@@ -29,7 +32,7 @@ Called from: dmx_patch (patch_report, lifecycle), the rig/heads generators and
 par callbacks, the config UI and gaia_services (dmx_fixtures param).
 """
 
-COLUMNS = ['id', 'name', 'group', 'unit', 'profile', 'port_id', 'address', 'x', 'y', 'enabled']
+COLUMNS = ['id', 'name', 'group', 'unit', 'profile', 'port_id', 'address', 'x', 'y', 'enabled', 'palette']
 
 # per group kind: names of the quick-patch pars on the group COMP
 _COUNT_PARS = ('Nbars', 'Count')
@@ -54,6 +57,9 @@ def table():
 	if t.numRows == 0 or t[0, 0] is None or t[0, 0].val != 'id':
 		t.clear()
 		t.appendRow(COLUMNS)
+	for c in COLUMNS:   # columns added later (palette): append, empty
+		if t[0, c] is None:
+			t.appendCol([c] + [''] * (t.numRows - 1))
 	return t
 
 
@@ -154,6 +160,7 @@ def rows(group=None):
 		d['x'] = _float(d['x'])
 		d['y'] = _float(d['y'])
 		d['enabled'] = 1 if _int(d['enabled'], 1) else 0
+		d['palette'] = d['palette'].strip()
 		out.append(d)
 	return out
 
@@ -200,6 +207,34 @@ def _unit_profiles(comp):
 			by_unit[f['unit']] = p
 	n = max([1] + [f['unit'] for f in fx])
 	return [by_unit.get(u, dflt) for u in range(1, n + 1)]
+
+
+def unit_palettes(comp):
+	"""Palette override per output unit (index 0 = unit 1), '' = the rig's
+	own palette. The first fixture of a unit decides (like the profile).
+	Cached per frame (the rig generator asks every cook)."""
+	return list(_cached('palettes', comp, _unit_palettes))
+
+
+def _unit_palettes(comp):
+	group = group_of(comp)
+	if group is None:
+		return []
+	fx = rows(group)
+	by_unit = {}
+	for f in fx:
+		by_unit.setdefault(f['unit'], f['palette'])
+	n = max([1] + [f['unit'] for f in fx])
+	return [by_unit.get(u, '') for u in range(1, n + 1)]
+
+
+def palette_names(group):
+	"""Palettes a fixture of `group` can use (the rig's Palette menu);
+	empty for groups without a palette (heads)."""
+	comp = group_comp(group)
+	if comp is None or not hasattr(comp.par, 'Palette'):
+		return []
+	return list(comp.par.Palette.menuNames)
 
 
 def unit_channels(comp):
@@ -295,6 +330,7 @@ def quick_patch(comp):
 			'x': old['x'] if old else float(i),
 			'y': old['y'] if old else _default_y(group),
 			'enabled': old['enabled'] if old else 1,
+			'palette': old['palette'] if old else '',
 		}
 		if not old:
 			nid += 1
@@ -374,6 +410,12 @@ def _check(d):
 			d[k] = round(_float(d[k]), 3)
 	if 'enabled' in d:
 		d['enabled'] = 1 if _int(d['enabled'], 1) else 0
+	if 'palette' in d:
+		d['palette'] = str(d['palette'] or '').strip()
+		names = palette_names(group)
+		if d['palette'] and d['palette'] not in names:
+			raise ValueError('palette %r non valida per %s (disponibili: %s)' % (
+				d['palette'], group, ', '.join(names) or 'nessuna'))
 	return d
 
 
@@ -393,7 +435,7 @@ def next_free_address(port_id, nch, exclude_id=None):
 	return a if a + nch - 1 <= 512 else None
 
 
-def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name=None, x=None, y=None):
+def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name=None, x=None, y=None, palette=''):
 	"""Append a fixture; missing fields get sensible defaults (next unit,
 	group port, first free address). Returns the new id."""
 	fx = rows(group)
@@ -411,7 +453,7 @@ def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name
 		'unit': unit, 'profile': profile, 'port_id': port_id, 'address': address,
 		'x': x if x is not None else (max([f['x'] for f in fx]) + 1 if fx else 0.0),
 		'y': y if y is not None else (fx[-1]['y'] if fx else _default_y(group)),
-		'enabled': 1,
+		'enabled': 1, 'palette': palette or '',
 	})
 	t = table()
 	t.appendRow([''] * len(COLUMNS))
@@ -485,6 +527,7 @@ def set_all(items):
 		d.setdefault('y', 0)
 		d.setdefault('name', _label(d.get('group'), _int(d['unit'], 1)))
 		d.setdefault('port_id', '')
+		d.setdefault('palette', '')
 		clean.append(_check(d))
 	t = table()
 	t.clear()
