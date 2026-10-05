@@ -1,0 +1,3 @@
+port_id	label	ip	node	port	net	subnet	universe	rdm	online	last_seen
+2.1.1.2:1	Node 2 Electroconcept - porta 1 - U 0:0:0 (2.1.1.2)	2.1.1.2	Node 2 Electroconcept	1	0	0	0	0	0	2026-10-03 14:29:38
+2.1.1.2:2	Node 2 Electroconcept - porta 2 - U 0:0:1 (2.1.1.2)	2.1.1.2	Node 2 Electroconcept	2	0	0	1	0	0	2026-10-03 14:29:38
