@@ -24,3 +24,6 @@ Backup/TDPyEnvManagerContext.yaml
 
 # Windows / Google Drive folder metadata
 desktop.ini
+
+# Embody export scratch
+project1/Embody/_defaults_workspace.tox
