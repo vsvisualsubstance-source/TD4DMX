@@ -25,7 +25,7 @@ def onCook(scriptOp):
 	scriptOp.numSamples = 1
 	comp = parent()
 	logic = op('ptz_logic').module
-	now = absTime.seconds          # also makes this CHOP cook every frame
+	now = absTime.seconds          # NOT enough to cook every frame: frame_cook forces it
 	st = _state
 	dt = 0.0 if st['t'] is None else max(0.0, now - st['t'])
 	st['t'] = now
