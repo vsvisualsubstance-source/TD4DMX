@@ -3,7 +3,7 @@
   "lifeIndex": 70,
   "gamification": {
     "level": 10,
-    "xp": 9953,
+    "xp": 10821,
     "xpNextLevel": 22400,
     "activeClass": "Guerriero",
     "unlockedAssets": [
@@ -17,48 +17,34 @@
       "phoenix_core"
     ],
     "stats": {
-      "mago": 2132,
+      "mago": 2137,
       "bardo": 332,
-      "guerriero": 3290,
+      "guerriero": 3449,
       "druido": 1866
     },
     "_cd": {
       "natura": 1790358336360,
-      "movimento": 1790956348375,
-      "voce": 1790936699219,
+      "movimento": 1791205440529,
+      "voce": 1791191224378,
       "pensiero": 1790775649080,
       "presenza": 1790775770666,
       "riflessione": 1786827611348,
-      "rituale": 1790958835703
+      "rituale": 1791180648852
     },
     "_lastMemCount": 3,
-    "_lastVoiceTs": 1790936717361,
+    "_lastVoiceTs": 1791191240062,
     "_lastThoughtTs": 1790775648467
   },
   "presence": {
     "mauro": {
       "present": false,
       "enterTs": 1790775632154,
-      "lastSeen": 1790958851111,
+      "lastSeen": 1791028566565,
       "room": null,
       "confidence": 0.9,
       "track_id": 674,
-      "pose": "standing",
+      "pose": "lying",
       "exitTs": 1790241253541
-    },
-    "isabelle": {
-      "present": false,
-      "enterTs": 1790355527218,
-      "lastSeen": 1790355527218,
-      "room": null,
-      "confidence": 0.4161
-    },
-    "davide santini": {
-      "present": false,
-      "enterTs": 1790355720321,
-      "lastSeen": 1790355723638,
-      "room": null,
-      "confidence": 0.2948
     },
     "nitai": {
       "present": false,
@@ -76,29 +62,58 @@
       "ambient_light": 0.9997697679981565,
       "darkness": true,
       "_temps": {
-        "hue_temperature_sensor_3_temperatura": 21.84,
-        "hue_temperature_sensor_5_temperatura": 21.34
+        "hue_temperature_sensor_3_temperatura": 20.71,
+        "hue_temperature_sensor_5_temperatura": 20.21
       },
-      "temperature": 21.6,
-      "lastMotion": 1790956353297
+      "temperature": 20.5,
+      "lastMotion": 1791205499519
     },
     "ingresso": {
       "people": [],
       "objects": {},
-      "ambient_light": 0.9997697679981565,
+      "ambient_light": 1.7631935968238326,
       "darkness": true,
       "_temps": {
-        "hue_temperature_sensor_4_temperatura": 21.05
+        "hue_temperature_sensor_4_temperatura": 18.93
       },
-      "temperature": 21.1,
-      "lastMotion": 1790954633412
+      "temperature": 18.9,
+      "lastMotion": 1791204235427,
+      "lastUpdate": 1790959272282,
+      "_mediapipe": true,
+      "mediapipe": {
+        "emotion": null,
+        "pose": "arms_up",
+        "attention": "unknown",
+        "smile_score": 0,
+        "mouth_open": false,
+        "eyes_open": true,
+        "gesture": null,
+        "people_count": 1,
+        "people": [
+          {
+            "id": 0,
+            "emotion": null,
+            "smile_score": 0,
+            "attention": "unknown",
+            "mouth_open": false,
+            "eyes_open": true,
+            "pose": "arms_up",
+            "gestures": []
+          }
+        ],
+        "ts": 1790959272282
+      },
+      "persons_count": 1,
+      "activity": "present",
+      "currentPose": "arms_up",
+      "currentEmotion": null
     },
     "soggiorno": {
       "id": "soggiorno",
       "name": "soggiorno",
       "persons_count": 2,
       "objects": {},
-      "lastUpdate": 1790958873751,
+      "lastUpdate": 1791192463925,
       "people": [
         "mauro"
       ],
@@ -113,7 +128,7 @@
       "_mediapipe": true,
       "mediapipe": {
         "emotion": null,
-        "pose": "unknown",
+        "pose": "lying",
         "attention": "unknown",
         "smile_score": 0,
         "mouth_open": false,
@@ -128,71 +143,69 @@
             "attention": "unknown",
             "mouth_open": false,
             "eyes_open": true,
-            "pose": "unknown",
+            "pose": "lying",
             "gestures": [
               "fist"
             ]
           }
         ],
-        "ts": 1790958873751
+        "ts": 1791028578849
       },
       "_touchdesigner": true,
-      "lastTd": 1790668490815,
+      "lastTd": 1791192463925,
       "currentEmotion": null,
-      "currentPose": "unknown",
-      "dmxPaletteA": "Rainbow (Daslight)",
-      "dmxPaletteB": "Rainbow (Daslight)"
+      "currentPose": "lying",
+      "dmxPaletteA": "Warm",
+      "dmxPaletteB": "Warm"
     },
     "salotto": {
       "id": "salotto",
       "name": "salotto",
-      "persons_count": 1,
+      "persons_count": 2,
       "objects": {},
-      "lastUpdate": 1790958874715,
+      "lastUpdate": 1791205914003,
       "people": [],
       "main_user": null,
       "_mediapipe": true,
       "activity": "present",
-      "currentEmotion": null,
-      "currentPose": "sitting",
+      "currentEmotion": "neutral",
+      "currentPose": "standing",
       "mediapipe": {
-        "emotion": null,
-        "pose": "sitting",
-        "attention": "unknown",
-        "smile_score": 0,
+        "emotion": "neutral",
+        "pose": "standing",
+        "attention": "right",
+        "smile_score": 37,
         "mouth_open": false,
         "eyes_open": true,
-        "gesture": "open_hand",
+        "gesture": null,
         "people_count": 1,
         "people": [
           {
             "id": 0,
-            "emotion": null,
-            "smile_score": 0,
-            "attention": "unknown",
+            "emotion": "neutral",
+            "smile_score": 37,
+            "attention": "right",
             "mouth_open": false,
             "eyes_open": true,
-            "pose": "sitting",
-            "gestures": [
-              "open_hand"
-            ]
+            "pose": "standing",
+            "gestures": []
           }
         ],
-        "ts": 1790958874715
+        "ts": 1791205914003
       },
       "_touchdesigner": true,
-      "lastTd": 1790958868139,
-      "audioKick": 0,
-      "audioKickTs": 1790958874296,
-      "dmxPaletteA": "Warm"
+      "lastTd": 1791031808919,
+      "audioKick": 1,
+      "audioKickTs": 1791031821851,
+      "dmxPaletteA": "Basic 2"
     },
     "ConsolleDmx": {
       "people": [],
       "persons_count": 0,
       "objects": {},
-      "lastUpdate": 1790958852577,
+      "lastUpdate": 1791205902613,
       "_touchdesigner": true,
-      "lastTd": 1790958852577,
+      "lastTd": 1791205902613,
       "dmxPaletteA": "Amber",
       "dmxPaletteB": "Deep Purple"
     },
@@ -200,9 +213,9 @@
       "people": [],
       "persons_count": 0,
       "objects": {},
-      "lastUpdate": 1790958797018,
+      "lastUpdate": 1791195320889,
       "_tccmActive": false
     }
   },
-  "ts": 1790958874715
+  "ts": 1791205914468
 }

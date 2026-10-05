@@ -17,7 +17,7 @@
     "corridoio": {
       "presence_count": 0,
       "activity": "idle",
-      "temperature": 21.6,
+      "temperature": 20.5,
       "humidity": null,
       "ambient_light": 0.9997697679981565,
       "darkness": true,
@@ -31,13 +31,13 @@
     },
     "ingresso": {
       "presence_count": 0,
-      "activity": "idle",
-      "temperature": 21.1,
+      "activity": "present",
+      "temperature": 18.9,
       "humidity": null,
-      "ambient_light": 0.9997697679981565,
+      "ambient_light": 1.7631935968238326,
       "darkness": true,
       "emotion": null,
-      "pose": null,
+      "pose": "arms_up",
       "gesture": null,
       "objects": {},
       "touchdesignerActive": false,
@@ -52,7 +52,7 @@
       "ambient_light": null,
       "darkness": false,
       "emotion": null,
-      "pose": "unknown",
+      "pose": "lying",
       "gesture": "fist",
       "objects": {},
       "touchdesignerActive": false,
@@ -66,15 +66,12 @@
       "humidity": null,
       "ambient_light": null,
       "darkness": false,
-      "emotion": null,
-      "pose": "sitting",
-      "gesture": "open_hand",
+      "emotion": "neutral",
+      "pose": "standing",
+      "gesture": "fist",
       "objects": {},
-      "touchdesignerActive": true,
-      "dmxPalette": {
-        "a": "Warm",
-        "b": null
-      },
+      "touchdesignerActive": false,
+      "dmxPalette": null,
       "audioKick": 0
     },
     "ConsolleDmx": {
@@ -165,7 +162,7 @@
       "brightness": 0,
       "color": "0,0,0",
       "colorTemp": null,
-      "colorTempKelvin": 2890,
+      "colorTempKelvin": 2702,
       "room": null
     },
     "Zona_Notte_Zone_Colore": {
@@ -285,7 +282,7 @@
       "brightness": 0,
       "color": "0,0,0",
       "colorTemp": null,
-      "colorTempKelvin": 2890,
+      "colorTempKelvin": 2702,
       "room": "ingresso"
     },
     "Luce_Salotto_Colore": {
@@ -357,7 +354,7 @@
       "brightness": 0,
       "color": "0,0,0",
       "colorTemp": null,
-      "colorTempKelvin": 2000,
+      "colorTempKelvin": 4000,
       "room": "salotto"
     },
     "Hue_tap_switch_1_Stato_interruttore_a_pulsante": {
@@ -413,7 +410,7 @@
       "brightness": 0,
       "color": "0,0,0",
       "colorTemp": null,
-      "colorTempKelvin": 2000,
+      "colorTempKelvin": 6535,
       "room": "soggiorno"
     },
     "unknown": {
@@ -483,7 +480,7 @@
     "Soggiorno_Abajure_Colore": {
       "power": false,
       "brightness": 0,
-      "color": "290.2412,88.42600,0",
+      "color": "73,2,0",
       "colorTemp": null,
       "colorTempKelvin": null,
       "room": "soggiorno"
@@ -492,8 +489,8 @@
       "power": false,
       "brightness": 0,
       "color": "0,0,0",
-      "colorTemp": 10,
-      "colorTempKelvin": 2450,
+      "colorTemp": 28,
+      "colorTempKelvin": 3260,
       "room": "soggiorno"
     },
     "Soggiorno_Abajure_Color_Temperature_Abs": {
@@ -501,7 +498,7 @@
       "brightness": 0,
       "color": "0,0,0",
       "colorTemp": null,
-      "colorTempKelvin": 5347,
+      "colorTempKelvin": 4000,
       "room": "soggiorno"
     },
     "Soggiorno_Abajure_Allerta": {
@@ -586,153 +583,160 @@
   "dream": null,
   "thought": "",
   "thoughts": [],
-  "tts": "",
-  "ttsTs": 0,
-  "ttsRoom": null,
+  "tts": "Non ci sono persone rilevate in casa.",
+  "ttsTs": 1791191222340,
+  "ttsRoom": "minipc",
   "lastMemory": "",
   "memories": [],
   "diary": [
     {
-      "ts": 1790958849076,
+      "ts": 1791205784608,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790958850081,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": null,
-      "person": "unknown"
+      "ts": 1791205807609,
+      "source": "hue",
+      "category": "ambient_light",
+      "value": 0,
+      "person": null
     },
     {
-      "ts": 1790958850704,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": null,
-      "person": "unknown"
+      "ts": 1791205807614,
+      "source": "hue",
+      "category": "ambient_light",
+      "value": 0.9997697679981565,
+      "person": null
     },
     {
-      "ts": 1790958851111,
+      "ts": 1791205807614,
+      "source": "hue",
+      "category": "darkness",
+      "value": true,
+      "person": null
+    },
+    {
+      "ts": 1791205807620,
+      "source": "hue",
+      "category": "daylight",
+      "value": false,
+      "person": null
+    },
+    {
+      "ts": 1791205807620,
+      "source": "hue",
+      "category": "battery_level",
+      "value": 67,
+      "person": null
+    },
+    {
+      "ts": 1791205807620,
+      "source": "hue",
+      "category": "battery_low",
+      "value": false,
+      "person": null
+    },
+    {
+      "ts": 1791205833376,
       "source": "mediapipe",
       "category": "emotion",
       "value": "neutral",
       "person": "unknown"
     },
     {
-      "ts": 1790958852168,
+      "ts": 1791205834432,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790958852781,
+      "ts": 1791205835493,
+      "source": "mediapipe",
+      "category": "emotion",
+      "value": "neutral",
+      "person": "unknown"
+    },
+    {
+      "ts": 1791205858171,
       "source": "mediapipe",
       "category": "emotion",
       "value": null,
       "person": "unknown"
     },
     {
-      "ts": 1790958854836,
+      "ts": 1791205859195,
       "source": "mediapipe",
       "category": "emotion",
-      "value": null,
+      "value": "neutral",
       "person": "unknown"
     },
     {
-      "ts": 1790958855305,
+      "ts": 1791205867409,
       "source": "mediapipe",
       "category": "emotion",
-      "value": null,
+      "value": "neutral",
       "person": "unknown"
     },
     {
-      "ts": 1790958856336,
+      "ts": 1791205868533,
       "source": "mediapipe",
       "category": "emotion",
-      "value": null,
+      "value": "neutral",
       "person": "unknown"
     },
     {
-      "ts": 1790958856901,
+      "ts": 1791205871689,
       "source": "mediapipe",
       "category": "emotion",
-      "value": null,
+      "value": "neutral",
       "person": "unknown"
     },
     {
-      "ts": 1790958857405,
+      "ts": 1791205872732,
       "source": "mediapipe",
       "category": "emotion",
-      "value": null,
+      "value": "neutral",
       "person": "unknown"
     },
     {
-      "ts": 1790958859473,
+      "ts": 1791205886775,
       "source": "mediapipe",
       "category": "emotion",
-      "value": null,
+      "value": "neutral",
       "person": "unknown"
     },
     {
-      "ts": 1790958863302,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": null,
-      "person": "unknown"
+      "ts": 1791205900279,
+      "source": "hue",
+      "category": "temperature",
+      "value": 18.93,
+      "person": null
     },
     {
-      "ts": 1790958865528,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": null,
-      "person": "unknown"
+      "ts": 1791205900284,
+      "source": "hue",
+      "category": "battery_level",
+      "value": 100,
+      "person": null
     },
     {
-      "ts": 1790958869406,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": null,
-      "person": "unknown"
-    },
-    {
-      "ts": 1790958869632,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": null,
-      "person": "unknown"
-    },
-    {
-      "ts": 1790958870437,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": null,
-      "person": "unknown"
-    },
-    {
-      "ts": 1790958872577,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": null,
-      "person": "unknown"
-    },
-    {
-      "ts": 1790958873595,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": null,
-      "person": "unknown"
-    },
-    {
-      "ts": 1790958874715,
-      "source": "mediapipe",
-      "category": "emotion",
-      "value": null,
-      "person": "unknown"
+      "ts": 1791205900284,
+      "source": "hue",
+      "category": "battery_low",
+      "value": false,
+      "person": null
     }
   ],
-  "voiceCommands": [],
-  "ts": 1790958874926
+  "voiceCommands": [
+    {
+      "text": "vi si mette di affarmo un po' di cena.  e il infatti impolvesco anche per avere la punta,  mi intorno a solo fare la sala presentazione,  ma che noi non ci impiunca,  e non si la fissate gi\u00e0 una serie di incontri,  anche perch\u00e9 poi si affine il mesa,  mi ammone macchi, ci sar\u00e0 anche la telecamera,  da quello che detto, boba, filmese,  quindi ci sono al posibilite,  anche le telecamera, a questo punto abbiamo tutto.  e sapete,  e sapete,  oggi vede,  con co-contec,  a quel tratto abbiamo noi sapo un piccolo,  che di to funziona,  con cui lei le sue,  in 16, 18,  ma chi ne prende le sulta,  poi ne prende le sulta,  quindi con cui ci \u00e8,  ta vi con le tuni in peigno,  da qui, a fine,  a no, se noi siamo a partire,  ma,  non, e se noi fa l\u00ec,  in cacolo,  quindi siamo a l'italia,  di usci,  per\u00f2 ci d\u00f2 capo,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,  di usci,",
+      "stanza": "minipc",
+      "intent": "presenza",
+      "ts": 1791191240062
+    }
+  ],
+  "ts": 1791205915618
 }
