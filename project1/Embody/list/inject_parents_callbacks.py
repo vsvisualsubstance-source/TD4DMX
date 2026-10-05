@@ -44,8 +44,11 @@ def onCook(scriptOp):
 		# DirtyState) badges this node long after the code is fine
 		# (field 2026-08-22).
 		embody_ext = parent.Embody.ext.Embody
-		row['dirty'] = (embody_ext.DirtyState(path)
-			if hasattr(embody_ext, 'DirtyState') else '')
+		# String name must track the def: the 4e rename left 'DirtyState'
+		# here, so this read '' for every row and the manager never showed
+		# dirty state (issue #94 review).
+		row['dirty'] = (embody_ext.dirtyState(path)
+			if hasattr(embody_ext, 'dirtyState') else '')
 		data_rows[path] = row
 		oper = op(path)
 		if oper and oper.family == 'COMP':
@@ -115,10 +118,10 @@ def onCook(scriptOp):
 		if not all_paths:
 			return
 
-	# Detect active TDN export
+	# Detect active TDXN export
 	exporting_path = None
-	tdn_ext = getattr(parent.Embody.ext, 'TDN', None)
-	export_state = getattr(tdn_ext, '_export_state', None) if tdn_ext else None
+	tdxn_ext = getattr(parent.Embody.ext, 'TDXN', None)
+	export_state = getattr(tdxn_ext, '_export_state', None) if tdxn_ext else None
 	if export_state and not export_state.get('done'):
 		exporting_path = export_state.get('root_path')
 
@@ -234,9 +237,14 @@ def onCook(scriptOp):
 		oper = op(path)
 		is_comp = oper and oper.family == 'COMP'
 
-		# Get strategy -- derive from old schema if column missing
+		# Get strategy -- derive from old schema if column missing.
+		# The CELL reads 'tdxn'; every compare below is against the internal
+		# 'tdn' wire value, so normalize on the way in or the Strategy column
+		# renders blank for every TDXN row.
 		if has_strategy:
 			strategy = row.get('strategy', '')
+			if strategy.strip().lower() == 'tdxn':
+				strategy = 'tdn'
 		else:
 			row_type = row.get('type', '')
 			if row_type == 'tdn':
@@ -255,15 +263,15 @@ def onCook(scriptOp):
 			strategy_state = ''
 		elif strategy == 'tdn':
 			if path == exporting_path:
-				strategy_state = 'TDN_Exporting'
+				strategy_state = 'TDXN_Exporting'
 			else:
 				dirty_val = row.get('dirty', '')
 				if dirty_val == 'Par':
 					strategy_state = 'TDN_ParChange'
 				elif dirty_val in ('True', 'true', '1'):
-					strategy_state = 'TDN_Dirty'
+					strategy_state = 'TDXN_Dirty'
 				else:
-					strategy_state = 'TDN_Saved'
+					strategy_state = 'TDXN_Saved'
 		elif strategy == 'tox':
 			dirty_val = row.get('dirty', '')
 			if dirty_val == 'Par':

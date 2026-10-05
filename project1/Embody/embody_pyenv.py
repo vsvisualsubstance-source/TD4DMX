@@ -27,6 +27,7 @@ Author: Dylan Roscover
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import platform
@@ -83,17 +84,17 @@ def venv_paths(project_dir, mcp_min_version, declared_extras=None,
 
     Ported from EmbodyExt._venvPaths; project folder and the pinned MCP
     floor are passed in so this stays pure (the constant remains
-    authoritative on EmbodyExt.MCP_MIN_VERSION -- releases bump it there).
+    authoritative on EmbodyExt._MCP_MIN_VERSION -- releases bump it there).
     ``declared_extras`` (the committed python.extras list, when the caller
     has it) rides along so worker-side freeze_constraints can exclude the
     user's own packages from the core constraints snapshot.
     """
     venv_dir = os.path.join(project_dir, '.venv')
     python_exe = sys.executable  # current interpreter (cross-platform)
-    # pyyaml: powers the .tdn git textconv driver (the committed-diff
-    # counterpart to diff_tdn). git invokes that driver via THIS venv
-    # python, and v6 .tdn files are YAML, so the venv must carry yaml even
-    # though the Envoy bridge itself never imports it.
+    # pyyaml: installed for the .tdxn git diff driver, retired in issue
+    # #106; nothing in this venv imports it any more. Dropping it is its own
+    # change: remove it together with the yaml check in the needs-install
+    # probe below, or a yaml-less venv reinstalls on every start.
     ceiling_major = int(mcp_min_version.split('.')[0]) + 1
     # cryptography: the Convoy host app runs under THIS venv python and
     # needs Ed25519 + X.509 + TLS 1.3 for LAN peer identity/mutual-TLS.
@@ -238,9 +239,9 @@ def environment_needs_install(spec: dict) -> bool:
     site_packages = spec['site_packages']
     if not os.path.isdir(os.path.join(site_packages, 'mcp')):
         return True
-    # PyYAML powers the .tdn git textconv driver, which git runs via this
-    # venv python. An older venv built before that dependency lacks it, so
-    # treat its absence as "needs install" to upgrade existing venvs.
+    # PyYAML is still a required package (see the deps note above): a venv
+    # built before it was added lacks it, so its absence means "needs
+    # install". Remove this check only together with the dep.
     if not os.path.isdir(os.path.join(site_packages, 'yaml')):
         return True
     # The venv's OWN record of the interpreter that built it, checked
@@ -940,7 +941,118 @@ def install_dependencies(spec: dict, log) -> bool:
             release_install_lock(spec)
 
 
-_FROZEN_LINE_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*==\S+$')
+# ==========================================================================
+# Venv interpreter probe + in-place repair
+# ==========================================================================
+
+def probe_venv_python(venv_python, timeout: float = 5.0) -> tuple:
+    """Run the venv interpreter once and classify the result.
+
+    Returns ``(verdict, detail)``:
+      - ``'ok'``
+      - ``'broken'``: it ran and failed, is gone, or cannot execute on this
+        machine (stale pyvenv.cfg ``home``, code-signing kill, wrong arch).
+        repair_venv_interpreter is the fix.
+      - ``'timeout'`` / ``'unavailable'``: slow, or refused by permissions,
+        AV or a file lock. Not evidence of a bad venv -- never repair on these.
+    stdin=DEVNULL is required inside TD on Windows (WinError 50).
+    """
+    try:
+        subprocess.run(
+            [str(venv_python), '-c', 'import sys; print(sys.version)'],
+            capture_output=True, timeout=timeout, check=True,
+            stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
+        return 'ok', ''
+    except subprocess.TimeoutExpired:
+        return 'timeout', f'no answer within {timeout:g}s'
+    except subprocess.CalledProcessError as e:
+        err = e.stderr or b''
+        if isinstance(err, bytes):
+            err = err.decode('utf-8', errors='replace')
+        err = err.strip()
+        return 'broken', (f'exit code {e.returncode}'
+                          + (f': {err[:300]}' if err else ''))
+    except FileNotFoundError as e:
+        return 'broken', f'{type(e).__name__}: {e}'
+    except OSError as e:
+        # ERROR_BAD_EXE_FORMAT (193) maps to ENOEXEC on Windows.
+        if e.errno == errno.ENOEXEC or getattr(e, 'winerror', None) == 193:
+            return 'broken', f'{type(e).__name__}: {e}'
+        return 'unavailable', f'{type(e).__name__}: {e}'
+
+
+def repair_venv_interpreter(spec: dict, log) -> bool:
+    """Rewrite the venv's interpreter layer in place with
+    ``uv venv --allow-existing``, then re-probe it.
+
+    For a venv whose packages are fine (TD may have them imported) but whose
+    interpreter no longer runs. ``--allow-existing`` writes pyvenv.cfg and the
+    launchers without clearing the directory, so installed packages, the stamp
+    and the constraints file survive. Nothing is deleted.
+
+    Refuses a Python version change: that needs the ``--clear`` rebuild that
+    environment_needs_install schedules for the next start, before anything is
+    imported. WORKER-THREAD ONLY -- waits on the install lock and runs uv.
+    """
+    if threading.current_thread() is threading.main_thread():
+        log('Venv interpreter repair must run on a worker thread -- '
+            'refusing to block TouchDesigner.', 'ERROR')
+        return False
+    venv_dir = spec['venv_dir']
+    if not os.path.isdir(spec['site_packages']):
+        log(f'No Embody venv at {venv_dir} to repair.', 'ERROR')
+        return False
+    cfg_tag = venv_python_tag(venv_dir)
+    if cfg_tag and cfg_tag != spec['python_tag']:
+        log(f'Venv at {venv_dir} was built for Python {cfg_tag}, TouchDesigner '
+            f'runs {spec["python_tag"]} -- not repairing in place. Restart '
+            f'TouchDesigner to rebuild it.', 'ERROR')
+        return False
+
+    locked = False
+    deadline = time.monotonic() + 1800
+    while True:
+        if acquire_install_lock(spec, 'core'):
+            locked = True
+            break
+        if time.monotonic() >= deadline:
+            log('Another install is holding this project\'s .venv -- venv '
+                'interpreter repair skipped. Restart TouchDesigner to retry.',
+                'ERROR')
+            return False
+        time.sleep(5)
+    try:
+        uv = find_or_install_uv(spec['python_exe'], log)
+        if not uv:
+            log('uv not found -- cannot repair the venv interpreter. Install '
+                'uv (https://docs.astral.sh/uv/) and restart TouchDesigner.',
+                'ERROR')
+            return False
+        log(f'Repairing the venv interpreter at {venv_dir} (installed '
+            f'packages are kept)...')
+        run_uv(uv, ['venv', venv_dir, '--python', spec['python_exe'],
+                    '--allow-existing'], timeout=600)
+    except subprocess.CalledProcessError as e:
+        log(f'Venv interpreter repair failed: {e.stderr or e}', 'ERROR')
+        return False
+    except Exception as e:
+        log(f'Venv interpreter repair failed: {e}', 'ERROR')
+        return False
+    finally:
+        if locked:
+            release_install_lock(spec)
+
+    verdict, detail = probe_venv_python(spec['venv_python'], timeout=15)
+    if verdict == 'ok':
+        log('Venv interpreter repaired', 'SUCCESS')
+        return True
+    log(f'Venv interpreter still does not run after repair ({verdict}: '
+        f'{detail}). Restart TouchDesigner; if it persists, close TD, delete '
+        f'{venv_dir} by hand and reopen the project.', 'ERROR')
+    return False
+
+
+_FROZEN_LINE_RE =re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*==\S+$')
 
 
 def freeze_constraints(spec: dict, uv, log) -> bool:

@@ -8,24 +8,27 @@
 
 
 def _runAction(par_name):
+	# Demoted (tier-2) members are reachable only through .ext.Embody --
+	# e.updateHandler() on the COMP raises, which killed Ctrl+Shift+O/U and
+	# Ctrl+Alt+U in 6.2.0 (issue #94 review). Refresh is still promoted.
 	e = parent.Embody
 	if par_name == 'Shortcutmanager':
-		e.Manager('open')
+		e.ext.Embody.manager('open')
 	elif par_name == 'Shortcutupdateall':
-		e.UpdateHandler()
+		e.ext.Embody.updateHandler()
 	elif par_name == 'Shortcutupdatecomp':
-		e.SaveCurrentComp()
+		e.ext.Embody.saveCurrentComp()
 	elif par_name == 'Shortcutrefresh':
 		e.Refresh()
 	elif par_name == 'Shortcutexportproject':
-		e.ext.TDN.ExportProjectTDNInteractive()
+		e.ext.TDXN.exportProjectTDXNInteractive()
 	elif par_name == 'Shortcutexportcomp':
 		pane = ui.panes.current
 		if pane and pane.owner:
-			e.ext.TDN.ExportNetworkAsync(
+			e.ext.TDXN.ExportNetworkAsync(
 				root_path=pane.owner.path, output_file='auto')
-	elif par_name == 'Shortcutcopytdn':
-		e.ext.TDN.CopySelectedToClipboard()
+	elif par_name == 'Shortcutcopytdxn':
+		e.ext.TDXN.copySelectedToClipboard()
 
 
 def onKey(dat, key, character, alt, lAlt, rAlt, ctrl, lCtrl, rCtrl, shift, lShift, rShift, state, time, cmd, lCmd, rCmd):
@@ -49,7 +52,7 @@ def onKey(dat, key, character, alt, lAlt, rAlt, ctrl, lCtrl, rCtrl, shift, lShif
 	if sc.taggerKeyMatches(tap_key, key):
 		timer = op('timer1')
 		if timer['running']:
-			run(f"op('{parent.Embody}').TagGetter()", delayFrames=6)
+			run(f"op('{parent.Embody}').ext.Embody.tagGetter()", delayFrames=6)
 
 		timer.par.active = 1
 		timer.par.start.pulse()

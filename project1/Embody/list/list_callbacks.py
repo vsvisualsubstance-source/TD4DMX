@@ -107,12 +107,12 @@ def _load_theme():
 	except Exception:
 		uncommitted = (0.60, 0.30, 0.03, 1.0)
 
-	tdn_saved_raw = _par4('Tdnsavedcolor')
-	tdn_saved = _composite(tdn_saved_raw, row) if tdn_saved_raw[3] < 1.0 else tdn_saved_raw
+	tdxn_saved_raw = _par4('Tdxnsavedcolor')
+	tdxn_saved = _composite(tdxn_saved_raw, row) if tdxn_saved_raw[3] < 1.0 else tdxn_saved_raw
 
-	# TDN exporting -- warm shift from TDN saved blue
-	tdn_amber = (tdn_saved[0] + 0.12, max(0, tdn_saved[1] - 0.02),
-	             max(0, tdn_saved[2] - 0.04), 1.0)
+	# TDXN exporting -- warm shift from TDXN saved blue
+	tdxn_amber = (tdxn_saved[0] + 0.12, max(0, tdxn_saved[1] - 0.02),
+	             max(0, tdxn_saved[2] - 0.04), 1.0)
 
 	# Subtle column separator -- just visible enough to delineate columns
 	border = _brighten(row, 0.04)
@@ -136,10 +136,10 @@ def _load_theme():
 		'par_change_roll': _brighten(par_change, 0.08),
 		'uncommitted': uncommitted,
 		'uncommitted_roll': _brighten(uncommitted, 0.08),
-		'tdn_saved': tdn_saved,
-		'tdn_saved_roll': _brighten(tdn_saved, 0.08),
-		'tdn_amber': tdn_amber,
-		'tdn_amber_roll': _brighten(tdn_amber, 0.08),
+		'tdxn_saved': tdxn_saved,
+		'tdn_saved_roll': _brighten(tdxn_saved, 0.08),
+		'tdxn_amber': tdxn_amber,
+		'tdn_amber_roll': _brighten(tdxn_amber, 0.08),
 		'border': border,
 	})
 
@@ -173,14 +173,14 @@ def _strategy_style(state):
 		return ('TOX', _t['dirty'], None)
 	elif state == 'TOX_ParChange':
 		return ('TOX Par', _t['par_change'], None)
-	elif state == 'TDN_Saved':
-		return ('TDN', _t['tdn_saved'], None)
-	elif state == 'TDN_Dirty':
-		return ('TDN', _t['dirty'], None)
+	elif state == 'TDXN_Saved':
+		return ('TDXN', _t['tdxn_saved'], None)
+	elif state == 'TDXN_Dirty':
+		return ('TDXN', _t['dirty'], None)
 	elif state == 'TDN_ParChange':
-		return ('TDN Par', _t['par_change'], None)
-	elif state == 'TDN_Exporting':
-		return ('...', _t['tdn_amber'], None)
+		return ('TDXN Par', _t['par_change'], None)
+	elif state == 'TDXN_Exporting':
+		return ('...', _t['tdxn_amber'], None)
 	elif state == 'Comp':
 		return ('Tag', _t['comp'], None)
 	elif state == 'DAT_Saved':
@@ -232,18 +232,18 @@ def _apply_cell(attribs, row, col, data, highlight=False):
 		git_changed = data[row, 'git_state'].val == 'Changed'
 		text, st_bg, st_text = _strategy_style(st)
 
-		if _active_strategy_row == row and st not in ('DAT_Saved', 'TDN_Exporting', ''):
+		if _active_strategy_row == row and st not in ('DAT_Saved', 'TDXN_Exporting', ''):
 			# Menu is open for this row -- show "..." with rollover color
 			attribs.text = '...' if st != 'Comp' else 'Tag'
-			if st in ('TOX_Dirty', 'TDN_Dirty'):
+			if st in ('TOX_Dirty', 'TDXN_Dirty'):
 				attribs.bgColor = _t['dirty_roll']
 			elif st in ('TOX_ParChange', 'TDN_ParChange'):
 				attribs.bgColor = _t['par_change_roll']
-			elif git_changed and st in ('TOX_Saved', 'TDN_Saved'):
+			elif git_changed and st in ('TOX_Saved', 'TDXN_Saved'):
 				attribs.bgColor = _t['uncommitted_roll']
 			elif st == 'TOX_Saved':
 				attribs.bgColor = _t['saved_roll']
-			elif st == 'TDN_Saved':
+			elif st == 'TDXN_Saved':
 				attribs.bgColor = _t['tdn_saved_roll']
 			elif st == 'Comp':
 				attribs.bgColor = _t['comp_roll']
@@ -254,9 +254,9 @@ def _apply_cell(attribs, row, col, data, highlight=False):
 			attribs.bgColor = _t['uncommitted'] if git_changed else bg
 		elif st_bg:
 			attribs.text = text
-			# Saved TOX/TDN that's uncommitted reads orange; unsaved (red) and
+			# Saved TOX/TDXN that's uncommitted reads orange; unsaved (red) and
 			# par-change (amber) keep their color.
-			if git_changed and st in ('TOX_Saved', 'TDN_Saved'):
+			if git_changed and st in ('TOX_Saved', 'TDXN_Saved'):
 				attribs.bgColor = _t['uncommitted']
 			else:
 				attribs.bgColor = st_bg
@@ -293,7 +293,7 @@ def _apply_cell(attribs, row, col, data, highlight=False):
 	elif col == COL_DELETE:
 		has_ext = bool(data[row, 'rel_file_path'].val
 					   or data[row, 'strategy_state'].val.startswith('TOX')
-					   or data[row, 'strategy_state'].val.startswith('TDN'))
+					   or data[row, 'strategy_state'].val.startswith('TDXN'))
 		if has_ext:
 			attribs.text = 'x'
 			attribs.fontSizeX = 12
@@ -384,7 +384,7 @@ def onRollover(comp, row, col, coords, prevRow, prevCol, prevCoords):
 	# Cell-specific rollover effects on Strategy column
 	if col == COL_STRATEGY:
 		st = data[row, 'strategy_state'].val
-		if st in ('TOX_Dirty', 'TDN_Dirty'):
+		if st in ('TOX_Dirty', 'TDXN_Dirty'):
 			comp.cellAttribs[row, col].text = '...'
 			comp.cellAttribs[row, col].bgColor = _t['dirty_roll']
 		elif st in ('TOX_ParChange', 'TDN_ParChange'):
@@ -393,13 +393,13 @@ def onRollover(comp, row, col, coords, prevRow, prevCol, prevCoords):
 		elif st == 'TOX_Saved':
 			comp.cellAttribs[row, col].text = '...'
 			comp.cellAttribs[row, col].bgColor = _t['saved_roll']
-		elif st == 'TDN_Saved':
+		elif st == 'TDXN_Saved':
 			comp.cellAttribs[row, col].text = '...'
 			comp.cellAttribs[row, col].bgColor = _t['tdn_saved_roll']
 		elif st == 'Comp':
 			comp.cellAttribs[row, col].text = 'Tag'
 			comp.cellAttribs[row, col].bgColor = _t['comp_roll']
-		elif st == 'TDN_Exporting':
+		elif st == 'TDXN_Exporting':
 			comp.cellAttribs[row, col].bgColor = _t['tdn_amber_roll']
 	elif col == COL_TYPE:
 		# Brighten to hint that clicking opens the network editor
@@ -411,7 +411,7 @@ def onRollover(comp, row, col, coords, prevRow, prevCol, prevCoords):
 	elif col == COL_DELETE:
 		has_ext = bool(data[row, 'rel_file_path'].val
 					   or data[row, 'strategy_state'].val.startswith('TOX')
-					   or data[row, 'strategy_state'].val.startswith('TDN'))
+					   or data[row, 'strategy_state'].val.startswith('TDXN'))
 		if has_ext:
 			comp.cellAttribs[row, col].textColor = _t['text']
 			comp.cellAttribs[row, col].bgColor = _t['select']
@@ -487,14 +487,14 @@ def onSelect(comp, startRow, startCol, startCoords,
 	elif col == COL_FILE:
 		rel_fp = data[row, 'rel_file_path'].val
 		if rel_fp:
-			parent.Embody.OpenSaveFile(rel_fp)
+			parent.Embody.ext.Embody.openSaveFile(rel_fp)
 
 	elif col == COL_STRATEGY:
 		global _active_strategy_row
 		st = data[row, 'strategy_state'].val
 		oper = op(path)
 
-		if st == 'TDN_Exporting':
+		if st == 'TDXN_Exporting':
 			return
 
 		if st == 'Comp' and oper:
@@ -502,15 +502,15 @@ def onSelect(comp, startRow, startCol, startCoords,
 			_active_strategy_row = row
 			parent.Embody.ext.Embody.rolloverOp = oper
 			parent.Embody.op('tagger/switch_family').par.index = 2
-			run(lambda: parent.Embody.ext.Embody.SetupTaggerTagMode(oper), delayFrames=1)
+			run(lambda: parent.Embody.ext.Embody.setupTaggerTagMode(oper), delayFrames=1)
 			run(f"op('{parent.Embody.op('window_tagging_menu')}').par.winopen.pulse()",
 				delayFrames=2)
-		elif (st.startswith('TOX_') or st.startswith('TDN_')) and oper:
+		elif (st.startswith('TOX_') or st.startswith('TDXN_')) and oper:
 			# Already tagged COMP -- open manage menu with Switch/Save
 			_active_strategy_row = row
 			parent.Embody.ext.Embody.rolloverOp = oper
 			parent.Embody.op('tagger/switch_family').par.index = 2
-			run(lambda s=st: parent.Embody.ext.Embody.SetupTaggerManageMode(oper, s),
+			run(lambda s=st: parent.Embody.ext.Embody.setupTaggerManageMode(oper, s),
 				delayFrames=1)
 			run(f"op('{parent.Embody.op('window_tagging_menu')}').par.winopen.pulse()",
 				delayFrames=2)
@@ -518,7 +518,7 @@ def onSelect(comp, startRow, startCol, startCoords,
 	elif col == COL_DELETE:
 		rel_fp = data[row, 'rel_file_path'].val
 		st = data[row, 'strategy_state'].val
-		if not rel_fp and not st.startswith('TOX') and not st.startswith('TDN'):
+		if not rel_fp and not st.startswith('TOX') and not st.startswith('TDXN'):
 			return
 		oper = op(path)
 		result = parent.Embody.ext.Embody._messageBox(
@@ -530,10 +530,10 @@ def onSelect(comp, startRow, startCol, startCoords,
 			'Operator: ' + path,
 			buttons=['Cancel', 'Remove'])
 		if result == 1:
-			if st.startswith('TDN'):
-				parent.Embody.RemoveTDNEntry(path)
+			if st.startswith('TDXN'):
+				parent.Embody.ext.Embody.removeTDXNEntry(path)
 			else:
-				parent.Embody.RemoveListerRow(path, rel_fp)
+				parent.Embody.ext.Embody.removeListerRow(path, rel_fp)
 
 
 def onRadio(comp, row, col, prevRow, prevCol):

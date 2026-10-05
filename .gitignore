@@ -6,8 +6,6 @@ CrashAutoSave*
 .mcp.json
 .tdn_backup/
 opencode.json
-.embody/*
-!.embody/project.json
 .claude/settings.local.json
 .claude/projects/
 briefs/
@@ -15,6 +13,14 @@ __pycache__/
 .DS_Store
 /TDPyEnvManagerContext.yaml
 Backup/TDPyEnvManagerContext.yaml
+.embody_backup/
+.cursor/mcp.json
+.vscode/mcp.json
+.gemini/settings.json
+.codex/config.toml
+.agents/mcp_config.json
+**/.embody/*
+!**/.embody/project.json
 
 # Windows / Google Drive folder metadata
 desktop.ini

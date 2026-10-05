@@ -1,7 +1,7 @@
-"""Default-inert TDN import transform.
+"""Default-inert TDXN import transform.
 
 This module is intentionally headless: it imports no TouchDesigner modules and
-operates only on parsed TDN dictionaries.
+operates only on parsed TDXN dictionaries.
 """
 from __future__ import annotations
 
@@ -12,11 +12,46 @@ import re
 # trusted code. An extension resolving through one is NOT disabled -- but only because
 # community opshortcut registration is stripped below, so these shortcuts cannot be
 # hijacked to point at attacker code.
-_TD_PALETTE_REF = re.compile(r"\bop\.TD[A-Z]\w*")
+# STRICT full-match, never a substring search. `search()` on this pattern was a
+# working bypass (found 2026-08-30 by the C8 parity corpus): any object string
+# CONTAINING op.TD<Name> anywhere was trusted, so
+#   op('./Evil').module.Evil(me)  # op.TDFunctions
+# read as TD palette code -- scanner reported extensions:0 AND safe_import left
+# the extension ENABLED on import. A dead `if True else op.TDModules` branch did
+# the same. Only a bare dotted op.TD<Name> path, optionally called with (me),
+# is trusted now; anything with a comment, conditional, quote or call argument
+# is foreign by construction.
+# Mirror of scanner.TD_PALETTE_SHORTCUTS / _TD_PALETTE_REF -- a test asserts
+# the two stay identical. See scanner.py for why this is an allowlist.
+TD_PALETTE_SHORTCUTS = frozenset((
+    "TDModules", "TDResources", "TDDialogs", "TDAnnotate", "TDTox", "TDUpdater",
+))
+_TD_PALETTE_REF = re.compile(
+    r"op\.(TD\w+)(?:\.\w+)*(?:\(\s*me\s*\))?")
 
 
 def _is_td_palette_ref(text):
-    return isinstance(text, str) and bool(_TD_PALETTE_REF.search(text))
+    if not isinstance(text, str):
+        return False
+    match = _TD_PALETTE_REF.fullmatch(text.strip())
+    return match is not None and match.group(1) in TD_PALETTE_SHORTCUTS
+
+
+_EXT_PARAM_RE = re.compile(r"^ext(\d+)(object|name|promote)$")
+
+
+def _flat_extension_blocks(params):
+    """{index: {'object': ..., 'name': ..., 'promote': ...}} from flat
+    ext<N>* parameters -- the second way TDXN can declare an extension."""
+    blocks = {}
+    if not isinstance(params, dict):
+        return blocks
+    for key, value in params.items():
+        if isinstance(key, str):
+            m = _EXT_PARAM_RE.match(key)
+            if m:
+                blocks.setdefault(m.group(1), {})[m.group(2)] = value
+    return blocks
 
 
 EXECUTE_DAT_TYPES = {
@@ -85,7 +120,7 @@ SCRIPT_OP_TYPES = {
     "scriptsop",
 }
 
-# Out-of-band references the importer would otherwise restore (TOX/TDN shells).
+# Out-of-band references the importer would otherwise restore (TOX/TDXN shells).
 # Their content cannot be scanned inline, so for community paste they are removed.
 EXTERNAL_REF_KEYS = ("tox_ref", "tdn_ref")
 
@@ -234,7 +269,7 @@ STRING_PARAM_PARTS = (
 
 
 def make_inert(tdn: dict, is_pure_expr=None) -> tuple[dict, dict]:
-    """Return a deep-copied TDN dict with auto-executable surfaces disabled.
+    """Return a deep-copied TDXN dict with auto-executable surfaces disabled.
 
     is_pure_expr: optional predicate(source)->bool. When given (CollectionExt injects
     scanner.is_pure_value_expression), a parameter expression that is a PROVABLY PURE
@@ -243,32 +278,32 @@ def make_inert(tdn: dict, is_pure_expr=None) -> tuple[dict, dict]:
     expression is neutralized (fail-closed, the original behavior).
     """
     global _PRESERVE_PURE
-    inert_tdn = copy.deepcopy(tdn)
+    inert_tdxn = copy.deepcopy(tdn)
     summary = _empty_summary()
 
-    if not isinstance(inert_tdn, dict):
-        return inert_tdn, summary
+    if not isinstance(inert_tdxn, dict):
+        return inert_tdxn, summary
 
     _PRESERVE_PURE = is_pure_expr
     try:
-        type_defaults = _type_defaults(inert_tdn)
+        type_defaults = _type_defaults(inert_tdxn)
         original_type_defaults = copy.deepcopy(type_defaults)
-        _neutralize_type_defaults(inert_tdn, summary)
-        _neutralize_par_templates(inert_tdn, summary)
+        _neutralize_type_defaults(inert_tdxn, summary)
+        _neutralize_par_templates(inert_tdxn, summary)
         _neutralize_node(
-            inert_tdn,
-            _root_path(inert_tdn),
+            inert_tdxn,
+            _root_path(inert_tdxn),
             type_defaults,
             original_type_defaults,
             summary,
         )
 
-        operators = inert_tdn.get("operators")
+        operators = inert_tdxn.get("operators")
         if isinstance(operators, list):
             for op_def in operators:
                 _walk_operator(
                     op_def,
-                    _root_path(inert_tdn),
+                    _root_path(inert_tdxn),
                     type_defaults,
                     original_type_defaults,
                     summary,
@@ -276,11 +311,69 @@ def make_inert(tdn: dict, is_pure_expr=None) -> tuple[dict, dict]:
     finally:
         _PRESERVE_PURE = None
 
-    return inert_tdn, summary
+    return inert_tdxn, summary
+
+
+def strip_global_shortcuts(tdn: dict) -> tuple[dict, dict]:
+    """Deep-copy `tdn` with every opshortcut removed -- nodes AND type_defaults.
+
+    Runs on the LIVE (scanned-clean) paste path too. The palette carve-out
+    trusts `op.TD<Name>` objects only because a community network cannot
+    register such a name itself; when the strip ran solely inside make_inert,
+    a clean verdict skipped it, so `opshortcut: TDEvil` plus an extension
+    object of `op.TDEvil.mod.X.X(me)` imported live with the shortcut intact
+    (issue #94 review, 2026-08-29). A clean specimen declaring
+    `opshortcut: TDResources` also collided with TD's own shortcut.
+    """
+    out = copy.deepcopy(tdn)
+    summary = _empty_summary()
+    if not isinstance(out, dict):
+        return out, summary
+    type_defaults = out.get("type_defaults")
+    if isinstance(type_defaults, dict):
+        for op_type, defaults in type_defaults.items():
+            if isinstance(defaults, dict):
+                _strip_global_shortcuts(defaults, f"type_defaults/{op_type}", summary)
+    _strip_global_shortcuts(out, _root_path(out), summary)
+
+    def walk(op_def, parent_path):
+        if not isinstance(op_def, dict):
+            return
+        op_path = _join_path(parent_path, op_def.get("name"))
+        _strip_global_shortcuts(op_def, op_path, summary)
+        children = op_def.get("children")
+        if isinstance(children, list):
+            for child in children:
+                walk(child, op_path)
+
+    operators = out.get("operators")
+    if isinstance(operators, list):
+        for op_def in operators:
+            walk(op_def, _root_path(out))
+    return out, summary
+
+
+def plan_community_paste(tdn: dict, scan_tdxn, is_pure_expr) -> dict:
+    """The import plan for a community TDXN: live if scanned clean, else inert.
+
+    Pure so it can be tested without TouchDesigner; CollectionExt delegates
+    here. Global shortcuts are stripped on BOTH paths (see
+    strip_global_shortcuts) -- the palette carve-out is only sound when the
+    pasted network cannot register an op.TD<Name> of its own.
+    """
+    tdn = tdn if isinstance(tdn, dict) else {}
+    capability = scan_tdxn(tdn)
+    if capability.get("verdict") == "clean":
+        live_tdxn, summary = strip_global_shortcuts(tdn)
+        return {"mode": "live", "tdn": live_tdxn,
+                "capability": capability, "summary": summary}
+    inert_tdxn, summary = make_inert(tdn, is_pure_expr=is_pure_expr)
+    return {"mode": "inert", "tdn": inert_tdxn,
+            "capability": capability, "summary": summary}
 
 
 def is_inert(tdn: dict, is_pure_expr=None) -> bool:
-    """Return True iff the TDN contains no known live executable surface.
+    """Return True iff the TDXN contains no known live executable surface.
 
     is_pure_expr: same predicate make_inert takes. When given, provably-pure value
     expressions do NOT count as a live surface (they are preserved by make_inert),
@@ -489,6 +582,21 @@ def _disable_extensions(node: dict, op_path: str, summary: dict) -> None:
                 original={key: original},
             )
 
+    # Flat ext<N>object / ext<N>name / ext<N>promote parameters: the second
+    # declaration path, and the one that imported live with verdict clean
+    # (issue #94 review). A foreign block loses all three keys.
+    params = node.get("parameters")
+    for index, block in _flat_extension_blocks(params).items():
+        if not _is_enabled_extension_block(block):
+            continue
+        original = {}
+        for field in ("object", "name", "promote"):
+            key = "ext%s%s" % (index, field)
+            if key in params:
+                original[key] = params.pop(key)
+        summary["extensions_disabled"] += 1
+        _detail(summary, op_path, "flat_extension_disabled", original=original)
+
 
 def _neutralize_type_defaults(tdn: dict, summary: dict) -> None:
     type_defaults = tdn.get("type_defaults")
@@ -499,6 +607,12 @@ def _neutralize_type_defaults(tdn: dict, summary: dict) -> None:
         if not isinstance(defaults, dict):
             continue
         op_path = f"type_defaults/{op_type}"
+        # type_defaults are merged into every node of that type on import, so
+        # they are a node for neutralization purposes: an opshortcut or a flat
+        # extension declared here reached the live network untouched
+        # (issue #94 review).
+        _strip_global_shortcuts(defaults, op_path, summary)
+        _disable_extensions(defaults, op_path, summary)
         _neutralize_parameter_mapping(
             defaults.get("parameters"),
             op_path,
@@ -887,8 +1001,12 @@ def _is_enabled_extension_block(block) -> bool:
     if not isinstance(block, dict):
         return False
     value = block.get("object")
-    if not isinstance(value, str) or not value.strip():
-        return False
+    if value is None or (isinstance(value, str) and not value.strip()):
+        # No object: enabled only if it names something (mirrors the scanner).
+        name = block.get("name")
+        return isinstance(name, str) and bool(name.strip())
+    if not isinstance(value, str):
+        return True  # unverifiable -> foreign, disable rather than fail open
     return not _is_td_palette_ref(value)
 
 
@@ -967,6 +1085,9 @@ def _has_enabled_extension(node: dict) -> bool:
             for block in ext_blocks:
                 if _is_enabled_extension_block(block):
                     return True
+    for block in _flat_extension_blocks(node.get("parameters")).values():
+        if _is_enabled_extension_block(block):
+            return True
     return bool(node.get("extensions") or node.get("extension_declarations") or node.get("td_extensions"))
 
 

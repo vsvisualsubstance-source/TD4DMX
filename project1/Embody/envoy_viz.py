@@ -79,15 +79,15 @@ _VIZ_STAGE_MARGIN = 700.0   # network units past the viewport edge for the stagi
 _VIZ_ENTRANCE_DUR = 0.95    # seconds for the swoop-in from staging (vs _VIZ_JUMP_DUR hops)
 # Canonical resting coordinates for the TEMPLATE's parts (issue #86). The
 # staging trick above parks the SOURCE part off-view before copying it, and the
-# template lives inside the Embody COMP -- a TDN-strategy COMP -- so a staging
+# template lives inside the Embody COMP -- a TDXN-strategy COMP -- so a staging
 # coordinate left on the source is written straight into Embody.tdn on the next
 # export (verified: all nine template parts were committed at [1860, 251], a
-# leaked staging point). (0, 0) is deliberate: TDNExt._exportAnnotations omits
+# leaked staging point). (0, 0) is deliberate: TDXNExt._exportAnnotations omits
 # `position` entirely when both nodeX and nodeY are 0, so the parked coordinate
 # cannot drift back into the file at all.
 _VIZ_TEMPLATE_PARK = (0.0, 0.0)
 # Name of the shipped template COMP (a child of the Embody COMP). This module is
-# the SOURCE OF TRUTH for both bot-artifact literals: TDNExt mirrors
+# the SOURCE OF TRUTH for both bot-artifact literals: TDXNExt mirrors
 # _VIZ_BOT_PREFIX / _VIZ_TEMPLATE_COMP as VIZ_BOT_ANNOTATION_PREFIX /
 # VIZ_BOT_TEMPLATE_COMP so its export filter takes no dependency on this module
 # DAT. Drift between the two is silent (the filter simply stops matching and
@@ -288,8 +288,8 @@ def netRelocationOK(ext, netpath, queue, now) -> bool:
     have to persist across frames) but it deliberately does NOT stamp
     `_viz_home`: only commitRelocation does that, and trackActive calls it ONLY
     after the bot actually landed in the net. That ordering is load-bearing --
-    ensureBot can still refuse a spawn (botUnsafeNet on any TDN-strategy COMP,
-    botWouldBeSeen with the follow off, a write suppression), and an eager commit
+    ensureBot can still refuse a spawn (botUnsafeNet under /local or inside
+    Embody, botWouldBeSeen with the follow off, a write suppression), and an eager commit
     would leave `_viz_home` naming a network Embot never entered. Every later hop
     to the net he IS standing in would then be charged the full gate for a
     relocation that needs zero copyOPs -- Embot frozen on a stale node in front
@@ -426,6 +426,30 @@ def pathInsideSubtree(netpath, root_path) -> bool:
     if root_path == '/':
         return True
     return netpath.startswith(root_path + '/')
+
+
+def isLiveBotPart(target) -> bool:
+    """True if `target` is one of Embot's LIVE parts -- the nine ephemeral
+    annotateCOMPs he stands in a network, never the shipped template's.
+
+    The one definition of "bot furniture, not user content" for READERS:
+    envoy_read's MCP filters call this so agents never see the parts (issue
+    #94 -- agents asked where nine annotations came from, then tried to fix
+    the layout "violation" they looked like). TDXNExt's export filter mirrors
+    the two literals instead of calling this, because Envoy is optional.
+
+    Same carve-out as that exporter: a part parented to `embot_template` is
+    the shipped asset and stays visible. Type-checked like purgeVizArtifacts
+    so a user's TOP named envoy_bot_* is never mistaken for a part. Pure."""
+    try:
+        if getattr(target, 'type', None) != 'annotate':
+            return False
+        if not target.name.startswith(_VIZ_BOT_PREFIX):
+            return False
+        holder = target.parent()
+        return holder is None or holder.name != _VIZ_TEMPLATE_COMP
+    except Exception:
+        return False
 
 
 def noteWriteRetire(ext, path, now) -> None:
@@ -634,8 +658,8 @@ def trackActive(ext, now: float, follow: bool, show_bot: bool) -> None:
         pulseStart(ext, target, now)    # ping the node colour
         placeBot(ext, net, target, now) # bring the dancing bot to the op
         # Commit only if he ACTUALLY landed. ensureBot can still refuse
-        # (botUnsafeNet on a TDN-strategy COMP, botWouldBeSeen with the follow
-        # off, a write suppression); committing anyway would point _viz_home at
+        # (botUnsafeNet under /local or inside Embody, botWouldBeSeen with the
+        # follow off, a write suppression); committing anyway would point _viz_home at
         # a net he never entered and charge every later hop to the net he IS in
         # for a relocation that costs nothing. See netRelocationOK.
         if ext._viz_bot_net == net.path:
@@ -997,7 +1021,18 @@ def ensureBot(ext, net: 'COMP') -> bool:
     crashes and was reverted. Returns False where a bot must not live."""
     netpath = net.path
     if ext._viz_bot_net == netpath:
-        return True                         # already here (assembled or assembling)
+        # Already here (assembled or assembling) -- unless something destroyed
+        # his parts underneath us. import_network(clear_first=True) is the
+        # normal way to edit a TDXN COMP and guts its children; an undo or a
+        # delete does the same. The bookkeeping would still say he is standing
+        # here, so nothing would ever rebuild him. Treat it as a retire, which
+        # also bars re-entry for _VIZ_WRITE_SUPPRESS_S -- a net being cleared
+        # repeatedly must not buy one respawn per clear.
+        if not ext._viz_bot_build_queue and botPartsMissing(ext, net):
+            destroyBot(ext)
+            noteWriteRetire(ext, netpath, absTime.seconds)
+            return False
+        return True
     # Issue #86: a COMP that was JUST serialized with him retired out of it is
     # off limits briefly -- his own parts are what re-dirty it, so re-entering
     # immediately means the next Update() saves, retires and respawns again, at
@@ -1009,11 +1044,11 @@ def ensureBot(ext, net: 'COMP') -> bool:
     # and nobody is about to look at (follow OFF with the user parked elsewhere,
     # or inside the 6s takeover window). It sits AFTER the "already here" return,
     # so a bot that already exists keeps tracking normally when the user
-    # navigates away -- only NEW spawns are suppressed. It MUST precede
-    # botUnsafeNet, which reaches EmbodyExt._getTDNPaths() ->
-    # _getTDNStrategyComps(): a full externalizations-table scan with a per-row
-    # op() plus an exclude-tag lookup. In the suppressed state ensureBot runs its
-    # prefix EVERY frame, so the wrong order would add a per-frame table scan.
+    # navigates away -- only NEW spawns are suppressed. botUnsafeNet used to
+    # reach EmbodyExt._getTDXNPaths() (a full externalizations-table scan) and
+    # HAD to run second; it dropped that clause with the TDXN ban, so the order
+    # is free now. The visibility gate stays first regardless: it is the one
+    # that refuses most often, and ensureBot runs this prefix EVERY frame.
     #
     # Invariant this creates (botWritesNeeded relies on it): a blockSpawn now
     # happens only when the destination is off-screen AND the camera is about to
@@ -1066,6 +1101,18 @@ def ensureBot(ext, net: 'COMP') -> bool:
         ext._viz_bot_build_queue = []
         blockSpawn(ext, net)
     return True
+
+
+def botPartsMissing(ext, net: 'COMP') -> bool:
+    """True when the net viz believes Embot is standing in no longer holds his
+    body part -- something destroyed the parts out from under the bookkeeping.
+    One op lookup, cheap enough for ensureBot's per-frame prefix, and consulted
+    only once assembly has finished (mid-spread the parts legitimately do not
+    exist yet). Any doubt -> False, so a bad read can never buy a rebuild."""
+    try:
+        return net.op(_VIZ_BOT_PREFIX + 'body') is None
+    except Exception:
+        return False
 
 
 def netIsDisplayed(ext, net: 'COMP') -> bool:
@@ -1225,7 +1272,7 @@ def assembleStep(ext, net: 'COMP') -> None:
     # (_botDance then arranges the copies into the figure wherever the bot stands.)
     #
     # Issue #86: the source is the TEMPLATE part, which lives inside the Embody
-    # COMP -- a TDN-strategy COMP. A staging coordinate left on it is exported
+    # COMP -- a TDXN-strategy COMP. A staging coordinate left on it is exported
     # into Embody.tdn (all nine parts were committed at a leaked [1860, 251]), so
     # every on-screen assembly silently dirtied a tracked file. Snapshot the
     # source position and restore it in a finally that survives the except below.
@@ -1519,17 +1566,22 @@ def botDance(ext, now: float) -> None:
 
 def botUnsafeNet(ext, net: 'COMP') -> bool:
     """True if a bot must NOT be created in `net` -- it would risk being saved.
-    Unsafe: under /local, under the Embody COMP (ExportPortableTox captures
-    Embody's descendants), or inside any TDN-strategy COMP (captured by .tdn
-    export)."""
+    Unsafe: under /local, or under the Embody COMP (ExportPortableTox captures
+    Embody's descendants).
+
+    TDXN-strategy COMPs were unsafe too, until the two defences below existed --
+    that is the tagged majority of a project, so Embot was missing from most of
+    the work an agent does. A .tdxn is covered now without banning him:
+    TDXNExt._exportAnnotations drops live parts from every export path (#86),
+    and EmbodyExt._computeTDXNFingerprint skips them, so standing in one
+    neither reaches disk nor marks the COMP dirty."""
     try:
         if net.path.startswith('/local'):
             return True
         embody_path = ext.ownerComp.path
-        tdn = ext.ownerComp.ext.Embody._getTDNPaths()
         p = net
         while p is not None and p.path != '/':
-            if p.path == embody_path or p.path in tdn:
+            if p.path == embody_path:
                 return True
             p = p.parent()
     except Exception:
@@ -1657,7 +1709,7 @@ def purgeVizArtifacts(ext, root=None) -> int:
 
     Two deliberate costs, stated rather than hidden:
       - a USER annotation literally named envoy_bot_* outside the template is
-        DESTROYED, not merely skipped (TDNExt's export filter only omits it).
+        DESTROYED, not merely skipped (TDXNExt's export filter only omits it).
         The caller logs any non-zero count, so a deletion is never silent.
       - the project-wide sweep walks the tree. It skips _VIZ_PURGE_SKIP_ROOTS
         (TD's own /sys and /ui) precisely because it runs inside the pre-save

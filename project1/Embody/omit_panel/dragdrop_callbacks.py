@@ -1,7 +1,7 @@
 # TDN Exclusions drop zone. A native par-dialog drag delivers
 # ParGroup items (field-verified 2026-08-24), a network-editor drag
 # delivers OPs, a scripted drag can deliver bare Pars -- accept Pars
-# (unwrapped from groups) and COMPs; EmbodyExt.OmitPanelDrop toggles
+# (unwrapped from groups) and COMPs; EmbodyExt.omitPanelDrop toggles
 # tdn_omit:<par> / tdn_exclude accordingly.
 
 def _trace(msg):
@@ -35,5 +35,5 @@ def onDropGetResults(comp, info):
 	usable = _itemsFromDrag(items)
 	_trace(f'drop on {comp.name}: {[getattr(i, "name", "?") for i in usable]}')
 	if usable:
-		parent.Embody.OmitPanelDrop(usable)
+		parent.Embody.ext.Embody.omitPanelDrop(usable)
 	return {'droppedOn': comp}

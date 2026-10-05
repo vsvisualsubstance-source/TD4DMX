@@ -21,15 +21,23 @@ def onValueChange(par, prev):
 	# use par.eval() to get current value
 	if par.name == 'Folder':
 		parent.Embody.Disable(prev, removeTags=False)
-		run(f"op('{parent.Embody}').UpdateHandler()", delayFrames = 60)
+		run(f"op('{parent.Embody}').ext.Embody.updateHandler()", delayFrames = 60)
 
 	elif par.name == 'Externalizations':
 		if not par:
-			parent.Embody.MissingExternalizationsPar()
+			parent.Embody.ext.Embody.missingExternalizationsPar()
+
+	elif par.name == 'Configclient':
+		# Whose files to write changed. InitEnvoy, not just
+		# _extractAIConfig: a client also needs the MCP config IT
+		# reads, and the root .mcp.json is Claude Code's format and
+		# no one else's. Writes are marker-gated and idempotent.
+		if parent.Embody.par.Envoyenable.eval():
+			parent.Embody.InitEnvoy()
 
 	elif par.name == 'Aiclient':
-		if parent.Embody.par.Envoyenable.eval():
-			op.Embody.ext.Embody._extractAIConfig()
+		# Launch target only -- it opens an app and writes nothing.
+		pass
 
 	elif par.name == 'Aiprojectroot':
 		# Move Embody's own state (.embody/config.json, project.json) to the
@@ -63,13 +71,19 @@ def onValueChange(par, prev):
 			# The 30-frame delay matches Verify() timing in onCreate().
 			run("parent.Embody.ext.Envoy.Start() if parent.Embody.par.Envoyenable.eval() else None",
 				delayFrames=30)
+			# Convoy runs on Envoy: a node parked at 'Needs Envoy' by a
+			# restored toggle re-registers (and installs or updates its
+			# host app) now rather than on its next tick.
+			convoy = parent.Embody.op('convoy')
+			if convoy:
+				convoy.ext.ConvoyExt.envoyEnabledChanged()
 		else:
 			parent.Embody.ext.Envoy.Stop()
 
 	elif par.name == 'Performmode':
 		convoy = parent.Embody.op('convoy')
 		if convoy:
-			convoy.ext.ConvoyExt.ResetWakeLeases(close_override=True)
+			convoy.ext.ConvoyExt.resetWakeLeases(close_override=True)
 		if par.eval():
 			parent.Embody.ext.Embody._enterPerformMode()
 		else:
@@ -89,7 +103,7 @@ def onValueChange(par, prev):
 		# startup: a restored Convoyenable=True never reaches here, so it
 		# can never raise a modal on project open. Register() owns the
 		# consent gate (mint + confirm on first enable) and the reconcile;
-		# Unregister() clears this node's port on the host app.
+		# unregister() clears this node's port on the host app.
 		# Guarded like the other child-COMP hooks -- a partial or
 		# pre-Convoy install where the par exists but the child does not
 		# skips with one warning instead of raising every toggle.
@@ -98,19 +112,13 @@ def onValueChange(par, prev):
 			if par.eval():
 				# The explicit toggle is the one gesture that may raise
 				# the realm-rejoin dialog; arm its bounded window here.
-				convoy.ext.ConvoyExt.ArmRejoinOffer()
-				convoy.ext.ConvoyExt.Register()
-				# Convoy can run without an attached AI coding client, but its TD
-				# relay still terminates at Envoy's loopback command server. Keep
-				# only that internal substrate on; Aiclient='none' makes Start()
-				# skip MCP/client config generation.
-				if (parent.Embody.par.Aiclient.eval() == 'none'
-						and parent.Embody.par.Convoyenable.eval()
-						and not parent.Embody.par.Envoyenable.eval()):
-					parent.Embody.par.Envoyenable = True
+				convoy.ext.ConvoyExt.armRejoinOffer()
+				# register() also turns Enable Envoy on when it is off:
+				# Convoy runs on Envoy (ConvoyExt._ensureEnvoy).
+				convoy.ext.ConvoyExt.register()
 			else:
-				convoy.ext.ConvoyExt.Unregister()
-				if (parent.Embody.par.Aiclient.eval() == 'none'
+				convoy.ext.ConvoyExt.unregister()
+				if (not mod.embody_git.selected_clients(parent.Embody.ext.Embody)
 						and parent.Embody.par.Envoyenable.eval()):
 					parent.Embody.par.Envoyenable = False
 		else:
@@ -125,7 +133,7 @@ def onValueChange(par, prev):
 		# first-enable consent dialog remains owned exclusively by its toggle.
 		convoy = parent.Embody.op('convoy')
 		if convoy and parent.Embody.par.Convoyenable.eval():
-			convoy.ext.ConvoyExt.Register()
+			convoy.ext.ConvoyExt.register()
 
 	elif par.name in ('Convoyremotewake', 'Convoywakegrace'):
 		# Both are local membership/runtime settings.  The listener remains
@@ -133,7 +141,7 @@ def onValueChange(par, prev):
 		# and immediately closes a temporary wake when the user switches it off.
 		convoy = parent.Embody.op('convoy')
 		if convoy:
-			convoy.ext.ConvoyExt.WakeSettingsChanged()
+			convoy.ext.ConvoyExt.wakeSettingsChanged()
 
 	elif par.name in ('Convoyallowtdpython', 'Convoyallowfullshell'):
 		# Fast path only: TD defers this callback to the next cook, so it
@@ -143,7 +151,7 @@ def onValueChange(par, prev):
 		# that on its tick, so a swallowed callback cannot grant either.
 		convoy = parent.Embody.op('convoy')
 		if convoy:
-			convoy.ext.ConvoyExt.LocalDangerGateChanged(
+			convoy.ext.ConvoyExt.localDangerGateChanged(
 				par.name, bool(par.eval()))
 		elif par.eval():
 			par.val = 0
@@ -158,7 +166,7 @@ def onValueChange(par, prev):
 		# accepted value back into every local node.
 		convoy = parent.Embody.op('convoy')
 		if convoy:
-			convoy.ext.ConvoyExt.LocalArtifactQuotaChanged(par.eval())
+			convoy.ext.ConvoyExt.localArtifactQuotaChanged(par.eval())
 
 	# UI color pars changed - reload list theme
 	elif 'color' in par.name.lower():
@@ -176,22 +184,22 @@ def onValueChange(par, prev):
 		# off = Embody pages only. Pure visibility -- no state touched.
 		parent.Embody.showCustomOnly = not bool(par.eval())
 
-	elif par.name == 'Tdnmode':
-		parent.Embody.ext.Embody._onTdnModeChanged(str(par.eval()))
+	elif par.name == 'Tdxnmode':
+		parent.Embody.ext.Embody._onTdxnModeChanged(str(par.eval()))
 
-	elif par.name == 'Embeddatsintdns':
-		# No-op when the TDN subsystem is disabled -- nothing to re-export.
-		if parent.Embody.ext.Embody._tdnEnabled():
-			parent.Embody.ext.TDN.ReexportAllTDNs()
+	elif par.name == 'Embeddatsintdxns':
+		# No-op when the TDXN subsystem is disabled -- nothing to re-export.
+		if parent.Embody.ext.Embody._tdxnEnabled():
+			parent.Embody.ext.TDXN.reexportAllTDXNs()
 
-	elif par.name == 'Embedstorageintdns':
-		# No-op when the TDN subsystem is disabled -- nothing to re-export.
-		if parent.Embody.ext.Embody._tdnEnabled():
-			parent.Embody.ext.TDN.ReexportAllTDNs()
+	elif par.name == 'Embedstorageintdxns':
+		# No-op when the TDXN subsystem is disabled -- nothing to re-export.
+		if parent.Embody.ext.Embody._tdxnEnabled():
+			parent.Embody.ext.TDXN.reexportAllTDXNs()
 
-	elif par.name == 'Tdncascade':
+	elif par.name == 'Tdxncascade':
 		state = 'enabled' if par.eval() else 'disabled'
-		parent.Embody.ext.Embody.Log(f'TDN cascade {state}', 'INFO')
+		parent.Embody.ext.Embody.Log(f'TDXN cascade {state}', 'INFO')
 
 	elif par.name in mod.shortcuts.SHORTCUT_PARS:
 		# Normalize hand-typed combos to the canonical form; revert invalid
@@ -259,13 +267,13 @@ def onValueChange(par, prev):
 
 def onPulse(par):
 	if par.name == 'Disable':
-		parent.Embody.DisableHandler()
+		parent.Embody.ext.Embody.disableHandler()
 
 	elif par.name == 'Uninstall':
-		parent.Embody.UninstallHandler()
+		parent.Embody.ext.Embody.uninstallHandler()
 
 	elif par.name == 'Update':
-		parent.Embody.UpdateHandler()
+		parent.Embody.ext.Embody.updateHandler()
 
 	elif par.name == 'Releaseall':
 		# Batch portable export (issue #74 follow-up): every component
@@ -287,7 +295,8 @@ def onPulse(par):
 
 	elif par.name in ('Convoyinstallhost', 'Convoystarthost',
 					  'Convoystophost', 'Convoyuninstallhost',
-					  'Convoyforgetoffline', 'Convoyresolverealm'):
+					  'Convoyforgetoffline', 'Convoyresolverealm',
+					  'Convoyrepinpeers'):
 		# Convoy host-app lifecycle. Deliberately NOT folded into
 		# Convoyenable and deliberately NOT reachable from the setup
 		# wizard: A-13's consent covers minting a convoy id and
@@ -307,12 +316,15 @@ def onPulse(par):
 		convoy = parent.Embody.op('convoy')
 		if convoy:
 			getattr(convoy.ext.ConvoyExt, {
-				'Convoyinstallhost': 'InstallHost',
-				'Convoystarthost': 'StartHost',
-				'Convoystophost': 'StopHost',
-				'Convoyuninstallhost': 'UninstallHost',
-				'Convoyforgetoffline': 'ForgetOfflineNodes',
-				'Convoyresolverealm': 'ResolveRealmConflict',
+				'Convoyinstallhost': 'installHost',
+				'Convoystarthost': 'startHost',
+				'Convoystophost': 'stopHost',
+				'Convoyuninstallhost': 'uninstallHost',
+				'Convoyforgetoffline': 'forgetOfflineNodes',
+				'Convoyresolverealm': 'resolveRealmConflict',
+				# Trust a pinned peer's NEW identity (2026-09-21); its
+				# own enumerating confirm, like the two above.
+				'Convoyrepinpeers': 'repinChangedPeers',
 			}[par.name])()
 		else:
 			parent.Embody.Log(
@@ -331,19 +343,19 @@ def onPulse(par):
 		# action, so it is the honest home for this.
 		convoy = parent.Embody.op('convoy')
 		if convoy:
-			convoy.ext.ConvoyExt.HostStatus(refresh=True)
+			convoy.ext.ConvoyExt.refreshHostStatus(refresh=True)
 
 	elif par.name == 'Setupwizard':
 		parent.Embody.ext.Embody._openSetupWizard()
 
 	elif par.name == 'Openmanager':
-		parent.Embody.Manager('open')
+		parent.Embody.ext.Embody.manager('open')
 
 	elif par.name == 'Closemanager':
-		parent.Embody.Manager('close')
+		parent.Embody.ext.Embody.manager('close')
 				
 	elif par.name == 'Launchaiclient':
-		parent.Embody.LaunchAIClient()
+		parent.Embody.ext.Embody.launchAIClient()
 
 	elif par.name == 'Github':
 		webbrowser.open('https://github.com/dylanroscover/Embody')
@@ -369,13 +381,16 @@ def onPulse(par):
 		op('help').openViewer()
 
 	elif par.name == 'Openexternalizationstable':
-		parent.Embody.OpenTable()
+		parent.Embody.ext.Embody.openTable()
 
 	elif par.name == 'Createexternalizationstable':
-		parent.Embody.ext.Embody.CreateExternalizationsTable()
+		# ensure, not create: the par's documented contract is "no-op if the
+		# table is already connected"; create* is the create-or-RESET variant
+		# and would clear the tracking rows on pulse (PR #95).
+		parent.Embody.ext.Embody.ensureExternalizationsTable()
 
 	elif par.name == 'Externalizeproject':
-		parent.Embody.ExternalizeProject()
+		parent.Embody.ext.Embody.externalizeProject()
 
 	elif par.name in mod.shortcuts.RECORD_PARS:
 		mod.shortcuts.arm(parent.Embody, mod.shortcuts.RECORD_PARS[par.name])
@@ -383,13 +398,29 @@ def onPulse(par):
 	elif par.name == 'Resetshortcuts':
 		mod.shortcuts.resetDefaults(parent.Embody)
 
-	elif par.name == 'Importtdn':
-		file_path = parent.Embody.par.Tdnfile.eval()
+	elif par.name == 'Importtdxn':
+		file_path = parent.Embody.par.Tdxnfile.eval()
 		target = parent.Embody.par.Networkpath.eval()
 		target_path = str(target) if target else '/'
 		clear_first = getattr(parent.Embody.ext.Embody, '_import_clear_first', False)
-		parent.Embody.ext.TDN.ImportNetworkFromFile(file_path, target_path, clear_first=clear_first)
+		parent.Embody.ext.TDXN.importNetworkFromFile(file_path, target_path, clear_first=clear_first)
 		parent.Embody.ext.Embody._import_clear_first = False
+
+	elif par.name == 'Migratetotdxn':
+		parent.Embody.ext.Embody.migrateToTDXN()
+
+	else:
+		# NEW pulse handlers hang off the extension BY NAME -- one
+		# dispatcher, not a promoted method per par (parameter-design).
+		# The chain above predates it; do not extend it. DEBUG, not
+		# WARNING: a pulse par with no handler at all is legitimate.
+		handler = getattr(parent.Embody.ext.Embody,
+						  '_on%sPulse' % par.name, None)
+		if handler is None:
+			parent.Embody.Log(f'No pulse handler for {par.name} '
+				f'(_on{par.name}Pulse)', 'DEBUG')
+		else:
+			handler(par)
 
 	return
 

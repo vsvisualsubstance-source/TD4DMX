@@ -4,7 +4,7 @@ Module DAT (mod.envoy_read) called by EnvoyExt on the MAIN THREAD only.
 Holds the private implementations behind the read-only / introspection MCP
 tools (get_op, query_network, connections, flags/position, network layout,
 annotations, errors, performance, TD/class/module introspection, DAT
-content, TOP capture, logs, externalization status, TDN read/export/diff,
+content, TOP capture, logs, externalization status, TDXN read/export/diff,
 exec_op_method). EnvoyExt keeps a thin delegating stub for each -- these
 functions carry the real bodies. The get_docs family is NOT here: it runs
 on the WORKER thread, where mod.* is unavailable, so it lives on the
@@ -21,6 +21,48 @@ calls between moved functions are module-local.
 from __future__ import annotations
 
 import math
+from typing import Optional
+
+
+def _hide_bot_parts(items) -> tuple:
+    """Drop Embot's live parts from a list of ops/annotations, returning
+    (kept, hidden_count).
+
+    Issue #94: the nine envoy_bot_* annotateCOMPs are ephemeral viz furniture
+    that the TDXN exporter already omits, so an agent comparing a .tdxn to the
+    live network saw annotations from nowhere -- nine overlapping boxes reading
+    as exactly the layout-rule violation it is told to go and fix. Every reader
+    tool filters them; callers surface the count as `embot_hidden` rather than
+    lying about the network being empty of them.
+
+    mod.envoy_viz owns the predicate. If it cannot be reached, nothing is
+    filtered (today's behavior) rather than guessing at the literals."""
+    try:
+        is_bot = mod.envoy_viz.isLiveBotPart
+    except Exception:
+        return list(items), 0
+    kept = []
+    hidden = 0
+    for item in items:
+        if is_bot(item):
+            hidden += 1
+            continue
+        kept.append(item)
+    return kept, hidden
+
+
+def _asks_for_bot_parts(name) -> bool:
+    """True when a find_children name pattern deliberately targets Embot's
+    parts, so an explicit query (debugging a stuck bot, auditing a cleanup)
+    still returns them. Tested by matching the pattern against a canonical
+    part name -- envoy_viz stays the only place the prefix is spelled."""
+    if not name:
+        return False
+    try:
+        import fnmatch
+        return fnmatch.fnmatch(mod.envoy_viz._VIZ_BOT_PREFIX + 'body', name)
+    except Exception:
+        return False
 
 
 def _op_summary(target, info) -> str:
@@ -61,17 +103,17 @@ def get_op(ext, op_path: str, include_defaults: bool = False) -> dict:
         'valid': target.valid,
     }
 
-    # Sequence collapse. Delegates to TDNExt's exporter rather than
+    # Sequence collapse. Delegates to TDXNExt's exporter rather than
     # re-deriving block grouping here -- that code carries hard-won gotchas
     # (uncooked-POP discovery, the list(target.seq) ordering contract,
     # sequenceBlock wrapper identity). scrub_transient=False because this is
     # a LIVE read: an export ships no runtime-status values, a read must.
     # Only in the compact mode -- include_defaults=True keeps the flat dump
-    # that test_mcp_tdn_tools' read_tdn-vs-get_op ratio test measures.
+    # that test_mcp_tdxn_tools' read_tdn-vs-get_op ratio test measures.
     sequences = {}
     if not include_defaults:
         try:
-            tdn = getattr(ext.ownerComp.ext, 'TDN', None)
+            tdn = getattr(ext.ownerComp.ext, 'TDXN', None)
             if tdn is not None:
                 sequences = tdn._exportBuiltinSequences(
                     target, scrub_transient=False) or {}
@@ -153,7 +195,7 @@ def get_op(ext, op_path: str, include_defaults: bool = False) -> dict:
 
 
 def query_network(ext, parent_path: str = "/", recursive: bool = False,
-                  op_type: str = None, include_utility: bool = False) -> dict:
+                  op_type: Optional[str] = None, include_utility: bool = False) -> dict:
     """List operators in a network"""
     parent = resolve_op(ext, parent_path)
     if not parent:
@@ -162,12 +204,16 @@ def query_network(ext, parent_path: str = "/", recursive: bool = False,
     if not hasattr(parent, 'children'):
         return {'error': f'{parent_path} is not a COMP'}
 
+    hidden_bot = [0]
+
     def get_ops(comp, depth=0):
         results = []
         if include_utility:
             children = comp.findChildren(includeUtility=True, depth=1)
         else:
             children = comp.children
+        children, hidden = _hide_bot_parts(children)
+        hidden_bot[0] += hidden
         for child in children:
             # Filter by type if specified
             if op_type and child.OPType != op_type and child.family != op_type:
@@ -196,6 +242,8 @@ def query_network(ext, parent_path: str = "/", recursive: bool = False,
         'count': len(operators),
         'operators': operators
     }
+    if hidden_bot[0]:
+        result['embot_hidden'] = hidden_bot[0]
     return ext._maybe_offload_to_file(result, 'query_network')
 
 
@@ -486,6 +534,60 @@ def shader_compile_log(target):
     return {'infoDat': info.path, 'lines': lines}
 
 
+# Shader-source DAT parameters by family (docs.derivative.ca GLSL_TOP,
+# GLSL_MAT, GLSL_POP, read 2026-09-05). A shader DAT can be consumed by a
+# GLSL op that is not its dock host -- a shared source, or one in another
+# network -- and only a parameter walk finds those. Idea adopted from
+# td-mcp-rs's mutate_nodes shader lint (credited in README).
+_SHADER_DAT_PARS = ('vertexdat', 'pixeldat', 'computedat',   # GLSL TOP, GLSL POP
+                    'vdat', 'pdat', 'gdat', 'predat')        # GLSL MAT
+_SHADER_CONSUMER_CAP = 64
+
+
+def is_shader_op(target) -> bool:
+    """True when the op docks an Info DAT (the GLSL families do). Reads
+    only .docked and .type, so nothing cooks."""
+    return _docked_info_dat(target) is not None
+
+
+def shader_consumers(ext, dat, cap: int = _SHADER_CONSUMER_CAP) -> list:
+    """GLSL operators whose shader-source parameters reference `dat`.
+
+    One findChildren(parName=...) per shader parameter, project-wide (a C++
+    filter, so cheap), then the parameter is evaluated to confirm it
+    resolves to this DAT. Never raises; capped so a pathological project
+    cannot stall a write.
+    """
+    found = []
+    seen = set()
+    try:
+        if dat is None or dat.family != 'DAT':
+            return found
+        root = op('/')
+        for par_name in _SHADER_DAT_PARS:
+            try:
+                candidates = root.findChildren(parName=par_name, maxDepth=99)
+            except Exception:
+                continue
+            for cand in candidates:
+                if cand.path in seen:
+                    continue
+                try:
+                    ref = getattr(cand.par, par_name).eval()
+                except Exception:
+                    continue
+                if ref is None:
+                    continue
+                if ref is dat or getattr(ref, 'path', None) == dat.path:
+                    seen.add(cand.path)
+                    found.append(cand)
+                    if len(found) >= cap:
+                        return found
+    except Exception:
+        pass
+    return found
+
+
 def shader_errors(ext, target, recurse: bool = True) -> list:
     """Shader compile errors for an op and (optionally) its descendants.
 
@@ -668,7 +770,7 @@ def get_op_errors(ext, op_path: str, recurse: bool = True,
 
 
 def exec_op_method(ext, op_path: str, method: str,
-                   args: list = None, kwargs: dict = None) -> dict:
+                   args: Optional[list] = None, kwargs: Optional[dict] = None) -> dict:
     """Call a method on a TD operator"""
     target = resolve_op(ext, op_path)
     if not target:
@@ -981,17 +1083,95 @@ def _frame_quality(arr) -> dict:
     return verdict
 
 
+# Non-TOP capture: the network editor's own viewer for every family that
+# has one (CHOP graphs, SOP/POP 3D, DAT text, COMP panels and scenes),
+# rendered through an OP Viewer TOP that lives inside the Embody COMP for
+# the length of one call and is destroyed in a finally, so nothing lands in
+# the user's network or in a save. Idea adopted from td-mcp-rs's `capture
+# preview` (credited in README).
+_VIEWER_DEFAULT_W = 1280        # width when max_resolution=0 (native)
+_VIEWER_MIN_W = 320
+_VIEWER_PARK = (-4000, -4000)   # network position, clear of Embody's own ops
+# A newly aimed OP Viewer TOP renders nothing for its first frames: probed
+# 2026-09-05 on 2025.33070, the texture was all-zero (alpha included) at
+# frames 0, 1 and 3 and populated by frame 10. So the capture cannot be
+# same-frame: it returns a deferral marker and EnvoyExt re-enters it every
+# _VIEWER_POLL_FRAMES until pixels appear or the wait cap is spent.
+_VIEWER_POLL_FRAMES = 2
+_VIEWER_MAX_WAIT_FRAMES = 40
+
+
+def _viewer_top_for(ext, target, max_resolution):
+    """A transient OP Viewer TOP aimed at `target`, or (None, error dict).
+
+    Rendered at max_resolution wide (16:9) rather than downscaled from a
+    larger frame, so viewer text stays legible. The caller destroys it.
+    """
+    import uuid
+    host = ext.ownerComp
+    try:
+        viewer = host.create(opviewerTOP, '_envoy_viewer_' + uuid.uuid4().hex[:6])
+    except Exception as e:
+        return None, {'error': f'Could not create a viewer for {target.path}: {e}'}
+    try:
+        try:
+            w = int(max_resolution or 0)
+        except Exception:
+            w = 0
+        w = max(_VIEWER_MIN_W, w if w > 0 else _VIEWER_DEFAULT_W)
+        viewer.nodeX, viewer.nodeY = _VIEWER_PARK
+        viewer.par.opviewer = viewer.relativePath(target)
+        viewer.par.outputresolution = 'custom'
+        viewer.par.resolutionw = w
+        viewer.par.resolutionh = int(round(w * 9 / 16))
+        viewer.par.outputaspect = 'resolution'
+        return viewer, None
+    except Exception as e:
+        try:
+            viewer.destroy()
+        except Exception:
+            pass
+        return None, {'error': f'Could not aim a viewer at {target.path}: {e}'}
+
+
+def _viewer_has_content(viewer) -> bool:
+    """True once the viewer has rendered anything (any non-zero channel,
+    alpha included -- an unrendered viewer is all zeros)."""
+    try:
+        arr = viewer.numpyArray()
+        return arr is not None and arr.size > 0 and float(arr.max()) > 0.0
+    except Exception:
+        return False
+
+
+def sweep_viewer_leftovers(ext) -> int:
+    """Destroy parked _envoy_viewer_* ops a lost continuation left behind
+    (an extension reinit mid-capture). Returns the count. Never raises."""
+    count = 0
+    try:
+        for child in list(ext.ownerComp.children):
+            if child.name.startswith('_envoy_viewer_'):
+                try:
+                    child.destroy()
+                    count += 1
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return count
+
+
 def capture_top(ext, op_path: str, format: str = 'jpeg',
                 quality: float = 0.8, max_resolution: int = 640,
                 inline: bool = False, sample_grid: int = 0) -> dict:
-    """Capture a TOP operator's output as a compressed image."""
-    import base64
-
+    """Capture a TOP's output as a compressed image or sampled RGBA grid.
+    TOP only -- every other family goes through capture_op."""
     target = resolve_op(ext, op_path)
     if not target:
         return {'error': f'Operator not found: {op_path}'}
     if target.family != 'TOP':
-        return {'error': f'{op_path} is not a TOP (family: {target.family})'}
+        return {'error': f'{op_path} is not a TOP (family: {target.family}); '
+                         'use capture_op for any other family'}
 
     try:
         sample_grid = int(sample_grid or 0)
@@ -1004,6 +1184,66 @@ def capture_top(ext, op_path: str, format: str = 'jpeg',
         return {'error': f'Unsupported format: {format}. Use "jpeg" or "png".'}
     if not (0.0 <= quality <= 1.0):
         return {'error': f'Quality must be between 0.0 and 1.0, got {quality}'}
+    return _capture_pixels(target, op_path, format, quality, max_resolution)
+
+
+def capture_op(ext, op_path: str, format: str = 'jpeg',
+               quality: float = 0.8, max_resolution: int = 640):
+    """Capture any operator's output as a compressed image: a TOP natively,
+    every other family through a transient OP Viewer TOP.
+
+    Non-TOP captures return {'_defer': {'frames', 'continue'}} and finish on
+    a later frame (see _VIEWER_POLL_FRAMES); EnvoyExt._onRefresh drives the
+    continuation. continue(final=True) captures whatever is there now --
+    for tests and for callers that cannot wait.
+    """
+    target = resolve_op(ext, op_path)
+    if not target:
+        return {'error': f'Operator not found: {op_path}'}
+    if format not in ('jpeg', 'png'):
+        return {'error': f'Unsupported format: {format}. Use "jpeg" or "png".'}
+    if not (0.0 <= quality <= 1.0):
+        return {'error': f'Quality must be between 0.0 and 1.0, got {quality}'}
+
+    if target.family == 'TOP':
+        return _capture_pixels(target, op_path, format, quality, max_resolution)
+
+    viewer, err = _viewer_top_for(ext, target, max_resolution)
+    if err:
+        return err
+    state = {'viewer': viewer, 'waited': 0}
+    family, op_type = target.family, target.OPType
+
+    def _finish(final: bool = False):
+        v = state['viewer']
+        if v is None or not v.valid:
+            return {'error': f'The viewer for {op_path} was destroyed before it rendered'}
+        if (not final and state['waited'] < _VIEWER_MAX_WAIT_FRAMES
+                and not _viewer_has_content(v)):
+            state['waited'] += _VIEWER_POLL_FRAMES
+            return {'_defer': {'frames': _VIEWER_POLL_FRAMES, 'continue': _finish}}
+        try:
+            result = _capture_pixels(v, op_path, format, quality, max_resolution)
+            if isinstance(result, dict) and 'error' not in result:
+                result['captured_via'] = 'opviewerTOP'
+                result['family'] = family
+                result['op_type'] = op_type
+                result['viewer_frames_waited'] = state['waited']
+            return result
+        finally:
+            try:
+                v.destroy()
+            except Exception:
+                pass
+            state['viewer'] = None
+
+    return {'_defer': {'frames': _VIEWER_POLL_FRAMES, 'continue': _finish}}
+
+
+def _capture_pixels(target, op_path: str, format: str, quality: float,
+                    max_resolution: int) -> dict:
+    """The TOP pixel pipeline: cook, read back, verdict, encode."""
+    import base64
 
     try:
         import numpy as np
@@ -1290,8 +1530,8 @@ def _reduce_chop(target, channels=None, samples: int = 0) -> dict:
     return out
 
 
-def get_chop_data(ext, op_path: str, channels: str = None, samples: int = 0,
-                  compare_to: str = None) -> dict:
+def get_chop_data(ext, op_path: str, channels: Optional[str] = None, samples: int = 0,
+                  compare_to: Optional[str] = None) -> dict:
     """Reduce a CHOP to per-channel statistics, optionally diffed vs another.
 
     Args:
@@ -1340,7 +1580,7 @@ def get_chop_data(ext, op_path: str, channels: str = None, samples: int = 0,
         return {'error': f'Failed to read CHOP: {e}'}
 
 
-def get_pop_data(ext, op_path: str, attributes: str = None, samples: int = 0,
+def get_pop_data(ext, op_path: str, attributes: Optional[str] = None, samples: int = 0,
                  max_points: int = _POP_READBACK_POINTS) -> dict:
     """Read a POP: attribute metadata always, point values only on request.
 
@@ -1432,6 +1672,17 @@ def get_op_flags(ext, op_path: str) -> dict:
             'expose': target.expose,
             'selected': target.selected,
         }
+        # Flags TDXN round-trips must be readable here too, or an agent
+        # cannot see state the format persists (2026-09-04). cloneImmune /
+        # showCustomOnly / showDocked live on OP_Class; componentCloneImmune
+        # is COMP-only, so probe rather than assume.
+        for name in ('cloneImmune', 'showCustomOnly', 'showDocked',
+                     'componentCloneImmune'):
+            try:
+                if hasattr(target, name):
+                    result[name] = bool(getattr(target, name))
+            except Exception:
+                pass
         if target.isCOMP:
             result['allowCooking'] = target.allowCooking
         return result
@@ -1474,7 +1725,13 @@ def get_network_layout(ext, comp_path: str, include_annotations: bool = True) ->
         min_x = min_y = float('inf')
         max_x = max_y = float('-inf')
 
-        for child in parent_op.children:
+        # Embot's parts are annotateCOMPs but NOT utility-flagged (probed
+        # 2026-09-10: all nine template parts report utility False), so they
+        # arrive in plain `.children` and land in this operators list and its
+        # bounding box -- not only in the annotations block below.
+        children, hidden_bot = _hide_bot_parts(parent_op.children)
+
+        for child in children:
             entry = {
                 'path': child.path,
                 'type': child.OPType,
@@ -1503,6 +1760,8 @@ def get_network_layout(ext, comp_path: str, include_annotations: bool = True) ->
             'count': len(operators),
             'operators': operators,
         }
+        if hidden_bot:
+            result['embot_hidden'] = hidden_bot
 
         if operators:
             result['bounding_box'] = {
@@ -1516,7 +1775,12 @@ def get_network_layout(ext, comp_path: str, include_annotations: bool = True) ->
 
         if include_annotations:
             annotations = []
-            for child in parent_op.findChildren(type=annotateCOMP, includeUtility=True, depth=1):
+            found = parent_op.findChildren(type=annotateCOMP, includeUtility=True, depth=1)
+            # Same parts as the operators pass above found (both enumerate
+            # direct children), so they are filtered again but NOT counted
+            # again -- embot_hidden is a count of ops, not of mentions.
+            found = _hide_bot_parts(found)[0]
+            for child in found:
                 text = child.par.text.eval() if hasattr(child.par, 'text') else ''
                 text = '' if text is None else str(text)
                 if len(text) > 160:
@@ -1559,6 +1823,8 @@ def get_annotations(ext, parent_path: str) -> dict:
         if ann_class is None:
             annotations = [c for c in annotations if c.type == 'annotate']
 
+        annotations, hidden_bot = _hide_bot_parts(annotations)
+
         results = []
         for ann in annotations:
             info = {
@@ -1577,15 +1843,19 @@ def get_annotations(ext, parent_path: str) -> dict:
                     ann.par.Backcolorg.eval(),
                     ann.par.Backcolorb.eval(),
                 ],
-                'enclosed_ops': [o.path for o in ann.enclosedOPs],
+                'enclosed_ops': [o.path
+                                 for o in _hide_bot_parts(ann.enclosedOPs)[0]],
             }
             results.append(info)
 
-        return {
+        payload = {
             'parent': parent_path,
             'count': len(results),
             'annotations': results,
         }
+        if hidden_bot:
+            payload['embot_hidden'] = hidden_bot
+        return payload
     except Exception as e:
         return {'error': f'Failed to get annotations: {e}'}
 
@@ -1670,8 +1940,8 @@ def get_enclosed_ops(ext, op_path: str) -> dict:
 
     try:
         if target.type == 'annotate':
-            enclosed = target.enclosedOPs
-            return {
+            enclosed, hidden_bot = _hide_bot_parts(target.enclosedOPs)
+            result = {
                 'path': op_path,
                 'is_annotation': True,
                 'enclosed_ops': [
@@ -1681,8 +1951,11 @@ def get_enclosed_ops(ext, op_path: str) -> dict:
                 'count': len(enclosed),
             }
         else:
-            enclosing = target.enclosedBy
-            return {
+            # Both directions, so no enclosure report can name a part: a
+            # user annotation spanning the network encloses whatever Embot
+            # left standing inside it (issue #94).
+            enclosing, hidden_bot = _hide_bot_parts(target.enclosedBy)
+            result = {
                 'path': op_path,
                 'is_annotation': False,
                 'enclosing_annotations': [
@@ -1691,13 +1964,16 @@ def get_enclosed_ops(ext, op_path: str) -> dict:
                 ],
                 'count': len(enclosing),
             }
+        if hidden_bot:
+            result['embot_hidden'] = hidden_bot
+        return result
     except Exception as e:
         return {'error': f'Failed to get enclosure info: {e}'}
 
 
-def find_children(ext, op_path: str, name: str = None, type: str = None,
-                  depth: int = None, tags: list = None,
-                  text: str = None, comment: str = None,
+def find_children(ext, op_path: str, name: Optional[str] = None, type: Optional[str] = None,
+                  depth: Optional[int] = None, tags: Optional[list] = None,
+                  text: Optional[str] = None, comment: Optional[str] = None,
                   include_utility: bool = False) -> dict:
     """Search for operators using COMP.findChildren"""
     target = resolve_op(ext, op_path)
@@ -1734,6 +2010,11 @@ def find_children(ext, op_path: str, name: str = None, type: str = None,
         if type is not None and 'type' not in kwargs:
             children = [c for c in children if c.OPType == type or c.type == type]
 
+        if _asks_for_bot_parts(name):
+            hidden_bot = 0
+        else:
+            children, hidden_bot = _hide_bot_parts(children)
+
         results = []
         for child in children:
             results.append({
@@ -1742,11 +2023,14 @@ def find_children(ext, op_path: str, name: str = None, type: str = None,
                 'type': child.OPType,
                 'family': child.family,
             })
-        return {
+        payload = {
             'parent': op_path,
             'count': len(results),
             'operators': results
         }
+        if hidden_bot:
+            payload['embot_hidden'] = hidden_bot
+        return payload
     except Exception as e:
         return {'error': f'Failed to find children: {e}'}
 
@@ -1872,12 +2156,14 @@ def get_externalizations(ext) -> dict:
                 'absolute_path': abs_path,
                 'timestamp': table[row, 'timestamp'].val,
                 # Runtime-only since 2026-08-20; the tsv column is blank.
-                'dirty': op.Embody.ext.Embody.DirtyState(
+                'dirty': op.Embody.ext.Embody.dirtyState(
                     table[row, 'path'].val),
                 'build': table[row, 'build'].val,
-                # Hint so an agent seeing a dirty TDN row knows the tool
+                # Hint so an agent seeing a dirty TDXN row knows the tool
                 # that explains exactly what changed (live vs on-disk).
-                'recommended_tool': 'diff_tdn' if strategy == 'tdn' else None,
+                'recommended_tool': ('diff_tdxn'
+                                     if mod.TDXNExt.normalized_strategy(
+                                         strategy) == 'tdn' else None),
             })
 
         return {
@@ -1921,12 +2207,14 @@ def get_externalization_status(ext, op_path: str) -> dict:
                     'absolute_path': abs_path,
                     'timestamp': table[row, 'timestamp'].val,
                     # Runtime-only since 2026-08-20; tsv column is blank.
-                    'dirty': op.Embody.ext.Embody.DirtyState(op_path),
+                    'dirty': op.Embody.ext.Embody.dirtyState(op_path),
                     'build': table[row, 'build'].val,
                     'touch_build': table[row, 'touch_build'].val,
-                    # Hint so an agent seeing a dirty TDN row knows the
+                    # Hint so an agent seeing a dirty TDXN row knows the
                     # tool that explains what changed (live vs on-disk).
-                    'recommended_tool': 'diff_tdn' if strategy == 'tdn' else None,
+                    'recommended_tool': ('diff_tdxn'
+                                     if mod.TDXNExt.normalized_strategy(
+                                         strategy) == 'tdn' else None),
                 }
 
         return {
@@ -1937,21 +2225,29 @@ def get_externalization_status(ext, op_path: str) -> dict:
         return {'error': f'Failed to get status: {e}'}
 
 
-def export_network(ext, root_path='/', include_dat_content=True,
+def export_network(ext, root_path='/', include_dat_content=None,
                    output_file=None, max_depth=None, embed_all=False):
-    """Delegate to TDN extension for network export."""
-    if not getattr(ext.ownerComp.ext, 'TDN', None):
-        return {'error': 'TDN extension not loaded on Embody COMP'}
-    # Protect .tdn files belonging to other tracked TDN COMPs
-    protected = ext.ownerComp.ext.Embody._getAllTrackedTDNFiles(
+    """Delegate to TDXN extension for network export.
+
+    include_dat_content=None means "the Embeddatsintdxns toggle", the same
+    default the MCP tool documents (the handler used to say True).
+    interactive=False: a programmatic export must log the locked-content
+    warning, never raise a modal that pins the main thread until a click
+    (it did, for ~25 minutes, during the TDXN review of 2026-08-30).
+    """
+    if not getattr(ext.ownerComp.ext, 'TDXN', None):
+        return {'error': 'TDXN extension not loaded on Embody COMP'}
+    # Protect .tdn files belonging to other tracked TDXN COMPs
+    protected = ext.ownerComp.ext.Embody._getAllTrackedTDXNFiles(
         exclude_path=root_path) if output_file else None
-    result = ext.ownerComp.ext.TDN.ExportNetwork(
+    result = ext.ownerComp.ext.TDXN.ExportNetwork(
         root_path=root_path,
         include_dat_content=include_dat_content,
         output_file=output_file,
         max_depth=max_depth,
         cleanup_protected=protected,
         embed_all=embed_all,
+        interactive=False,
     )
     # Token-lean: when the .tdn was written to a file, don't echo the whole
     # document back -- return a compact summary and let the caller Read the
@@ -1970,17 +2266,17 @@ def export_network(ext, root_path='/', include_dat_content=True,
     return result
 
 
-def read_tdn(ext, comp_path='/', include_dat_content=None,
+def read_tdxn(ext, comp_path='/', include_dat_content=None,
              max_depth=None, embed_all=False):
-    """Read a network subtree as a TDN dict (in-memory, no disk write).
+    """Read a network subtree as a TDXN dict (in-memory, no disk write).
 
-    Thin delegate over TDN.ExportNetwork(output_file=None). Kept as a
+    Thin delegate over TDXN.ExportNetwork(output_file=None). Kept as a
     separate MCP tool so LLM-facing docs can emphasize the token-cost
     win vs get_op/query_network walks.
     """
-    if not getattr(ext.ownerComp.ext, 'TDN', None):
-        return {'error': 'TDN extension not loaded on Embody COMP'}
-    return ext.ownerComp.ext.TDN.ExportNetwork(
+    if not getattr(ext.ownerComp.ext, 'TDXN', None):
+        return {'error': 'TDXN extension not loaded on Embody COMP'}
+    return ext.ownerComp.ext.TDXN.ExportNetwork(
         root_path=comp_path,
         include_dat_content=include_dat_content,
         output_file=None,
@@ -1990,7 +2286,7 @@ def read_tdn(ext, comp_path='/', include_dat_content=None,
 
 
 def resolve_diff_target(ext, target):
-    """Resolve a diff_tdn target to a TDN COMP path.
+    """Resolve a diff_tdn target to a TDXN COMP path.
 
     Accepts either a COMP path directly, or a .tdn file reference (absolute
     path, repo-relative path, or bare filename like "tooltip.tdn"), which is
@@ -2031,36 +2327,38 @@ def resolve_diff_target(ext, target):
         return None, ('Ambiguous: %r matches multiple externalized files '
                       '(%s). Pass the COMP path instead.' % (target, comps))
     comp_path, strat = matches[0]
-    if strat != 'tdn':
+    # The cell reads 'tdxn'; comparing it raw rejected every TDXN COMP
+    # with "externalized as tdxn, not tdn".
+    if mod.TDXNExt.normalized_strategy(strat) != 'tdn':
         return None, ('%s is externalized as %s, not tdn -- diff_tdn only '
-                      'applies to TDN-strategy COMPs.' % (comp_path, strat))
+                      'applies to TDXN-strategy COMPs.' % (comp_path, strat))
     return comp_path, None
 
 
-def diff_tdn(ext, target='', max_changed_ops=200, max_bytes=60000):
-    """Show what is UNSAVED in TDN-externalized COMPs: live network(s) vs
+def diff_tdxn(ext, target='', max_changed_ops=200, max_bytes=60000):
+    """Show what is UNSAVED in TDXN-externalized COMPs: live network(s) vs
     the on-disk .tdn(s) -- the view git cannot provide.
 
     `target` empty (or '/', 'project', '.', '*') -> PROJECT-WIDE: every live
-    TDN COMP, summarized (which changed + counts). Otherwise `target` is a
+    TDXN COMP, summarized (which changed + counts). Otherwise `target` is a
     COMP path OR a .tdn file path/bare filename (resolved via the
     externalizations table) -> that one COMP in full detail.
 
-    For committed/history diffs use git (the .tdn git diff driver keeps
-    those clean). Thin delegate to TDN.DiffLiveVsDisk / DiffAllLiveVsDisk.
+    For committed/history diffs use git. Thin delegate to
+    TDXN.DiffLiveVsDisk / DiffAllLiveVsDisk.
     Read-only, non-interactive, pull-only.
     """
-    if not getattr(ext.ownerComp.ext, 'TDN', None):
-        return {'error': 'TDN extension not loaded on Embody COMP'}
+    if not getattr(ext.ownerComp.ext, 'TDXN', None):
+        return {'error': 'TDXN extension not loaded on Embody COMP'}
     # Empty / whole-project target -> project-wide summary. Per-COMP detail
     # uses DiffAllLiveVsDisk's own (smaller) caps; the handler's
     # max_changed_ops governs the single-COMP path below.
     if not target or str(target).strip() in ('', '/', 'project', '.', '*'):
-        return ext.ownerComp.ext.TDN.DiffAllLiveVsDisk(max_bytes=max_bytes)
+        return ext.ownerComp.ext.TDXN.DiffAllLiveVsDisk(max_bytes=max_bytes)
     comp_path, err = resolve_diff_target(ext, target)
     if err:
         return {'error': err}
-    return ext.ownerComp.ext.TDN.DiffLiveVsDisk(
+    return ext.ownerComp.ext.TDXN.DiffLiveVsDisk(
         comp_path=comp_path,
         max_changed_ops=max_changed_ops, max_bytes=max_bytes)
 
@@ -2089,3 +2387,106 @@ def get_logs(ext, level=None, count=50, since_id=None, source=None):
         'total_in_buffer': len(buffer),
         'latest_id': buffer[-1]['id'] if buffer else 0,
     }
+
+
+# --- operator type help --------------------------------------------------------
+
+_OP_SUFFIXES = ('TOP', 'CHOP', 'SOP', 'DAT', 'MAT', 'POP', 'COMP')
+
+
+def _describe_default(value):
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return str(value)
+
+
+def describe_op_type(ext, op_type: str, pattern: Optional[str] = None,
+                     page: Optional[str] = None,
+                     include_menus: bool = True) -> dict:
+    """Parameter names, labels, styles, defaults and menu values for an
+    operator TYPE, read off a throwaway instance in /sys/quiet (cooking
+    disabled, outside the project) and cached per type for the session.
+    The look-before-you-guess read: a wrong name guess costs a set_parameter
+    round trip and an error; this costs one call and answers every name."""
+    import td
+    import difflib
+    import fnmatch
+    name = (op_type or '').strip()
+    cls = getattr(td, name, None) if name and name[:1].islower() else None
+    if cls is None:
+        types = [n for n in dir(td)
+                 if n[:1].islower() and n.endswith(_OP_SUFFIXES)]
+        return {'error': f'Unknown operator type {op_type!r}',
+                'error_code': 'envoy.describe.unknown_type',
+                'did_you_mean': difflib.get_close_matches(name, types, n=5,
+                                                          cutoff=0.6),
+                'hint': 'Type names are the TD Python class names: noiseTOP, '
+                        'lfoCHOP, baseCOMP, gridPOP, textDAT, pbrMAT.'}
+    cache = ext.__dict__.setdefault('_optype_cache', {})
+    cached = name in cache
+    if not cached:
+        quiet = op('/sys/quiet')
+        if quiet is None:
+            return {'error': '/sys/quiet is not available in this build; '
+                             'create the operator and read get_op instead.'}
+        probe = None
+        try:
+            probe = quiet.create(cls, 'envoy_describe_tmp')
+            rows = []
+            for p in probe.pars():
+                # the creation VALUE is the authoritative default: Par.default
+                # lies for some menus (textDAT language declares 'input' but a
+                # fresh DAT reads 'text'); the declared one rides along only
+                # when it differs
+                try:
+                    creation = p.eval()
+                except Exception:
+                    creation = p.default
+                row = {'name': p.name, 'label': p.label, 'style': p.style,
+                       'page': p.page.name if p.page else None,
+                       'default': _describe_default(creation)}
+                if creation != p.default:
+                    row['declared_default'] = _describe_default(p.default)
+                if p.isMenu:
+                    row['menu'] = list(p.menuNames or [])
+                    labels = list(p.menuLabels or [])
+                    if labels and labels != row['menu']:
+                        row['menu_labels'] = labels
+                if p.sequence is not None:
+                    row['sequence'] = p.sequence.name
+                if p.readOnly:
+                    row['read_only'] = True
+                rows.append(row)
+            cache[name] = {'family': probe.family,
+                           'pages': [pg.name for pg in probe.pages],
+                           'parameters': rows}
+        except Exception as e:
+            return {'error': f'Could not instantiate {name}: {e}'}
+        finally:
+            if probe is not None:
+                try:
+                    probe.destroy()
+                except Exception:
+                    pass
+    entry = cache[name]
+    rows = entry['parameters']
+    if page:
+        want = page.lower()
+        rows = [r for r in rows if (r['page'] or '').lower() == want]
+    if pattern:
+        pat = pattern.lower()
+        if not any(ch in pat for ch in '*?['):
+            pat = f'*{pat}*'
+        rows = [r for r in rows
+                if fnmatch.fnmatchcase(r['name'].lower(), pat)
+                or fnmatch.fnmatchcase((r['label'] or '').lower(), pat)]
+    if not include_menus:
+        rows = [{k: v for k, v in r.items() if k not in ('menu', 'menu_labels')}
+                for r in rows]
+    out = {'op_type': name, 'family': entry['family'], 'pages': entry['pages'],
+           'count': len(rows), 'total': len(entry['parameters']),
+           'parameters': rows, 'cached': cached}
+    if (pattern or page) and not rows:
+        out['hint'] = ('No parameter matched -- the name guess is wrong, not '
+                       'the operator. Re-run without filters and match by label.')
+    return out

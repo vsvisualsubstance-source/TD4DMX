@@ -30,6 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from typing import Callable, Dict, Optional, Set, Tuple
 
 # signal.SIGKILL does not exist on Windows, so referencing it directly
 # makes the POSIX force-kill branch unreachable by a platform-injected
@@ -45,7 +46,7 @@ CONNECT_TIMEOUT_S = 60  # Max seconds to wait for Envoy during launch_td/restart
 INITIAL_PROBE_TIMEOUT_S = 3  # Quick probe on first tools/list -- reconciler handles recovery
 STDIN_POLL_INTERVAL_MS = 5000  # Watchdog poll timeout (ms) for stdin pipe closure
 WATCHDOG_MAX_FAILURES = 10     # Consecutive watchdog errors before giving up
-HEARTBEAT_STALE_S = 60  # Kill peer bridges with heartbeats older than this
+HEARTBEAT_STALE_S = 60  # Older heartbeats are stale-bridge cleanup candidates
 CRASH_LOOP_WINDOW_S = 300  # 5 minutes
 CRASH_LOOP_MAX = 3  # Max launches within the window
 
@@ -101,6 +102,16 @@ TOOL_CACHE_TTL_S = 5         # How long a cached tool list counts as fresh
 BACKEND_PING_TIMEOUT_S = 2   # Per-ping timeout
 FETCH_TOOLS_TIMEOUT_S = 3    # One-shot tools/list forward timeout
 
+# Frozen-TD visibility (issue #110). A save blocks TD's main thread 15-30s,
+# so silence reads as a freeze only past ENVOY_SILENT_AFTER_S. The stdin
+# loop's in-flight forward is abandoned once that flag has held another
+# 120s. An answer can still be owed then (a synchronous run_tests waits up
+# to 300s), but abandoning needs 180s of FAILED heartbeats, and those tests
+# run deferred, one per frame, so the heartbeats keep answering.
+ENVOY_SILENT_AFTER_S = 60
+FORWARD_ABANDON_AFTER_S = ENVOY_SILENT_AFTER_S + 120
+MAIN_TICK_ROUTE = "/envoy/main_tick"   # worker-served; EnvoyExt _MAIN_TICK_ROUTE
+
 
 # ---------------------------------------------------------------------------
 # Bridge meta-tools -- handled locally, work even when TD is down
@@ -112,7 +123,9 @@ BRIDGE_TOOLS = [
         "description": (
             "Check if TouchDesigner is running and Envoy is reachable. "
             "Returns connection state, crash detection, process liveness, "
-            "and project config. Works even when TD is down."
+            "and project config. Works even when TD is down. "
+            "envoy_unresponsive / main_thread_stalled flag a TouchDesigner "
+            "that is alive but frozen."
         ),
         "inputSchema": {
             "type": "object",
@@ -208,6 +221,79 @@ BRIDGE_TOOLS = [
                         "active_epoch). Default false: only this session "
                         "switches."
                     ),
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "list_dialogs",
+        "description": (
+            "List the modal dialogs a TouchDesigner instance currently shows "
+            "(ui.messageBox, missing-file and save-changes prompts, the license "
+            "box, file pickers). Runs on the bridge, so it works while TD's main "
+            "thread is blocked by the dialog and every Envoy tool is timing out. "
+            "TD draws its own dialogs, so their text is not readable through the "
+            "OS: pass screenshot=true to save a PNG of each one and Read it. "
+            "Returns blocked=true when a dialog is up."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "instance": {
+                    "type": "string",
+                    "description": (
+                        "Registered instance name (toe basename) to inspect. "
+                        "Omit for this session's pinned instance."
+                    ),
+                },
+                "screenshot": {
+                    "type": "boolean",
+                    "description": (
+                        "Save a PNG of each dialog window to the temp dir and "
+                        "return its path (Windows). Default false."
+                    ),
+                    "default": False,
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "dismiss_dialog",
+        "description": (
+            "Dismiss a modal dialog that is blocking a TouchDesigner instance, "
+            "then verify it is gone. Default action=auto runs the ladder close "
+            "(WM_CLOSE) -> escape -> enter until the window disappears; the "
+            "main TouchDesigner window is never a target. Use list_dialogs "
+            "(with screenshot=true) first so you know what you are dismissing: "
+            "close/escape decline a question, enter accepts its default."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "instance": {
+                    "type": "string",
+                    "description": (
+                        "Registered instance name (toe basename). Omit for "
+                        "this session's pinned instance."
+                    ),
+                },
+                "dialog": {
+                    "type": "string",
+                    "description": (
+                        "Which dialog: a title substring or the window id from "
+                        "list_dialogs. Omit to take the first listed dialog."
+                    ),
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["auto", "close", "escape", "enter"],
+                    "description": (
+                        "auto = close, then escape, then enter, stopping when "
+                        "the dialog is gone. A single rung tries only that."
+                    ),
+                    "default": "auto",
                 },
             },
             "required": [],
@@ -652,23 +738,29 @@ BRIDGE_TOOLS = [
     {
         "name": "convoy_forget_node",
         "description": (
-            "Advanced local recovery: delete a stale node row from THIS "
-            "machine's Convoy host app (the row a renamed, moved, or "
-            "deleted project left behind). Refuses while the node still "
-            "has a delivery that has not FINISHED, and names the "
-            "blocking delivery ids so they can be cancelled; a "
-            "finished result never holds a row, because results are "
-            "fetched by delivery id and outlive it. Local-only -- it "
-            "cannot forget a node on another machine's host. Dead and "
-            "long-unseen rows are also evicted automatically on the "
-            "host's retention sweep; this is the immediate manual path. "
+            "Delete a stale node row (the row a renamed, moved, or "
+            "deleted project left behind). Without host_id it acts on "
+            "THIS machine's Convoy host app; with host_id (the owning "
+            "host from convoy_list_nodes) the request is relayed to that "
+            "host over its live session and its rules decide. Refuses "
+            "while the node still has a delivery that has not FINISHED, "
+            "and names the blocking delivery ids so they can be "
+            "cancelled; a finished result never holds a row, because "
+            "results are fetched by delivery id and outlive it; an "
+            "online row is never forgotten. Rows unseen for a week are "
+            "evicted automatically; this is the immediate manual path. "
             "The Convoy page's Forget Offline Nodes... button is the "
-            "in-TD bulk equivalent, with an enumerating confirmation."
+            "in-TD bulk equivalent, fleet-wide, with an enumerating "
+            "confirmation."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "node_id": {"type": "string", "minLength": 1},
+                "host_id": {"type": "string", "minLength": 1,
+                            "description": "The host that owns the row "
+                                           "(from convoy_list_nodes). "
+                                           "Omit for a local row."},
             },
             "required": ["node_id"],
         },
@@ -676,6 +768,85 @@ BRIDGE_TOOLS = [
 ]
 
 BRIDGE_TOOL_NAMES = {t["name"] for t in BRIDGE_TOOLS}
+
+
+# --- Per-call instance addressing ------------------------------------------
+#
+# Every Envoy tool accepts an optional `instance` argument naming a
+# registered TouchDesigner instance (the .toe name that get_td_status and
+# switch_instance list). The bridge strips it and routes THAT ONE CALL to the
+# named instance's Envoy, leaving this session's pin untouched -- an agent
+# can inspect the show file while pinned to the dev one without a switch that
+# every later call inherits. A failure to reach the named instance is that
+# call's error alone and never flips the pinned connection's state. Idea
+# adopted from td-mcp-rs (a pid on every call; credited in README).
+INSTANCE_ARG = "instance"
+_INSTANCE_ARG_SCHEMA = {
+    "type": "string",
+    "description": (
+        "Route this one call to a named registered TouchDesigner instance "
+        "(the .toe name, as listed by get_td_status or switch_instance) "
+        "without changing this session's pinned instance. Omit to use the "
+        "pinned instance."
+    ),
+}
+
+
+def add_instance_argument(tools):
+    """Advertise the optional `instance` argument on every Envoy tool.
+
+    Bridge meta-tools (get_td_status, launch_td, switch_instance, the
+    convoy_* family) keep their own schemas: they route themselves.
+    Idempotent, tolerant of odd shapes, returns the same list.
+    """
+    for tool in tools or []:
+        if not isinstance(tool, dict) or tool.get("name") in BRIDGE_TOOL_NAMES:
+            continue
+        schema = tool.get("inputSchema")
+        if not isinstance(schema, dict):
+            schema = {"type": "object", "properties": {}}
+            tool["inputSchema"] = schema
+        props = schema.get("properties")
+        if not isinstance(props, dict):
+            props = {}
+            schema["properties"] = props
+        if INSTANCE_ARG not in props:
+            props[INSTANCE_ARG] = dict(_INSTANCE_ARG_SCHEMA)
+    return tools
+
+
+def resolve_instance_url(config, name):
+    """(url, None, available) for a registered instance, else
+    (None, reason, available). Registry only -- never a blind port guess
+    (issue #57 follow-up)."""
+    instances = (config or {}).get("instances") or {}
+    available = sorted(k for k in instances.keys() if isinstance(k, str))
+    info = instances.get(name) if isinstance(name, str) else None
+    if not isinstance(info, dict):
+        return None, "unknown", available
+    try:
+        port = int(info.get("port"))
+    except (TypeError, ValueError):
+        return None, "no_port", available
+    return f"http://127.0.0.1:{port}/mcp", None, available
+
+
+def instance_error_result(name, reason, detail, available=None):
+    """A tools/call error result for a per-call instance route that failed.
+    Carries error_code envoy.instance.<reason> like every Envoy envelope."""
+    payload = {
+        "ok": False,
+        "reason": "instance_" + reason,
+        "instance": name,
+        "detail": detail,
+        "error_code": "envoy.instance." + reason,
+    }
+    if available is not None:
+        payload["available"] = list(available)
+    return {
+        "content": [{"type": "text", "text": json.dumps(payload)}],
+        "isError": True,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -687,6 +858,84 @@ BRIDGE_TOOL_NAMES = {t["name"] for t in BRIDGE_TOOLS}
 # is critical for the stdio MCP transport -- exactly one JSON object per newline,
 # no concurrent partial writes.
 _stdout_lock = threading.Lock()
+
+
+class ForwardAbandoned(ConnectionError):
+    """The stdin loop stopped waiting on a forward to a frozen TouchDesigner
+    (issue #110). A ConnectionError, so the main loop's connection-lost
+    branch answers the client; silence_s is how long Envoy was quiet."""
+
+    def __init__(self, silence_s):
+        super().__init__(
+            f"abandoned after Envoy was silent for {silence_s:.0f}s")
+        self.silence_s = silence_s
+
+
+class InflightForward:
+    """The one forward the stdin loop is parked in, releasable by the
+    reconciler once TD looks frozen (issue #110). run() moves the forward to
+    a helper thread and waits on an Event that either the answer or
+    abandon() sets. An abandoned forward ends on its own (answer or its own
+    timeout) and its answer is dropped; a progress notification it streams
+    meanwhile still reaches stdout, for an id already answered (harmless).
+    No socket is touched from outside: shutdown() does not wake a blocked
+    recv on Windows (probed 2026-09-11).
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._url = None
+        self._wake = None
+        self._silence_s = None
+
+    def busy_on(self, url):
+        """True while a forward to `url` is in flight."""
+        with self._lock:
+            return self._wake is not None and self._url == url
+
+    def abandon(self, silence_s):
+        """Release the waiting stdin loop; False when nothing is in flight."""
+        with self._lock:
+            wake = self._wake
+            if wake is None:
+                return False
+            self._silence_s = silence_s
+            self._wake = None
+        wake.set()
+        return True
+
+    def run(self, url, forward):
+        """Return forward()'s answer, re-raise its error, or raise
+        ForwardAbandoned once abandon() releases the wait."""
+        box = {}
+        wake = threading.Event()
+
+        def work():
+            try:
+                box["answer"] = forward()
+            except BaseException as e:  # noqa: BLE001 -- re-raised below
+                box["error"] = e
+            finally:
+                box["done"] = True
+                wake.set()
+
+        with self._lock:
+            self._url, self._wake, self._silence_s = url, wake, None
+        try:
+            threading.Thread(target=work, daemon=True,
+                             name="envoy-forward").start()
+            while not wake.wait(0.5):   # timed waits stay interruptible
+                pass
+        finally:
+            with self._lock:
+                if self._wake is wake:
+                    self._url, self._wake = None, None
+                silence_s = self._silence_s
+        if not box.get("done"):
+            raise ForwardAbandoned(silence_s or 0.0)
+        if "error" in box:
+            raise box["error"]
+        return box.get("answer")
 
 
 class BridgeState:
@@ -736,6 +985,18 @@ class BridgeState:
         self.cached_tools_hash = None
         # Proactive PID discovery tracking (populated by reconciler phase 2)
         self.known_td_pids = set()
+        # Frozen-TD visibility (issue #110). main() arms main_tick_probe;
+        # unit fixtures leave it None and stay offline. The age is read on
+        # the heartbeat, and inflight is the forward the stdin loop is in.
+        self.main_tick_probe = None
+        self.main_tick_age_s = None
+        self.main_tick_read_at = None
+        self.inflight = InflightForward()
+        # The td_pid the heartbeat last saw alive, and when it CHANGED to
+        # it: floors Envoy's silence so a relaunched TD never inherits the
+        # old one's (see _silence_baseline).
+        self.silence_pid = None
+        self.silence_pid_seen_at = None
 
     def __enter__(self):
         self._lock.acquire()
@@ -1429,20 +1690,14 @@ def find_td_pid():
 def is_process_alive(pid, platform=None, kill=None):
     """Check if a process is still running.
 
-    platform is injectable (D-5): the existing win32 tests reach this
-    through `@patch('envoy_bridge.sys')`, a module-mock pattern that has
-    already failed once in a full-suite run (a mocked platform silently
-    failed to take and a REAL taskkill escaped to the host). New tests
-    pass platform= instead.
+    platform and kill are injectable (D-5); tests pass both, never an
+    `@patch('envoy_bridge.sys')` module mock (one silently failed to take
+    and a REAL taskkill escaped to the host). On a win32 host the POSIX
+    branch refuses to run without an injected kill.
     """
     if not pid or pid <= 0:
         return False
     platform = platform or sys.platform
-    # kill= exists so injecting platform='darwin' on a Windows host can
-    # never reach the REAL os.kill: on Windows os.kill(pid, 0) calls
-    # TerminateProcess and would kill the target (the documented
-    # TD-killing hazard). Tests inject both.
-    kill = kill or os.kill
     if platform == "win32":
         # os.kill(pid, 0) on Windows calls TerminateProcess() -- it KILLS the
         # process instead of checking liveness.  Use OpenProcess(SYNCHRONIZE)
@@ -1486,6 +1741,18 @@ def is_process_alive(pid, platform=None, kill=None):
                 kernel32.CloseHandle(handle)
         except Exception:
             return False
+    if kill is None:
+        if sys.platform == "win32" or os.name == "nt":
+            # HARD REFUSAL, not a fallback (mirrors convoy_platform
+            # .pid_is_alive): the POSIX branch on a win32 host would run
+            # os.kill(pid, 0), which reaches TerminateProcess and KILLS the
+            # pid it was asked to inspect. Tests inject kill. os.name too,
+            # so a test that mocks this module's sys cannot slip past it.
+            raise RuntimeError(
+                "refusing the POSIX liveness branch on a win32 host "
+                "without an injected kill: os.kill would TERMINATE the "
+                "target process, not probe it")
+        kill = os.kill
     # Unix: signal 0 is a no-op liveness check
     try:
         kill(pid, 0)
@@ -1563,7 +1830,7 @@ _CONVOY_ARTIFACT_TEMP_LOCK = threading.Lock()
 _CONVOY_ARTIFACT_TEMP_PATHS = set()
 
 
-def convoy_data_dir():
+def convoy_data_dir(platform: Optional[str] = None) -> Optional[str]:
     """Per-user Convoy state dir on THIS machine, or None.
 
     Joins with the TARGET platform's separator (ntpath on win32, posixpath
@@ -1571,17 +1838,19 @@ def convoy_data_dir():
     is the host, so this is just the right separator; the explicit choice
     also lets a foreign-platform test validate the real path SHAPE rather
     than silently getting host-flavored separators (the failure a macOS CI
-    run caught one layer down)."""
+    run caught one layer down). platform is injectable (D-5) so such a test
+    never mutates the process-global sys.platform."""
     import ntpath
     import posixpath
+    platform = platform or sys.platform
     try:
-        join = ntpath.join if sys.platform == "win32" else posixpath.join
+        join = ntpath.join if platform == "win32" else posixpath.join
         home = os.path.expanduser("~")
-        if sys.platform == "win32":
+        if platform == "win32":
             base = os.environ.get("LOCALAPPDATA") or join(
                 home, "AppData", "Local")
             return join(base, CONVOY_APP_DIR_WIN)
-        if sys.platform == "darwin":
+        if platform == "darwin":
             return join(home, "Library", "Application Support",
                         CONVOY_APP_DIR_WIN)
         base = os.environ.get("XDG_STATE_HOME") or join(
@@ -1649,7 +1918,12 @@ def probe_convoy_host():
     call: a probe fault must degrade to 'behave as if Convoy is absent'
     (direct Envoy), never crash the bridge or the tool call."""
     try:
-        data_dir = convoy_data_dir()
+        # EMBODY_CONVOY_DATA_DIR: an isolated data directory for tests
+        # and diagnostics (2026-09-21) -- honoured here, at the one
+        # probe, so the path-shape helper stays a pure function of the
+        # platform.
+        data_dir = (os.environ.get("EMBODY_CONVOY_DATA_DIR")
+                    or convoy_data_dir())
         result = {"data_dir": data_dir}
         raw = _read_convoy_portfile(data_dir) if data_dir else None
         if raw is None:
@@ -2849,7 +3123,8 @@ def handle_convoy_cancel_job(params):
 
 
 def handle_convoy_forget_node(params):
-    """Delete a stale node row on the LOCAL host app (plan 7.5 forget)."""
+    """Delete a stale node row: on the local host app, or -- with host_id
+    -- relayed to the host that owns the row (plan 7.5 forget)."""
     invalid = _convoy_required_text(params, ("node_id",))
     if invalid:
         return _convoy_invalid_arguments(invalid)
@@ -2858,7 +3133,17 @@ def handle_convoy_forget_node(params):
             or any(ord(char) < 32 or ord(char) == 127 for char in node_id)):
         return _convoy_invalid_arguments(
             "node_id must be bounded printable text")
-    result = convoy_host_call("POST", "/nodes/forget", {"node_id": node_id})
+    body = {"node_id": node_id}
+    host_id = params.get("host_id")
+    if host_id is not None:
+        if (not isinstance(host_id, str) or not host_id.strip()
+                or len(host_id) > 256
+                or any(ord(char) < 32 or ord(char) == 127
+                       for char in host_id)):
+            return _convoy_invalid_arguments(
+                "host_id must be bounded printable text when supplied")
+        body["host_id"] = host_id
+    result = convoy_host_call("POST", "/nodes/forget", body)
     result = dict(result) if isinstance(result, dict) else {
         "ok": False, "reason": "convoy_host_bad_response"}
     result["wakes_touchdesigner"] = False
@@ -3059,6 +3344,12 @@ def handle_convoy_update_embody(params):
             "timeout_s": params.get("timeout_s", 30),
             "idempotency_key": "update-embody-" + uuid.uuid4().hex,
         }
+        # A-22: update_embody may act on stale state, so the target host
+        # refuses it without the runtime it was aimed at (runtime_id_required,
+        # field 2026-09-22). The row names the runtime; carry it.
+        runtime_id = row.get("runtime_id")
+        if isinstance(runtime_id, str) and runtime_id.strip():
+            call["expected_runtime_id"] = runtime_id
         outcome = handle_convoy_call(call)
         outcome = (dict(outcome) if isinstance(outcome, dict)
                    else {"ok": False, "reason": "convoy_host_bad_response"})
@@ -3480,6 +3771,60 @@ def ping_envoy_port(port):
             return s.connect_ex(('127.0.0.1', int(port))) == 0
     except (OSError, ValueError):
         return False
+
+
+def _url_port(url):
+    """The port of an Envoy URL, or None."""
+    try:
+        return urllib.parse.urlsplit(url).port
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def _iso_utc(epoch_s):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch_s))
+
+
+def envoy_silence_s(last_contact, now, *, connected, pid_alive, port_open):
+    """Seconds Envoy has been silent while TouchDesigner's process lives and
+    its port still accepts, else None. The OS completes the TCP handshake
+    even while TD's main thread holds the GIL, so this triple tells a frozen
+    TD from a dropped socket (issue #110). Pure; now is injected."""
+    if connected or not pid_alive or not port_open or last_contact is None:
+        return None
+    return max(0.0, now - last_contact)
+
+
+def _silence_baseline(state):
+    """Epoch s Envoy's silence counts from: last_connected_time, floored at
+    when the heartbeat saw the tracked TD pid change, so a TD the user
+    relaunched never inherits the old one's silence (issue #110). None
+    when unknown, including a changed pid no heartbeat has seen yet.
+    Caller holds the state lock."""
+    last = state.last_connected_time
+    seen_pid = getattr(state, "silence_pid", None)
+    if last is None or seen_pid is None:
+        return last
+    if seen_pid != state.td_pid:
+        return None
+    return max(last, getattr(state, "silence_pid_seen_at", None) or last)
+
+
+def fetch_main_tick_age(url, timeout=BACKEND_PING_TIMEOUT_S):
+    """Seconds since TD's main thread last entered Envoy's request loop,
+    read from the worker-served MAIN_TICK_ROUTE; None when unknown (an
+    older Envoy, any error). issue #110"""
+    try:
+        parts = urllib.parse.urlsplit(url)
+        probe = f"{parts.scheme}://{parts.netloc}{MAIN_TICK_ROUTE}"
+        with urllib.request.urlopen(probe, timeout=timeout) as resp:
+            data = json.loads(resp.read(4096).decode("utf-8"))
+        age = data.get("main_tick_age_s") if isinstance(data, dict) else None
+        if isinstance(age, (int, float)) and not isinstance(age, bool):
+            return float(age)
+    except Exception:
+        pass
+    return None
 
 
 def get_instance_status(config):
@@ -3928,6 +4273,10 @@ def handle_get_td_status(state):
         launch_timestamps = list(state.launch_timestamps)
         connected = state.connected
         config_path = state.config_path
+        url = state.url
+        tick_age = getattr(state, "main_tick_age_s", None)
+        tick_read_at = getattr(state, "main_tick_read_at", None)
+        silence_from = _silence_baseline(state)
 
     # Refresh process liveness. The PORT answering is the strongest
     # identity signal (the instance registered it itself); a verified
@@ -3956,10 +4305,32 @@ def handle_get_td_status(state):
     with state:
         crash_detected = state.crash_detected
 
+    # Frozen TD (issue #110), from existing state: pid alive + port accepting
+    # + MCP silent, dated from the last contact (_silence_baseline). The port
+    # is probed only once the silence already passes the threshold.
+    now = time.time()
+    unresponsive = False
+    if (not connected and alive and silence_from is not None
+            and now - silence_from >= ENVOY_SILENT_AFTER_S):
+        silence = envoy_silence_s(
+            silence_from, now, connected=False, pid_alive=True,
+            port_open=ping_envoy_port(_url_port(url)))
+        unresponsive = silence is not None
+    # The GIL-released variant: the worker answers ping, but the main
+    # thread has not entered Envoy's request loop (read on the heartbeat).
+    stalled = bool(connected and tick_age is not None
+                   and tick_read_at is not None
+                   and tick_age >= ENVOY_SILENT_AFTER_S)
+
     status = {
         "connected": connected,
         "td_process_alive": alive,
         "crash_detected": crash_detected,
+        "envoy_unresponsive": unresponsive,
+        "unresponsive_since": _iso_utc(silence_from) if unresponsive else None,
+        "main_thread_stalled": stalled,
+        "stalled_since": (_iso_utc(tick_read_at - tick_age)
+                          if stalled else None),
         "last_connected": last_ts,
         "td_executable": config.get("td_executable", ""),
         "restart_attempts_remaining": max(0, remaining),
@@ -4346,6 +4717,427 @@ def handle_restart_td(params, state):
         }
 
 
+# ---------------------------------------------------------------------------
+# OS dialogs: list / dismiss the modals that block TouchDesigner
+# ---------------------------------------------------------------------------
+#
+# TouchDesigner's blocking dialogs (ui.messageBox, missing-file and
+# save-changes prompts, the license box) are TD-DRAWN: on Windows each is a
+# top-level window of the SAME class as the main window ("TouchDesigner
+# Window"), OWNED by the main window, with no Win32 button controls -- so a
+# button click cannot be synthesized and the text is not readable through
+# Win32. What does work (probed 2026-09-05 on 2025.33070): WM_CLOSE posted to
+# the owned window closes it. The ladder is close -> escape -> enter, each rung
+# verified by the window disappearing. Standard #32770 dialogs (file pickers,
+# crash boxes) fall under the same classifier: that class is a dialog even
+# when unowned. The main window is identified as the unowned non-#32770 window
+# and is never a target -- WM_CLOSE there is a quit prompt.
+#
+# Everything here runs on the bridge process, so it works while TD's main
+# thread is parked inside the dialog and every Envoy tool is timing out.
+# The backend is injectable (tests use a fake); the Win32 one is ctypes-only.
+# Idea adopted from td-mcp-rs's `dialogs` tool (credited in README).
+
+DIALOG_MAIN_CLASS = "TouchDesigner Window"
+DIALOG_STD_CLASS = "#32770"
+DIALOG_LADDER = ("close", "escape", "enter")
+DIALOG_SETTLE_S = 0.5          # wait after each rung before checking
+
+
+def classify_windows(windows):
+    """Split a pid's top-level windows into (dialogs, main_window).
+
+    A window is a dialog when it is OWNED by another window or is the
+    standard dialog class; the unowned window of any other class is the
+    main window. Invisible windows are ignored. Pure."""
+    dialogs, main = [], None
+    for w in windows or []:
+        if not isinstance(w, dict) or not w.get("visible", True):
+            continue
+        owned = bool(w.get("owner"))
+        if owned or w.get("class") == DIALOG_STD_CLASS:
+            dialogs.append(w)
+        elif main is None:
+            main = w
+    return dialogs, main
+
+
+def _dialog_result(pid, name, dialogs, main):
+    return {
+        "ok": True,
+        "instance": name,
+        "pid": pid,
+        "blocked": bool(dialogs),
+        "dialogs": [{k: d.get(k) for k in ("id", "title", "class", "enabled")}
+                    for d in dialogs],
+        "main_window": (main or {}).get("title"),
+    }
+
+
+def _dialog_error(code, detail, **extra):
+    out = {"ok": False, "error": detail, "error_code": "envoy.dialog." + code}
+    out.update(extra)
+    return out
+
+
+class _FakeDialogBackend:
+    """Test double: scripted windows, records dismiss actions."""
+
+    def __init__(self, windows=None, gone_after=None):
+        self.windows = list(windows or [])
+        self.actions = []
+        self.gone_after = gone_after  # action name after which the dialog is gone
+        self.shots = []
+
+    def enumerate(self, pid):
+        return [dict(w) for w in self.windows if w.get("pid", pid) == pid]
+
+    def dismiss(self, win_id, action):
+        self.actions.append((win_id, action))
+        if self.gone_after is not None and action == self.gone_after:
+            self.windows = [w for w in self.windows if w.get("id") != win_id]
+        return True
+
+    def gone(self, win_id):
+        return not any(w.get("id") == win_id for w in self.windows)
+
+    def screenshot(self, win_id, path):
+        self.shots.append((win_id, path))
+        with open(path, "wb") as f:
+            f.write(b"")
+        return True
+
+
+class _UnsupportedDialogBackend:
+    def enumerate(self, pid):
+        raise RuntimeError(f"dialog inspection is not supported on {sys.platform}")
+
+    def dismiss(self, win_id, action):
+        raise RuntimeError(f"dialog dismissal is not supported on {sys.platform}")
+
+    def gone(self, win_id):
+        return False
+
+    def screenshot(self, win_id, path):
+        return False
+
+
+def _png_encode(width, height, bgra_rows):
+    """Minimal PNG writer (RGBA, filter 0) so a dialog screenshot needs no
+    image library. bgra_rows: bytes per row, BGRA, top-down."""
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    raw = bytearray()
+    for row in bgra_rows:
+        raw.append(0)
+        for i in range(0, width * 4, 4):
+            b, g, r = row[i], row[i + 1], row[i + 2]
+            raw += bytes((r, g, b, 255))
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
+            + chunk(b"IDAT", zlib.compress(bytes(raw), 6)) + chunk(b"IEND", b""))
+
+
+class _Win32DialogBackend:
+    WM_CLOSE, WM_KEYDOWN, WM_KEYUP = 0x0010, 0x0100, 0x0101
+    VK_ESCAPE, VK_RETURN = 0x1B, 0x0D
+    GW_OWNER = 4
+    PW_RENDERFULLCONTENT = 0x00000002
+
+    def __init__(self):
+        import ctypes
+        import ctypes.wintypes as wt
+        self.c = ctypes
+        self.wt = wt
+        self.user32 = ctypes.windll.user32
+        self.gdi32 = ctypes.windll.gdi32
+        self._proc = ctypes.WINFUNCTYPE(ctypes.c_bool, wt.HWND, wt.LPARAM)
+
+    def _text(self, h):
+        n = self.user32.GetWindowTextLengthW(h) + 1
+        buf = self.c.create_unicode_buffer(n)
+        self.user32.GetWindowTextW(h, buf, n)
+        return buf.value
+
+    def _class(self, h):
+        buf = self.c.create_unicode_buffer(256)
+        self.user32.GetClassNameW(h, buf, 256)
+        return buf.value
+
+    def enumerate(self, pid):
+        wins = []
+
+        def cb(h, _):
+            owner_pid = self.wt.DWORD()
+            self.user32.GetWindowThreadProcessId(h, self.c.byref(owner_pid))
+            if int(owner_pid.value) == int(pid):
+                wins.append({
+                    "id": int(h),
+                    "title": self._text(h),
+                    "class": self._class(h),
+                    "owner": int(self.user32.GetWindow(h, self.GW_OWNER) or 0),
+                    "visible": bool(self.user32.IsWindowVisible(h)),
+                    "enabled": bool(self.user32.IsWindowEnabled(h)),
+                })
+            return True
+        self.user32.EnumWindows(self._proc(cb), 0)
+        return wins
+
+    def dismiss(self, win_id, action):
+        h = int(win_id)
+        if action == "close":
+            return bool(self.user32.PostMessageW(h, self.WM_CLOSE, 0, 0))
+        vk = self.VK_ESCAPE if action == "escape" else self.VK_RETURN
+        down = self.user32.PostMessageW(h, self.WM_KEYDOWN, vk, 0)
+        up = self.user32.PostMessageW(h, self.WM_KEYUP, vk, 0xC0000000)
+        return bool(down and up)
+
+    def gone(self, win_id):
+        h = int(win_id)
+        return not (self.user32.IsWindow(h) and self.user32.IsWindowVisible(h))
+
+    def screenshot(self, win_id, path):
+        c, h = self.c, int(win_id)
+        rect = self.wt.RECT()
+        if not self.user32.GetWindowRect(h, c.byref(rect)):
+            return False
+        w, hgt = rect.right - rect.left, rect.bottom - rect.top
+        if w <= 0 or hgt <= 0 or w * hgt > 40_000_000:
+            return False
+        hdc = self.user32.GetWindowDC(h)
+        mdc = self.gdi32.CreateCompatibleDC(hdc)
+        bmp = self.gdi32.CreateCompatibleBitmap(hdc, w, hgt)
+        try:
+            self.gdi32.SelectObject(mdc, bmp)
+            if not self.user32.PrintWindow(h, mdc, self.PW_RENDERFULLCONTENT):
+                return False
+
+            class BITMAPINFOHEADER(c.Structure):
+                _fields_ = [("biSize", c.c_uint32), ("biWidth", c.c_int32),
+                            ("biHeight", c.c_int32), ("biPlanes", c.c_uint16),
+                            ("biBitCount", c.c_uint16), ("biCompression", c.c_uint32),
+                            ("biSizeImage", c.c_uint32), ("biXPelsPerMeter", c.c_int32),
+                            ("biYPelsPerMeter", c.c_int32), ("biClrUsed", c.c_uint32),
+                            ("biClrImportant", c.c_uint32)]
+            bi = BITMAPINFOHEADER()
+            bi.biSize = c.sizeof(BITMAPINFOHEADER)
+            bi.biWidth, bi.biHeight = w, -hgt   # negative = top-down
+            bi.biPlanes, bi.biBitCount, bi.biCompression = 1, 32, 0
+            buf = (c.c_ubyte * (w * hgt * 4))()
+            got = self.gdi32.GetDIBits(mdc, bmp, 0, hgt, buf, c.byref(bi), 0)
+            if got != hgt:
+                return False
+            raw = bytes(buf)
+            rows = [raw[y * w * 4:(y + 1) * w * 4] for y in range(hgt)]
+            with open(path, "wb") as f:
+                f.write(_png_encode(w, hgt, rows))
+            return True
+        finally:
+            self.gdi32.DeleteObject(bmp)
+            self.gdi32.DeleteDC(mdc)
+            self.user32.ReleaseDC(h, hdc)
+
+
+class _DarwinDialogBackend:
+    """System Events via osascript. Needs Accessibility permission for the
+    terminal that runs the bridge. UNVERIFIED on a Mac (no Mac in the loop
+    on 2026-09-05); dialogs are windows whose subrole names a dialog or
+    sheet, dismissal is a keystroke to the process."""
+
+    def _osa(self, script, timeout=8):
+        import subprocess
+        out = subprocess.run(["osascript", "-e", script], capture_output=True,
+                             text=True, timeout=timeout)
+        if out.returncode != 0:
+            raise RuntimeError((out.stderr or out.stdout).strip()
+                               or "osascript failed")
+        return out.stdout.strip()
+
+    def enumerate(self, pid):
+        script = (
+            'tell application "System Events" to tell (first process whose unix id is %d) '
+            'to get {name, subrole} of every window' % int(pid))
+        raw = self._osa(script)
+        # Result shape: {{name1, name2, ...}, {subrole1, subrole2, ...}}
+        parts = [p.strip() for p in raw.strip("{}").split("}, {")]
+        names = [n.strip().strip('"') for n in parts[0].split(",")] if parts and parts[0] else []
+        subs = [n.strip().strip('"') for n in parts[1].split(",")] if len(parts) > 1 else []
+        wins = []
+        for i, name in enumerate(names):
+            sub = subs[i] if i < len(subs) else ""
+            dialog = "Dialog" in sub or "Sheet" in sub
+            wins.append({"id": i + 1, "title": name, "class": sub or "AXWindow",
+                         "owner": 1 if dialog else 0, "visible": True, "enabled": True})
+        return wins
+
+    def dismiss(self, win_id, action):
+        key = {"close": 'key code 53', "escape": 'key code 53', "enter": 'key code 36'}[action]
+        self._osa('tell application "System Events" to %s' % key)
+        return True
+
+    def gone(self, win_id):
+        return True  # re-listing is the check; keystrokes report nothing
+
+    def screenshot(self, win_id, path):
+        return False
+
+
+def dialog_backend():
+    """The platform backend, or the unsupported stub."""
+    if sys.platform.startswith("win"):
+        try:
+            return _Win32DialogBackend()
+        except Exception:
+            return _UnsupportedDialogBackend()
+    if sys.platform == "darwin":
+        return _DarwinDialogBackend()
+    return _UnsupportedDialogBackend()
+
+
+def _dialog_target(params, state):
+    """(pid, instance_name, error) for the instance a dialog tool addresses:
+    the `instance` param via the registry, else this session's pinned
+    instance and tracked pid."""
+    name = params.get("instance") if isinstance(params, dict) else None
+    with state:
+        config = state.config
+        config_path = state.config_path
+        pinned = state.pinned_instance or state.active_name
+        td_pid = state.td_pid
+    if name and name != pinned:
+        if not config:
+            config = load_config(config_path)
+        _port, pid, resolved = _resolve_from_registry(config, None, pin=name)
+        if resolved != name:
+            available = sorted((config or {}).get("instances", {}).keys())
+            return None, name, _dialog_error(
+                "unknown_instance",
+                f'Instance "{name}" is not in the registry; get_td_status lists '
+                "the registered instances.", available=available)
+        if not pid:
+            return None, name, _dialog_error(
+                "instance_not_running",
+                f'Instance "{name}" has no live TouchDesigner process.')
+        return int(pid), name, None
+    if not td_pid or not is_td_process_alive(td_pid):
+        return None, pinned, _dialog_error(
+            "no_process",
+            "No live TouchDesigner process is tracked for this session; "
+            "get_td_status shows what the bridge sees.")
+    return int(td_pid), pinned, None
+
+
+def handle_list_dialogs(params, state, backend=None):
+    """Handle the list_dialogs meta-tool."""
+    params = params or {}
+    pid, name, err = _dialog_target(params, state)
+    if err:
+        return err
+    backend = backend or dialog_backend()
+    try:
+        windows = backend.enumerate(pid)
+    except Exception as exc:
+        return _dialog_error("unsupported", str(exc), instance=name, pid=pid)
+    dialogs, main = classify_windows(windows)
+    result = _dialog_result(pid, name, dialogs, main)
+    if params.get("screenshot"):
+        for entry, win in zip(result["dialogs"], dialogs):
+            path = os.path.join(tempfile.gettempdir(),
+                                f"envoy_dialog_{pid}_{win.get('id')}.png")
+            try:
+                ok = backend.screenshot(win.get("id"), path)
+            except Exception:
+                ok = False
+            entry["screenshot"] = path if ok else None
+        if dialogs:
+            result["hint"] = ("Read each screenshot to see what the dialog says "
+                              "before choosing dismiss_dialog's action.")
+    return result
+
+
+def handle_dismiss_dialog(params, state, backend=None, sleep=time.sleep):
+    """Handle the dismiss_dialog meta-tool: pick the dialog, run the ladder,
+    verify it is gone."""
+    params = params or {}
+    pid, name, err = _dialog_target(params, state)
+    if err:
+        return err
+    backend = backend or dialog_backend()
+    try:
+        windows = backend.enumerate(pid)
+    except Exception as exc:
+        return _dialog_error("unsupported", str(exc), instance=name, pid=pid)
+    dialogs, main = classify_windows(windows)
+    want = params.get("dialog")
+    target = None
+    if want is not None and str(want).strip():
+        want_s = str(want).strip()
+        for d in dialogs:
+            if str(d.get("id")) == want_s or want_s.lower() in str(d.get("title", "")).lower():
+                target = d
+                break
+        if target is None:
+            if main and (str(main.get("id")) == want_s
+                         or want_s.lower() in str(main.get("title", "")).lower()):
+                return _dialog_error(
+                    "main_window_refused",
+                    "That is the main TouchDesigner window, not a dialog -- "
+                    "closing it would prompt a quit. Only dialogs are dismissed.",
+                    instance=name, pid=pid)
+            return _dialog_error(
+                "not_found", f'No dialog matches "{want_s}".', instance=name,
+                pid=pid, dialogs=_dialog_result(pid, name, dialogs, main)["dialogs"])
+    elif dialogs:
+        target = dialogs[0]
+    if target is None:
+        return _dialog_error("none", "No dialog is open on that instance.",
+                             instance=name, pid=pid, blocked=False)
+
+    action = str(params.get("action") or "auto").lower()
+    rungs = DIALOG_LADDER if action == "auto" else (action,)
+    if any(r not in DIALOG_LADDER for r in rungs):
+        return _dialog_error("bad_action",
+                             f'action must be one of auto, {", ".join(DIALOG_LADDER)}.')
+    tried = []
+    dismissed_by = None
+    for rung in rungs:
+        try:
+            backend.dismiss(target.get("id"), rung)
+        except Exception as exc:
+            return _dialog_error("unsupported", str(exc), instance=name, pid=pid)
+        tried.append(rung)
+        sleep(DIALOG_SETTLE_S)
+        if backend.gone(target.get("id")):
+            dismissed_by = rung
+            break
+    try:
+        remaining, _m = classify_windows(backend.enumerate(pid))
+    except Exception:
+        remaining = []
+    out = {
+        "ok": dismissed_by is not None,
+        "instance": name,
+        "pid": pid,
+        "dialog": {k: target.get(k) for k in ("id", "title", "class")},
+        "tried": tried,
+        "dismissed_by": dismissed_by,
+        "remaining": [{k: d.get(k) for k in ("id", "title")} for d in remaining],
+    }
+    if dismissed_by is None:
+        out["error"] = ("The dialog is still there after "
+                        f"{', '.join(tried)}. It may need a specific button "
+                        "TouchDesigner draws itself: list_dialogs with "
+                        "screenshot=true shows it, and a human click is the "
+                        "remaining option.")
+        out["error_code"] = "envoy.dialog.stuck"
+    return out
+
+
 def handle_bridge_tool(name, params, state):
     """Dispatch a bridge meta-tool call. Returns the tool result content."""
     if name == "get_td_status":
@@ -4356,6 +5148,10 @@ def handle_bridge_tool(name, params, state):
         result = handle_restart_td(params, state)
     elif name == "switch_instance":
         result = handle_switch_instance(params, state)
+    elif name == "list_dialogs":
+        result = handle_list_dialogs(params, state)
+    elif name == "dismiss_dialog":
+        result = handle_dismiss_dialog(params, state)
     elif name == "get_convoy_status":
         result = handle_convoy_status(params)
     elif name == "convoy_list_nodes":
@@ -4434,6 +5230,7 @@ def augment_tools_list(response):
             and "result" in response
             and "tools" in response["result"]):
         tools = response["result"]["tools"]
+        add_instance_argument(tools)
         existing = {
             tool.get("name") for tool in tools
             if isinstance(tool, dict)
@@ -5010,51 +5807,119 @@ def send_error(request_id, code, message):
     })
 
 
-def _get_parent_pid(pid):
-    """Return the parent PID of a given process, or None on failure."""
-    if sys.platform == "win32":
-        try:
-            ps_cmd = (
-                f'(Get-CimInstance Win32_Process -Filter '
-                f'"ProcessId = {pid}").ParentProcessId'
-            )
-            result = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", ps_cmd],
-                capture_output=True, text=True, timeout=5,
-            )
-            val = result.stdout.strip()
-            return int(val) if val.isdigit() else None
-        except (subprocess.TimeoutExpired, FileNotFoundError, ValueError, OSError):
-            return None
-    # Linux: /proc/<pid>/stat field 4 is ppid
+def _process_table(
+        platform: Optional[str] = None,
+        run: Optional[Callable[..., subprocess.CompletedProcess]] = None,
+) -> Dict[int, Tuple[int, str]]:
+    """{pid: (ppid, cmdline)} for every visible process, from ONE query.
+
+    One Win32_Process query for all of them (never a PowerShell call per
+    pid), or one `ps -A`. {} on any failure: stale-bridge cleanup reads an
+    unreadable table as "kill nothing". platform/run injectable (D-5).
+    ASCII-escaped JSON: PowerShell 5.1 writes a pipe in the OEM codepage (a
+    non-ASCII --config never matched), and [Console]::OutputEncoding would
+    switch the SHARED console's codepage for good (review 2026-09-11).
+    stdin=DEVNULL: this runs at startup, before the stdin reader, and must
+    never hold or read the MCP client's pipe (review 2026-09-11).
+    """
+    platform = platform or sys.platform
+    run = run or subprocess.run
+    table = {}
     try:
-        stat_path = f"/proc/{pid}/stat"
-        if os.path.exists(stat_path):
-            with open(stat_path, "r") as f:
-                fields = f.read().split()
-            return int(fields[3]) if len(fields) > 3 else None
-    except (OSError, ValueError, IndexError):
-        pass
-    # macOS: ps -p PID -o ppid=
-    try:
-        result = subprocess.run(
-            ["ps", "-ww", "-p", str(pid), "-o", "ppid="],
-            capture_output=True, text=True, timeout=5,
-        )
-        val = result.stdout.strip()
-        return int(val) if val else None
-    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError, OSError):
-        return None
+        if platform == "win32":
+            ps_cmd = (r"$j = Get-CimInstance Win32_Process | Select-Object "
+                      r"ProcessId, ParentProcessId, CommandLine | "
+                      r"ConvertTo-Json -Compress; "
+                      r"[regex]::Replace($j, '[^\x00-\x7f]', "
+                      r"{ param($m) '\u{0:x4}' -f [int][char]$m.Value })")
+            result = run(["powershell", "-NoProfile", "-Command", ps_cmd],
+                         capture_output=True, encoding="utf-8",
+                         errors="replace", timeout=10,
+                         stdin=subprocess.DEVNULL,
+                         creationflags=getattr(
+                             subprocess, "CREATE_NO_WINDOW", 0))
+            rows = json.loads((result.stdout or "").lstrip("\ufeff") or "[]")
+            for row in rows if isinstance(rows, list) else [rows]:
+                pid, ppid = row.get("ProcessId"), row.get("ParentProcessId")
+                cmdline = row.get("CommandLine")
+                if isinstance(pid, int):
+                    table[pid] = (ppid if isinstance(ppid, int) else 0,
+                                  cmdline if isinstance(cmdline, str) else "")
+        else:
+            result = run(["ps", "-ww", "-A", "-o", "pid=", "-o", "ppid=",
+                          "-o", "args="],
+                         capture_output=True, encoding="utf-8",
+                         errors="replace", timeout=10,
+                         stdin=subprocess.DEVNULL)
+            for line in result.stdout.splitlines():
+                parts = line.split(None, 2)
+                if (len(parts) >= 2 and parts[0].isdigit()
+                        and parts[1].isdigit()):
+                    table[int(parts[0])] = (
+                        int(parts[1]), parts[2] if len(parts) > 2 else "")
+    except (subprocess.TimeoutExpired, OSError, ValueError, TypeError,
+            AttributeError):
+        return {}
+    return table
 
 
-def _is_orphan(pid):
-    """Return True if the given bridge process is an orphan (parent dead)."""
-    ppid = _get_parent_pid(pid)
-    if ppid is None:
-        return True  # Can't determine -- assume orphan (safe to kill)
-    if ppid <= 1:
-        return True  # Reparented to init/launchd
-    return not is_process_alive(ppid)
+def _ancestor_pids(table: Dict[int, Tuple[int, str]],
+                   pid: Optional[int] = None) -> Set[int]:
+    """pid's ancestors (default: this process), walked through the table.
+
+    Cycle-safe: Windows recycles a dead parent's pid, so a chain can loop.
+    Over-inclusion only ever spares a process, never kills one.
+    """
+    own = pid is None
+    pid = os.getpid() if own else pid
+    ancestors = set()
+    cur = table.get(pid, (os.getppid() if own else 0, ""))[0]
+    while cur and cur > 0 and cur not in ancestors:
+        ancestors.add(cur)
+        cur = table.get(cur, (0, ""))[0]
+    if own:
+        ancestors.add(os.getppid())
+    return ancestors
+
+
+def _cmdline_targets_config(cmdline: str, config_path: Optional[str],
+                            platform: Optional[str] = None) -> bool:
+    """True when a command line passes EXACTLY this --config file.
+
+    Slash-folded, and case-folded on win32. The heartbeat dir is per
+    project, but pids recycle: a stale file can name ANOTHER project's
+    same-port bridge, and the config path is what ties a bridge to us.
+    """
+    if not cmdline or not config_path:
+        return False
+    fold = (platform or sys.platform) == "win32"
+
+    def norm(text: str) -> str:
+        text = text.replace(chr(0), " ").replace("\\", "/")
+        return text.lower() if fold else text
+
+    line = norm(cmdline)
+    for path in {norm(config_path), norm(os.path.abspath(config_path))}:
+        if re.search(r'--config\s+"?' + re.escape(path) + r'(?:"|\s|$)',
+                     line):
+            return True
+    return False
+
+
+def _cmdline_runs_python(cmdline: str) -> bool:
+    """True when a win32 command line's program token is a python.
+
+    win32 quotes a program path that has spaces, so the first token IS the
+    executable: the image filter the old Phase 2 query had. A shell or AI
+    CLI whose argv merely quotes a bridge command must never match. (POSIX
+    `ps` output is unquoted, so it cannot be split this way there.)
+    """
+    text = (cmdline or "").strip()
+    if text.startswith('"'):
+        exe = text[1:].split('"', 1)[0]
+    else:
+        exe = text.split(None, 1)[0] if text else ""
+    return re.split(r"[\\/]", exe)[-1].lower().startswith("python")
 
 
 def _cmdline_targets_port(cmdline, port):
@@ -5081,116 +5946,98 @@ def _cmdline_targets_port(cmdline, port):
     return False
 
 
-def kill_stale_bridges(port, config_path):
-    """Find and terminate stale envoy-bridge processes.
+def kill_stale_bridges(port, config_path, cli_port=None):
+    """Terminate stale envoy-bridge processes of THIS project and port.
 
-    Phase 1: Kill bridges with stale heartbeat files (>HEARTBEAT_STALE_S old).
-    This is the primary detection mechanism -- fast, reliable, no parent PID
-    assumptions.
-
-    Phase 2 (legacy fallback): For bridges that predate heartbeat files, fall
-    back to pgrep/tasklist + _is_orphan() parent-PID checking.
+    Phase 1: pids named by stale heartbeat files (>HEARTBEAT_STALE_S old).
+    Phase 2 (legacy): orphaned bridges (parent gone) that predate heartbeats.
+    A heartbeat is a NAME, not an identity: a stale one named TD's own pid
+    and killed TD (field 2026-08-29). Either phase kills only a live bridge
+    command line carrying this --config and --port `port` or `cli_port` (a
+    resolved instance's port can differ from the launch --port), run by
+    python on win32, and never a TD, this process or an ancestor. A refused
+    pid is never signalled; its stale heartbeat file goes only when the pid
+    is dead or a TD (a live bridge on another port keeps it). A relative
+    --config identifies no project: it only matches the same text.
+    No config_path, no kills: that scan reads the machine-wide temp dir,
+    which only tests and hand launches use (every generated client config
+    passes --config). Dead-pid heartbeat files are still pruned.
     """
-    my_pid = os.getpid()
-
-    # --- Phase 1: Heartbeat-based detection ---
     stale = _list_stale_heartbeats(config_path, HEARTBEAT_STALE_S)
-    for pid, age in stale:
-        if pid == my_pid:
+    if not config_path:
+        if stale:
+            log(f"Stale-bridge cleanup: no --config, so {len(stale)} stale "
+                f"heartbeat(s) in the shared temp dir cannot be tied to "
+                f"this project -- terminating nothing")
+        return
+    table = _process_table()
+    if not table:
+        # Logged even with no stale heartbeat: a locked-down host (e.g.
+        # PowerShell Constrained Language Mode) would otherwise disable the
+        # orphan phase silently (review 2026-09-11).
+        log("Stale-bridge cleanup skipped: process table unavailable")
+        return
+
+    ports = {p for p in (port, cli_port) if p is not None}
+    win = sys.platform == "win32"
+
+    def ours(pid: int) -> bool:
+        cmdline = table.get(pid, (0, ""))[1]
+        return (_is_bridge_process(pid, cmdline=cmdline)
+                and (not win or _cmdline_runs_python(cmdline))
+                and any(_cmdline_targets_port(cmdline, p) for p in ports)
+                and _cmdline_targets_config(cmdline, config_path))
+
+    named = {pid for pid, _age in stale}
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(config_path))), "dev", "logs")
+    candidates = [(pid, f"stale bridge (PID {pid}, heartbeat {age:.0f}s old)")
+                  for pid, age in stale]
+    candidates += [(pid, f"orphan bridge (PID {pid}, parent {ppid} dead)")
+                   for pid, (ppid, _cmd) in table.items()
+                   if pid not in named and (ppid <= 1 or ppid not in table)
+                   and ours(pid)]
+    if not candidates:
+        return
+    spared = {pid: "TouchDesigner" for pid in find_all_td_pids()}
+    spared.update((pid, "an ancestor of this bridge")
+                  for pid in _ancestor_pids(table))
+    spared[os.getpid()] = "this process"
+    refused = []
+    for pid, what in candidates:
+        reason = spared.get(pid)
+        if reason is None and pid not in table:
+            reason = "not running"
+        if reason is None and not ours(pid):
+            reason = "not this project's bridge on this port"
+        if reason:
+            refused.append(f"{pid} ({reason})")
+            if pid in named and reason in ("not running", "TouchDesigner"):
+                # A dead pid's file is litter, and one naming TD is the
+                # 2026-08-29 hazard itself. A live bridge on another port or
+                # of another project keeps its file, so get_sessions still
+                # lists it (review 2026-09-11). Project dir only.
+                try:
+                    os.remove(os.path.join(
+                        log_dir, f"envoy-bridge-{pid}.heartbeat"))
+                except OSError:
+                    pass
             continue
         try:
             if sys.platform == "win32":
                 subprocess.run(
                     ["taskkill", "/F", "/PID", str(pid)],
                     capture_output=True, timeout=5,
+                    stdin=subprocess.DEVNULL,
                 )
             else:
                 os.kill(pid, signal.SIGTERM)
-            log(f"Terminated stale bridge (PID {pid}, heartbeat {age:.0f}s old)")
+            log(f"Terminated {what}")
         except (ProcessLookupError, PermissionError, OSError,
                 subprocess.TimeoutExpired):
             pass
-
-    # --- Phase 2: Legacy fallback (pgrep/tasklist + orphan check) ---
-    if sys.platform == "win32":
-        try:
-            ps_cmd = (
-                f'Get-CimInstance Win32_Process -Filter '
-                f'"Name like \'%python%\'" | '
-                f'Where-Object {{ $_.CommandLine -match "envoy.bridge" -and '
-                # Anchor the port so cleaning 9870 cannot match a peer
-                # bridge on 19870/98700 -- the POSIX branch got this fix
-                # via _cmdline_targets_port; the two must agree.
-                f'$_.CommandLine -match "--port {port}(\\s|$)" -and '
-                f'$_.ProcessId -ne {my_pid} }} | '
-                f'Select-Object ProcessId, ParentProcessId | '
-                f'ForEach-Object {{ "$($_.ProcessId),$($_.ParentProcessId)" }}'
-            )
-            result = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", ps_cmd],
-                capture_output=True, text=True, timeout=10,
-            )
-            for line in result.stdout.strip().split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split(",")
-                if len(parts) < 2 or not parts[0].isdigit():
-                    continue
-                pid = int(parts[0])
-                ppid = int(parts[1]) if parts[1].isdigit() else 0
-                # Only kill if parent is dead (orphan)
-                if ppid > 1 and is_process_alive(ppid):
-                    continue
-                try:
-                    subprocess.run(
-                        ["taskkill", "/F", "/PID", str(pid)],
-                        capture_output=True, timeout=5,
-                    )
-                    log(f"Terminated orphan bridge (PID {pid}, parent {ppid} dead)")
-                except (subprocess.TimeoutExpired, OSError):
-                    pass
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-            pass
-        return
-    try:
-        result = subprocess.run(
-            ["pgrep", "-f", "envoy-bridge.py"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode != 0:
-            return
-        for line in result.stdout.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                pid = int(line)
-            except ValueError:
-                continue
-            if pid == my_pid:
-                continue
-            try:
-                cmdline_path = f"/proc/{pid}/cmdline"
-                if os.path.exists(cmdline_path):
-                    with open(cmdline_path, "r") as f:
-                        cmdline = f.read()
-                else:
-                    ps = subprocess.run(
-                        ["ps", "-ww", "-p", str(pid), "-o", "args="],
-                        capture_output=True, text=True, timeout=5,
-                    )
-                    cmdline = ps.stdout.strip()
-                if _cmdline_targets_port(cmdline, port):
-                    if _is_orphan(pid):
-                        os.kill(pid, signal.SIGTERM)
-                        log(f"Terminated orphan bridge (PID {pid})")
-                    else:
-                        log(f"Skipping active peer bridge (PID {pid}, parent alive)")
-            except (ProcessLookupError, PermissionError, OSError):
-                pass
-    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
-        pass
+    if refused:
+        log("Stale-bridge cleanup spared: " + ", ".join(refused))
 
 
 def start_orphan_watchdog(stdin_probe_fd, config_path):
@@ -5310,8 +6157,42 @@ def wait_for_envoy(url, deadline):
 # Connection loss error messages
 # ---------------------------------------------------------------------------
 
-def connection_lost_message(state):
-    """Generate an actionable error message when the connection to Envoy is lost."""
+def _frozen_td_note(state, error=None):
+    """Suffix naming a frozen TouchDesigner (issue #110), or '' unless Envoy
+    has been silent ENVOY_SILENT_AFTER_S while its port still accepts. The
+    caller has already found the TD process alive."""
+    with state:
+        last = state.last_connected_time
+        silence_from = _silence_baseline(state)
+        url = state.url
+    abandoned = isinstance(error, ForwardAbandoned)
+    if abandoned:
+        silence = error.silence_s
+    else:
+        now = time.time()
+        if silence_from is None or now - silence_from < ENVOY_SILENT_AFTER_S:
+            return ""
+        silence = envoy_silence_s(
+            silence_from, now, connected=False, pid_alive=True,
+            port_open=ping_envoy_port(_url_port(url)))
+        if silence is None:
+            return ""
+    since = f" (last answer {_iso_utc(last)})" if last is not None else ""
+    note = (f" Envoy has been silent for {silence:.0f}s{since} while its "
+            f"port still accepts connections: TouchDesigner's main thread "
+            f"looks frozen, or stuck in one very long call.")
+    if abandoned:
+        note += (" This call was abandoned; it may still complete inside "
+                 "TouchDesigner if TD recovers.")
+    return note + (" Call list_dialogs first; never kill TouchDesigner "
+                   "without the user (unsaved work would be lost).")
+
+
+def connection_lost_message(state, error=None):
+    """Generate an actionable error message when the connection to Envoy is lost.
+
+    `error` is the forward's exception; a ForwardAbandoned (issue #110)
+    says the call was released from a frozen TouchDesigner."""
     with state:
         pid = state.td_pid
     # Image-verified, like reconcile() and every other TD-pid site: the raw
@@ -5329,6 +6210,7 @@ def connection_lost_message(state):
         return (
             f"TouchDesigner is not responding but the process is still "
             f"running (PID {pid}). It may be frozen or handling a long operation."
+            + _frozen_td_note(state, error)
         )
     else:
         return (
@@ -5401,6 +6283,32 @@ def ping_backend_mcp(url, timeout=BACKEND_PING_TIMEOUT_S):
     except Exception:
         return False
     return isinstance(resp, dict) and ("result" in resp or "error" in resp)
+
+
+def _abandon_frozen_forward(state, url, *, is_up, pid_alive, td_pid,
+                            now=None):
+    """Release the stdin loop from a forward pinned on a frozen TD (issue
+    #110): the heartbeat failed, TD lives, Envoy has been silent
+    FORWARD_ABANDON_AFTER_S and its port still accepts. Otherwise that
+    session waits REQUEST_TIMEOUT_S. True when a forward was abandoned."""
+    if is_up or not pid_alive or not url:
+        return False
+    with state:
+        inflight = getattr(state, "inflight", None)
+        last = _silence_baseline(state)
+    if inflight is None or last is None or not inflight.busy_on(url):
+        return False
+    now = time.time() if now is None else now
+    if now - last < FORWARD_ABANDON_AFTER_S:
+        return False
+    silence = envoy_silence_s(last, now, connected=False, pid_alive=True,
+                              port_open=ping_envoy_port(_url_port(url)))
+    if silence is None or not inflight.abandon(silence):
+        return False
+    log(f"Abandoned the in-flight forward: Envoy at {url} silent "
+        f"{silence:.0f}s while TouchDesigner (PID {td_pid}) lives and its "
+        f"port accepts -- TD looks frozen")
+    return True
 
 
 def reconcile(state, on_tools_change, *, heartbeat):
@@ -5512,8 +6420,8 @@ def reconcile(state, on_tools_change, *, heartbeat):
             state.cached_tools_hash = None
             url_switched = True
 
-    # --- PHASE 2: Heartbeat (every N config ticks per the dynamic cadence
-    # in _current_heartbeat_interval_s, or right after a URL switch so the
+    # --- PHASE 2: Heartbeat (every HEARTBEAT_TICK_S, fixed -- see
+    # _current_heartbeat_interval_s -- or right after a URL switch so the
     # new backend gets probed immediately) ---
     if not heartbeat and not url_switched:
         return
@@ -5530,6 +6438,11 @@ def reconcile(state, on_tools_change, *, heartbeat):
     # 1289, 1500-1501, 2319): a raw is_process_alive can false-match an
     # OS-RECYCLED pid and suppress genuine crash detection.
     pid_alive = is_td_process_alive(td_pid) if td_pid else False
+    # Main-thread tick age (issue #110): the worker can answer ping while
+    # TD's main thread is stuck with the GIL released. Probe armed by main().
+    with state:
+        tick_probe = getattr(state, "main_tick_probe", None)
+    tick_age = tick_probe(url) if (is_up and callable(tick_probe)) else None
 
     became_connected = (not was_connected) and is_up
     became_disconnected = was_connected and not is_up
@@ -5564,6 +6477,14 @@ def reconcile(state, on_tools_change, *, heartbeat):
 
     with state:
         state.connected = is_up
+        state.main_tick_age_s = tick_age
+        state.main_tick_read_at = time.time() if tick_age is not None else None
+        if td_pid and pid_alive and state.silence_pid != td_pid:
+            # A CHANGED pid (TD relaunched) floors the silence at now; the
+            # first sighting has nothing to floor (see _silence_baseline).
+            state.silence_pid_seen_at = (
+                time.time() if state.silence_pid is not None else None)
+            state.silence_pid = td_pid
         if is_up:
             state.last_heartbeat_ok = time.time()
             state.last_connected_time = time.time()
@@ -5591,6 +6512,9 @@ def reconcile(state, on_tools_change, *, heartbeat):
         # already ran for the attributable cases, so this cannot undo it.
         if td_pid and not pid_alive and not recovered_pid:
             state.crash_detected = True
+
+    _abandon_frozen_forward(state, url, is_up=is_up, pid_alive=pid_alive,
+                            td_pid=td_pid)
 
     # Log on TRANSITIONS only. An unconditional log here would fire every
     # heartbeat tick for as long as the condition holds -- the same
@@ -5630,7 +6554,7 @@ def reconcile(state, on_tools_change, *, heartbeat):
         # If identical, this is a silent switch -- no notification.
         new_tools = fetch_tools_list(url)
         if new_tools is not None:
-            augmented = list(new_tools) + list(BRIDGE_TOOLS)
+            augmented = add_instance_argument(list(new_tools)) + list(BRIDGE_TOOLS)
             new_hash = _hash_tools(augmented)
             with state:
                 old_hash = state.cached_tools_hash
@@ -5708,6 +6632,22 @@ def start_reconciler(state, on_tools_change):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
+def _describe_target(state, url):
+    """'instance moonshine.3, url http://127.0.0.1:9872, project
+    C:/.../moonshine.3.toe' -- the connected line named only a port, and
+    a session attached to the wrong project (field 2026-09-21)."""
+    try:
+        name = state.active_name
+        cfg = load_config(state.config_path)
+        toe = (cfg.get("instances", {}).get(name) or {}).get("toe_path", "")
+    except Exception:
+        name, toe = None, ""
+    parts = ["instance %s" % (name or "(unpinned)"), "url %s" % (url,)]
+    if toe:
+        parts.append("project %s" % (toe,))
+    return ", ".join(parts)
+
 
 def _resolve_from_registry(config, fallback_port, pin=None):
     """Resolve port and PID from the instance registry.
@@ -5828,6 +6768,7 @@ def main():
     )
     with state:
         state.config_mtime = initial_mtime
+        state.main_tick_probe = fetch_main_tick_age   # issue #110
 
     my_pid = os.getpid()
     ppid = os.getppid()
@@ -5871,7 +6812,7 @@ def main():
     _install_signal_diagnostics()
 
     # Clean up stale bridge processes from previous Claude Code sessions
-    kill_stale_bridges(port, config_path)
+    kill_stale_bridges(port, config_path, cli_port=cli_port)
 
     # Self-terminate when MCP client closes stdin pipe (session ended)
     start_orphan_watchdog(stdin_probe_fd, config_path)
@@ -5892,8 +6833,7 @@ def main():
     set_tools_cache_invalidator(drop_cached_tools)
 
     # Start the reconciler thread -- polls envoy.json every second,
-    # pings the backend on a dynamic cadence (fast while unstable,
-    # slow once the link has been stable for STABILITY_THRESHOLD_S),
+    # pings the backend every HEARTBEAT_TICK_S (fixed cadence),
     # switches URL on any active-instance drift.  This is the core v2
     # fix for the open-a-new-TD-instance-mid-session failure mode.
     start_reconciler(
@@ -5935,6 +6875,53 @@ def main():
                     "result": {"content": content},
                 })
             continue
+
+        # --- Per-call instance addressing ---
+        # `instance` names a registered TD instance for THIS call only. It
+        # is always stripped: Envoy declares no such parameter. Naming the
+        # pinned instance, or nothing, falls through to the normal path.
+        if method == "tools/call":
+            tool_args = params.get("arguments")
+            if isinstance(tool_args, dict) and INSTANCE_ARG in tool_args:
+                target_name = tool_args.pop(INSTANCE_ARG)
+                with state:
+                    routed_config = state.config
+                    routed_cfg_path = state.config_path
+                    own_names = {state.pinned_instance, state.active_name}
+                if target_name and target_name not in own_names:
+                    if not routed_config:
+                        routed_config = load_config(routed_cfg_path)
+                    target_url, reason, available = resolve_instance_url(
+                        routed_config, target_name)
+                    routed = None
+                    if target_url is None:
+                        routed = instance_error_result(
+                            target_name, reason,
+                            f'Instance "{target_name}" is not in the registry; '
+                            "get_td_status lists the registered instances.",
+                            available)
+                    else:
+                        log(f"Routing {params.get('name')} to instance "
+                            f"'{target_name}' for this call")
+                        try:
+                            routed = forward_to_http(target_url, message)
+                        except Exception as exc:
+                            # This call's failure only: the pinned
+                            # connection's state is untouched.
+                            routed = instance_error_result(
+                                target_name, "unreachable",
+                                f'Instance "{target_name}" at {target_url} did '
+                                f"not answer ({type(exc).__name__}: {exc}). Is "
+                                "that TouchDesigner running with Envoy enabled?")
+                            log(f"Per-call route to '{target_name}' failed: "
+                                f"{type(exc).__name__}: {exc}")
+                    if not is_notification:
+                        if isinstance(routed, dict) and "jsonrpc" in routed:
+                            send_response(routed)
+                        else:
+                            send_response({"jsonrpc": "2.0", "id": request_id,
+                                           "result": routed})
+                    continue
 
         # --- Explicit session-wide Convoy selection ---
         # A selected remote/sibling node owns every ordinary tool call until
@@ -6036,7 +7023,8 @@ def main():
                             _p, _rpid, _a = _resolve_from_registry(_cfg, None)
                             state.td_pid = _rpid
                     is_connected = True
-                    log("Connected to Envoy (during tools/list)")
+                    log("Connected to Envoy (during tools/list): "
+                        + _describe_target(state, current_url))
                     # Fall through to the forwarding path below
                 else:
                     log("Envoy not reachable within quick probe -- "
@@ -6097,9 +7085,13 @@ def main():
             # Fall through to the forward path -- no blocking wait.
 
         # --- Forward to TD (single attempt -- reconciler handles recovery) ---
+        # Through state.inflight so the reconciler can release this loop
+        # from a forward pinned on a frozen TD (issue #110).
         response = None
         try:
-            response = forward_to_http(current_url, message)
+            response = state.inflight.run(
+                current_url,
+                lambda url=current_url, msg=message: forward_to_http(url, msg))
             with state:
                 state.last_connected_time = time.time()
         except urllib.error.HTTPError as e:
@@ -6128,7 +7120,7 @@ def main():
         except (urllib.error.URLError, ConnectionError, OSError) as e:
             with state:
                 state.connected = False
-            msg = connection_lost_message(state)
+            msg = connection_lost_message(state, e)
             log(f"Lost connection to Envoy: {e}")
             if not is_notification:
                 send_error(request_id, -32000, msg)

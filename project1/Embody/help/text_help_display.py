@@ -1,10 +1,10 @@
 '''
-Embody v6.0.105
+Embody v6.1.13
 ===============
 
 Embody keeps TouchDesigner projects in version control. It
 externalizes your tagged COMPs and DATs to diffable files on
-disk (.tox, .tdn, .py, ...), so a binary .toe stops being the
+disk (.tox, .tdxn, .py, ...), so a binary .toe stops being the
 thing you have to trust -- the files are.
 
 Bundled with Embody is Envoy, an embedded MCP server that lets
@@ -15,9 +15,9 @@ manage your externalizations -- all over a local connection.
 The core loop
 -------------
 1. Tag an operator for externalization -- hover it and press
-   left-control twice (lctrl-lctrl).
-2. Update -- press ctrl-shift-u. Embody walks your project and
-   writes every tagged operator to disk.
+   lctrl twice (lctrl-lctrl).
+2. Update -- press Ctrl+Shift+U. Embody walks your
+   project and writes every tagged operator to disk.
 3. Work as normal. The externalized files on disk are the
    source of truth; the .toe is just a container. Everything
    tagged is recoverable from the files, even without saving.
@@ -36,17 +36,20 @@ Getting around
 --------------
 - lctrl-lctrl   Tag the operator under the cursor (or, if it
                 is already tagged, open its Actions menu).
-- ctrl-shift-o  Open the Manager -- a live list of every
-                externalized operator, its dirty state, and
-                its files. Click to navigate, reveal, refresh.
-- ctrl-shift-u  Update all externalizations.
-- ctrl-alt-u    Update only the COMP you are currently inside.
-- ctrl-shift-e  Export the whole project to .tdn.
-- ctrl-alt-e    Export just the current network to .tdn.
+- Ctrl+Shift+O  Open the Manager (live externalizations list).
+- Ctrl+Shift+U  Update all externalizations.
+- Ctrl+Alt+U    Update only the COMP you are currently inside.
+- Ctrl+Shift+R  Refresh tracking state.
+- Ctrl+Shift+E  Export the whole project to .tdxn.
+- Ctrl+Alt+E    Export just the current network to .tdxn.
+- Ctrl+Shift+C  Copy the selected COMP as portable TDXN.
+Every shortcut is editable on the Embody COMP's Shortcuts
+parameter page -- type a combo, or pulse Record and press
+the keys. Leave a binding empty to disable it.
 
 This panel is a quick orientation, not the manual. For the
 full reference -- supported formats, folder configuration,
-duplicate handling, the Manager UI, the TDN format, every
+duplicate handling, the Manager UI, the TDXN format, every
 Envoy tool, and troubleshooting -- see the docs:
 
   https://embody.tools

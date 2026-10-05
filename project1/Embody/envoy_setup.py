@@ -4,10 +4,11 @@ Module DAT (mod.envoy_setup) called by EnvoyExt on the MAIN THREAD only
 (the ext-diet WP5 cluster). Holds the config-file / git / instance-registry
 setup implementations: MCP client config (.mcp.json + STDIO bridge),
 settings.local.json tool-permission deployment, git root discovery + repo
-init, .gitignore / .gitattributes / .tdn-diff-driver configuration, the
-.embody/envoy.json instance registry (write / refresh / deregister, the
-post-save basename walk), PID liveness, atomic JSON writes, and temp-file
-cleanup. EnvoyExt keeps a thin delegating stub for each -- these functions
+init, .gitignore / .gitattributes configuration (and retirement of the
+old .tdxn diff driver), the .embody/envoy.json instance registry (write /
+refresh / deregister, the post-save basename walk), PID liveness, atomic
+JSON writes, and temp-file cleanup. EnvoyExt keeps a thin delegating stub
+for each -- these functions
 carry the real bodies.
 
 MAIN-THREAD ONLY: every function here reads/writes TD objects (ownerComp
@@ -137,10 +138,7 @@ def configure_mcp_client(ext, port, target_dir=None):
         else:
             venv_python = project_dir / '.venv' / 'bin' / 'python3'
 
-        # Windows: keep the probe's console window from flashing over
-        # TD's GUI (subprocess of a GUI process opens a console briefly).
-        _probe_flags = (subprocess.CREATE_NO_WINDOW
-                        if sys.platform == 'win32' else 0)
+        system_python = 'python' if sys.platform == 'win32' else 'python3'
 
         if (venv_python.is_file()
                 and getattr(ext, '_venv_probe_ok', '') == str(venv_python)):
@@ -155,79 +153,34 @@ def configure_mcp_client(ext, port, target_dir=None):
             # interpreter, not the venv python binary itself.
             python_cmd = str(venv_python).replace('\\', '/')
         elif venv_python.is_file():
-            # Verify the venv Python actually executes -- catches stale
-            # pyvenv.cfg pointing to an uninstalled TD version, or
-            # code-signing mismatches after macOS TD upgrades.
-            # stdin=DEVNULL: without it, subprocess.run inside TD on
-            # Windows raises [WinError 50] (DuplicateHandle on TD's
-            # non-duplicatable GUI stdin handle) -- which then triggers
-            # the rmtree path below and destroys a healthy venv.
-            try:
-                subprocess.run(
-                    [str(venv_python), '-c',
-                     'import sys; print(sys.version)'],
-                    capture_output=True, timeout=5, check=True,
-                    stdin=subprocess.DEVNULL, creationflags=_probe_flags)
+            # Verify the venv Python actually executes (stale pyvenv.cfg
+            # home after a TD reinstall, macOS code-signing). The server is
+            # already running from this venv's packages, so a failure never
+            # deletes it: 'broken' repairs the interpreter layer in place on
+            # a worker (EnvoyExt._beginAsyncVenvRepair); slow or refused
+            # probes just fall back and re-probe on the next start.
+            verdict, detail = mod.embody_pyenv.probe_venv_python(venv_python)
+            if verdict == 'ok':
                 python_cmd = str(venv_python).replace('\\', '/')
                 ext._venv_probe_ok = str(venv_python)
-            except subprocess.TimeoutExpired:
-                # Slow is not corrupt: a cold disk or AV scan can stall a
-                # healthy interpreter past the timeout. Never rmtree a
-                # venv for being slow -- fall back to system Python for
-                # this config write and let a later Start() re-probe.
+            elif verdict == 'broken':
+                python_cmd = system_python
                 ext._log(
-                    'Venv Python probe timed out; using system Python '
-                    'for now (will re-probe on next start)', 'WARNING')
-                python_cmd = ('python' if sys.platform == 'win32'
-                              else 'python3')
-            except (subprocess.CalledProcessError, OSError) as e:
-                if not ext._venv_recreated:
-                    ext._venv_recreated = True
-                    ext._log(
-                        f'Venv corrupted ({type(e).__name__}: {e}), '
-                        f'recreating...', 'WARNING')
-                    import shutil
-                    shutil.rmtree(str(project_dir / '.venv'),
-                                  ignore_errors=True)
-                    op.Embody.ext.Embody._setupEnvironment()
-                    # Re-check after recreation
-                    if venv_python.is_file():
-                        try:
-                            subprocess.run(
-                                [str(venv_python), '-c',
-                                 'import sys; print(sys.version)'],
-                                capture_output=True, timeout=5,
-                                check=True,
-                                stdin=subprocess.DEVNULL,
-                                creationflags=_probe_flags)
-                            python_cmd = str(venv_python).replace(
-                                '\\', '/')
-                            ext._venv_probe_ok = str(venv_python)
-                            ext._log('Venv recreated successfully',
-                                     'SUCCESS')
-                        except Exception as e2:
-                            ext._log(
-                                f'Venv recreation failed: {e2}. '
-                                f'Using system Python.', 'ERROR')
-                            python_cmd = ('python' if sys.platform == 'win32'
-                                          else 'python3')
-                    else:
-                        ext._log(
-                            'Venv recreation did not produce Python '
-                            'binary. Using system Python.', 'ERROR')
-                        python_cmd = ('python' if sys.platform == 'win32'
-                                      else 'python3')
-                else:
-                    ext._log(
-                        f'Venv Python still broken after recreation: '
-                        f'{e}. Using system Python.', 'WARNING')
-                    python_cmd = ('python' if sys.platform == 'win32'
-                                  else 'python3')
+                    f'Venv Python at {venv_python} does not run ({detail}); '
+                    f'using system Python for the MCP bridge until it is '
+                    f'repaired', 'WARNING')
+                ext._beginAsyncVenvRepair()
+            else:
+                python_cmd = system_python
+                ext._log(
+                    f'Venv Python probe {verdict} ({detail}); using system '
+                    f'Python for now (will re-probe on next start)',
+                    'WARNING')
         else:
-            python_cmd = 'python' if sys.platform == 'win32' else 'python3'
+            python_cmd = system_python
 
-        # --- Deploy the .tdn git diff driver (semantic git diffs) ---
-        configure_tdn_diff_driver(ext, target_dir, python_cmd)
+        # --- Retire the TDXN git diff driver older versions installed ---
+        retire_tdxn_diff_driver(ext, target_dir)
 
         # --- Write envoy.json project config ---
         write_envoy_config(ext, target_dir / '.embody', port)
@@ -273,6 +226,8 @@ def configure_mcp_client(ext, port, target_dir=None):
             ext._log('MCP .mcp.json already configured (STDIO bridge)', 'DEBUG')
             maybe_write_opencode_config(
                 ext, target_dir, port, [python_cmd] + expected_args)
+            write_client_mcp_configs(
+                ext, target_dir, port, [python_cmd] + expected_args)
             deploy_settings_local(ext, target_dir / '.claude')
             mirror_ai_config_to_worktrees(ext, target_dir)
             return
@@ -298,6 +253,10 @@ def configure_mcp_client(ext, port, target_dir=None):
 
         # --- OpenCode client config (only when that client is in play) ---
         maybe_write_opencode_config(
+            ext, target_dir, port, [python_cmd] + expected_args)
+
+        # --- Every other client's own MCP config file ---
+        write_client_mcp_configs(
             ext, target_dir, port, [python_cmd] + expected_args)
 
         # --- Deploy settings.local.json (auto-allow read-only MCP tools) ---
@@ -328,6 +287,15 @@ def mirror_ai_config_to_worktrees(ext, root):
         prefix = root.name + '-wt-'
         pairs = [(root / '.mcp.json', ('.mcp.json',)),
                  (root / 'opencode.json', ('opencode.json',)),
+                 # Every other client's MCP config travels too, or a
+                 # worktree session gets rules and no Envoy connection.
+                 (root / '.cursor' / 'mcp.json', ('.cursor', 'mcp.json')),
+                 (root / '.vscode' / 'mcp.json', ('.vscode', 'mcp.json')),
+                 (root / '.gemini' / 'settings.json',
+                  ('.gemini', 'settings.json')),
+                 (root / '.codex' / 'config.toml', ('.codex', 'config.toml')),
+                 (root / '.agents' / 'mcp_config.json',
+                  ('.agents', 'mcp_config.json')),
                  (root / '.claude' / 'settings.local.json',
                   ('.claude', 'settings.local.json'))]
         mirrored = 0
@@ -406,9 +374,12 @@ def maybe_write_opencode_config(ext, target_dir, port, command):
     """
     from pathlib import Path
     try:
+        # Selection goes through selected_clients like every other client,
+        # so this cannot drift from the menu the user actually set.
         selected = False
         try:
-            selected = (op.Embody.par.Aiclient.eval() == 'opencode')
+            selected = 'opencode' in mod.embody_git.selected_clients(
+                op.Embody.ext.Embody)
         except Exception:
             pass
         cfg_file = Path(target_dir) / 'opencode.json'
@@ -542,6 +513,211 @@ def write_opencode_config(ext, target_dir, port, command=None):
         [str(cfg_file)], _write)
 
 
+# ==========================================================================
+# Per-client MCP config (.cursor/mcp.json, .vscode/mcp.json, ...)
+# ==========================================================================
+# Every client but Claude Code reads its OWN file -- none of them reads the
+# root .mcp.json (VS Code even uses a different root key, 'servers'). Before
+# this, selecting Cursor/VS Code/Copilot/Gemini/Codex produced rules files
+# and no Envoy connection at all. Each entry spawns the SAME stdio bridge as
+# .mcp.json, so every client gets the bridge's resilience layer.
+
+def selected_mcp_clients():
+    """Client tokens whose MCP config should be kept current."""
+    try:
+        return mod.embody_git.selected_clients(op.Embody.ext.Embody)
+    except Exception:
+        return []
+
+
+def write_client_mcp_configs(ext, target_dir, port, command):
+    """Write the Envoy entry into each selected client's own MCP config.
+
+    A client is written when it is SELECTED, or when its config already
+    carries an envoy entry -- so a file stays current across port and
+    bridge changes even after the user switches clients (the same rule
+    maybe_write_opencode_config uses).
+    """
+    from pathlib import Path
+    reg = mod.ai_clients
+    selected = set(selected_mcp_clients())
+    for token in reg.tokens():
+        for mcp in reg.mcp_targets(token):
+            try:
+                path = Path(target_dir) / mcp['path']
+                if token not in selected and not mcp_entry_present(mcp, path):
+                    continue
+                if mcp['style'] == 'toml':
+                    write_toml_mcp_config(
+                        ext, target_dir, token, mcp, path, command)
+                else:
+                    write_json_mcp_config(
+                        ext, target_dir, token, mcp, path, command)
+            except Exception as e:
+                ext._log(f'Could not configure {reg.label(token)} MCP '
+                         f'config ({mcp["path"]}): {e}', 'WARNING')
+
+
+def mcp_entry_present(mcp, path):
+    """True when this config file already holds an envoy server entry."""
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding='utf-8-sig')
+    except (OSError, UnicodeDecodeError):
+        return False
+    if mcp['style'] == 'toml':
+        return f'[{mcp["key"]}.envoy]' in text
+    try:
+        cfg = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(cfg, dict) and 'envoy' in (cfg.get(mcp['key']) or {})
+
+
+def mcp_server_entry(style, command):
+    """The server entry for one client's dialect.
+
+    stdio_typed  -- {'type': 'stdio', ...}: Claude Code and VS Code.
+    command_args -- bare command/args: Cursor, Gemini, Antigravity.
+    """
+    entry = {'command': str(command[0]), 'args': [str(c) for c in command[1:]]}
+    if style == 'stdio_typed':
+        return {'type': 'stdio', **entry}
+    return entry
+
+
+def write_json_mcp_config(ext, target_dir, token, mcp, path, command):
+    """Merge the Envoy entry into a JSON MCP config, preserving the rest."""
+    label = mod.ai_clients.label(token)
+    entry = mcp_server_entry(mcp['style'], command)
+
+    config = {}
+    created = not path.exists()
+    if not created:
+        try:
+            # utf-8-sig: a leading BOM makes json.loads fail outright,
+            # and the failure path is "leave it alone" -- so one invisible
+            # byte meant that client was never configured, ever.
+            config = json.loads(path.read_text(encoding='utf-8-sig'))
+            if not isinstance(config, dict):
+                config = {}
+        except (json.JSONDecodeError, OSError) as e:
+            # VS Code and Cursor both accept JSONC; a comment-bearing file
+            # fails json.loads. Never risk clobbering hand-authored config.
+            ext._log(f'Could not parse existing {path} ({e}) -- '
+                     f'leaving it untouched.', 'WARNING')
+            return
+
+    servers = config.get(mcp['key']) or {}
+    if servers.get('envoy') == entry:
+        ext._log(f'{label} {path} already configured', 'DEBUG')
+        return
+
+    # Footprint BEFORE writing, mirroring the .mcp.json flow: a file we
+    # created may be deleted by Uninstall; one we merged into loses only
+    # our key.
+    try:
+        Embody = op.Embody.ext.Embody
+        if created:
+            Embody._manifestRecordCreatedFile(str(target_dir), path)
+        else:
+            Embody._manifestRecordAppendedFile(
+                str(target_dir), path, f'{mcp["key"]}.envoy',
+                kind='json_key')
+    except Exception:
+        pass
+
+    servers['envoy'] = entry
+    config[mcp['key']] = servers
+
+    def _write():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # newline= pinned: read_text universalises to LF, so a bare
+        # write_text re-expands every line to CRLF on Windows and
+        # rewrites the user's whole config as a one-line diff.
+        path.write_text(json.dumps(config, indent=2) + '\n',
+                        encoding='utf-8', newline='\n')
+        ext._log(f'Wrote {label} MCP config to {path} (STDIO bridge)')
+
+    verb = 'create' if created else 'add the Envoy MCP server entry to'
+    op.Embody.ext.Embody._guardFileWrite(
+        f'{label} MCP config', f'{verb} {mcp["path"]}',
+        [str(path)], _write)
+
+
+def write_toml_mcp_config(ext, target_dir, token, mcp, path, command):
+    """Merge the Envoy entry into a TOML MCP config (Codex).
+
+    Surgical on purpose: only the [mcp_servers.envoy] table is written or
+    replaced, so nothing else in the user's config.toml is reformatted by
+    a round-trip. Values are emitted as JSON strings, which are valid
+    TOML basic strings for the paths and flags a bridge command holds.
+    """
+    label = mod.ai_clients.label(token)
+    header = f'[{mcp["key"]}.envoy]'
+    args_toml = ', '.join(json.dumps(str(c)) for c in command[1:])
+    block = (f'{header}\n'
+             f'command = {json.dumps(str(command[0]))}\n'
+             f'args = [{args_toml}]\n')
+
+    created = not path.exists()
+    existing = ''
+    if not created:
+        try:
+            existing = path.read_text(encoding='utf-8')
+        except OSError as e:
+            ext._log(f'Could not read {path} ({e}) -- leaving it '
+                     f'untouched.', 'WARNING')
+            return
+        if block in existing:
+            ext._log(f'{label} {path} already configured', 'DEBUG')
+            return
+
+    if header in existing:
+        # Replace just this table: from its header to the next one.
+        lines = existing.splitlines(keepends=True)
+        start = next(i for i, l in enumerate(lines) if l.strip() == header)
+        end = len(lines)
+        for i in range(start + 1, len(lines)):
+            if lines[i].lstrip().startswith('['):
+                end = i
+                break
+        tail = ''.join(lines[end:])
+        # Keep the blank line that separated this table from the next --
+        # the replaced range swallowed it.
+        if tail and not tail.startswith('\n'):
+            tail = '\n' + tail
+        merged = ''.join(lines[:start]) + block + tail
+    else:
+        sep = '' if (created or existing.endswith('\n\n')) else (
+            '\n' if existing.endswith('\n') else '\n\n')
+        merged = existing + sep + block
+
+    try:
+        Embody = op.Embody.ext.Embody
+        if created:
+            Embody._manifestRecordCreatedFile(str(target_dir), path)
+        else:
+            Embody._manifestRecordAppendedFile(
+                str(target_dir), path, f'{mcp["key"]}.envoy',
+                kind='toml_table')
+    except Exception:
+        pass
+
+    def _write():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(merged, encoding='utf-8', newline='\n')
+        ext._log(f'Wrote {label} MCP config to {path} (STDIO bridge). '
+                 f'Codex ignores project-level config until the project '
+                 f'is trusted -- run codex in this folder and trust it.')
+
+    verb = 'create' if created else 'add the Envoy MCP server entry to'
+    op.Embody.ext.Embody._guardFileWrite(
+        f'{label} MCP config', f'{verb} {mcp["path"]}',
+        [str(path)], _write)
+
+
 def opencode_permission_block(ext, posture):
     """OpenCode 'permission' map for a fresh opencode.json.
 
@@ -552,7 +728,7 @@ def opencode_permission_block(ext, posture):
     """
     if posture == 'some':
         block = {'envoy_*': 'ask'}
-        for t in sorted(ext.READ_ONLY_TOOLS):
+        for t in sorted(ext._READ_ONLY_TOOLS):
             block[f'envoy_{t}'] = 'allow'
         return block
     if posture == 'prompt':
@@ -709,7 +885,7 @@ def compose_settings(ext, cfg, posture, root=None):
     if posture == 'all':
         allow.append('mcp__envoy')          # wildcard: all current + future tools
     elif posture == 'some':
-        allow.extend(f'mcp__envoy__{t}' for t in ext.READ_ONLY_TOOLS)
+        allow.extend(f'mcp__envoy__{t}' for t in ext._READ_ONLY_TOOLS)
     # posture == 'prompt': no Envoy entries -> every tool prompts.
     for rule in worktree_permission_rules(ext, root):
         if rule not in allow:
@@ -754,7 +930,7 @@ def settings_satisfies(ext, cfg, posture, root=None):
     if posture == 'prompt':
         return len(envoy) == 0
     if posture == 'some':
-        return set(envoy) == {f'mcp__envoy__{t}' for t in ext.READ_ONLY_TOOLS}
+        return set(envoy) == {f'mcp__envoy__{t}' for t in ext._READ_ONLY_TOOLS}
     return False
 
 
@@ -1463,6 +1639,32 @@ def _project_json_ignore_decider(git_root):
     return pattern.strip(), (source.strip() or '.gitignore')
 
 
+# The .embody/ ignore pair, named once so the entry list, the
+# negation-withhold branch and the ordering enforcement below cannot drift
+# apart. A lingering old-form line would otherwise become git's decider
+# while not being in managed_set, and the negation would be wrongly
+# withheld. See the comment on these entries in MANAGED_ENTRIES.
+EMBODY_IGNORE = '**/.embody/*'
+EMBODY_NEG = '!**/.embody/project.json'
+# Every pattern that ignores .embody/ CONTENTS, current and historical.
+# Two rules depend on the whole set, not just the current entry:
+#   - "is the decider OUR rule?" -- a repo still carrying the anchored
+#     '.embody/*' (ours until v6.1.6, and hand-copied into plenty of
+#     .gitignores) must not be mistaken for a deliberate user ignore, or
+#     the negation is withheld and project.json goes untracked.
+#   - git is LAST-match-wins, so the negation must sit below the LAST of
+#     them. A legacy line below the managed block silently re-ignores
+#     project.json otherwise.
+EMBODY_IGNORE_FORMS = (EMBODY_IGNORE, '.embody/*')
+
+
+def _last_embody_ignore_index(stripped_lines):
+    """Index of the LAST .embody ignore rule, or -1. See EMBODY_IGNORE_FORMS."""
+    idxs = [i for i, ln in enumerate(stripped_lines)
+            if ln in EMBODY_IGNORE_FORMS]
+    return max(idxs) if idxs else -1
+
+
 def configure_gitignore(ext, git_root):
     """Ensure .gitignore in the git root contains entries for
     Embody/Envoy auto-generated files.
@@ -1479,14 +1681,33 @@ def configure_gitignore(ext, git_root):
         # Embody / Envoy
         '.venv/',
         '.mcp.json',
-        # Rotated .tdn crash-recovery copies (.bak/.bak2) -- machine-local
-        # scratch, superseded by the committed .tdn on every write.
+        # Rotated crash-recovery copies (.bak/.bak2) of externalized network
+        # files -- machine-local scratch, superseded on every write.
+        # Both names ship: nothing ever moves or deletes a pre-v6.1.6
+        # .tdn_backup/ (a bulk migration would race a concurrent rotate),
+        # so its ignore rule has to outlive the rename.
+        '.embody_backup/',
         '.tdn_backup/',
-        # OpenCode client config (embeds absolute venv/bridge paths)
+        # Client MCP configs -- ALL of them embed absolute venv/bridge
+        # paths, so committing one sends a teammate a config pointing at
+        # a venv that does not exist on their machine. .mcp.json and
+        # opencode.json were ignored for exactly this reason; the five
+        # per-client files added alongside them carry the same paths.
         'opencode.json',
-        # Ignore .embody/ runtime files but keep committed project.json
-        '.embody/*',
-        '!.embody/project.json',
+        '.cursor/mcp.json',
+        '.vscode/mcp.json',
+        '.gemini/settings.json',
+        '.codex/config.toml',
+        '.agents/mcp_config.json',
+        # Ignore .embody/ runtime files but keep committed project.json.
+        # DEPTH-AGNOSTIC on purpose: the .gitignore is ALWAYS written at the
+        # git root, but the .toe may sit in a subfolder. Any pattern with an
+        # interior slash anchors to the .gitignore's directory, so the old
+        # '.embody/*' left <subdir>/.embody/ untracked-and-visible AND
+        # inside a plain `git clean -fd`'s reach -- issue #85's exact shape
+        # (verified with git check-ignore). '**/' matches at every depth.
+        EMBODY_IGNORE,
+        EMBODY_NEG,
         '.claude/settings.local.json',
         '.claude/projects/',
         # Task briefs compiled by the /brief skill (working documents)
@@ -1530,7 +1751,12 @@ def configure_gitignore(ext, git_root):
                          '.embody/envoy-tools-cache.json',
                          # v5.0.387: replaced by '.embody/*' + '!.embody/project.json'
                          # so .embody/project.json (committed metadata) is tracked.
-                         '.embody/'}
+                         '.embody/',
+                         # v6.1.6: the anchored pair, replaced by the '**/'
+                         # forms. Both are stripped here and re-added above
+                         # in one pass, so a .toe in a repo subfolder stops
+                         # leaking .embody/ into git status.
+                         '.embody/*', '!.embody/project.json'}
         stale_idx = {i for i in _managed_block_indexes(existing_lines)
                      if existing_lines[i].strip() in STALE_ENTRIES}
         found_stale = {existing_lines[i].strip() for i in stale_idx}
@@ -1588,19 +1814,27 @@ def configure_gitignore(ext, git_root):
         # Respect a deliberate user ignore of .embody/project.json: when
         # git names a NON-managed rule as decider, withhold the negation
         # instead of fighting the repo (Owlette fleet, 2026-08-19).
-        NEG = '!.embody/project.json'
+        NEG = EMBODY_NEG
         if NEG in missing:
             decider = _project_json_ignore_decider(git_root)
+            # found_stale is OUR OWN legacy just stripped from a managed
+            # block this run. The probe reads the PRE-write file, so a repo
+            # carrying e.g. '.embody/' (ours until v5.0.387) would name it
+            # as decider, fail the managed_set test, and get read as a
+            # deliberate user opt-out -- while the same run had already
+            # removed it, leaving the repo with NO .embody ignore at all.
             if (decider and not decider[0].startswith('!')
-                    and decider[0] not in managed_set):
+                    and decider[0] not in managed_set
+                    and decider[0] not in EMBODY_IGNORE_FORMS
+                    and decider[0] not in found_stale):
                 missing.remove(NEG)
-                # Leave '.embody/*' to the user too: appending it would
+                # Leave the ignore to the user too: appending it would
                 # make OUR rule git's last file-level match on the next
                 # startup, flip the decider to managed, and re-add the
                 # negation -- the withhold must be stable across runs
                 # (review find, 2026-08-19).
-                if '.embody/*' in missing:
-                    missing.remove('.embody/*')
+                if EMBODY_IGNORE in missing:
+                    missing.remove(EMBODY_IGNORE)
                 ext._log(
                     'this repo deliberately ignores .embody/project.json '
                     f"(rule '{decider[0]}' in {decider[1]}) -- respecting "
@@ -1610,14 +1844,16 @@ def configure_gitignore(ext, git_root):
                     'NOT travel via git; pre-seed .embody/project.json '
                     'when provisioning machines instead.', 'WARNING')
 
-        # git is LAST-match-wins: the negation must sit BELOW '.embody/*'
+        # git is LAST-match-wins: the negation must sit BELOW the ignore
         # or the committed metadata is silently untracked. Detect a wrong
         # order even when nothing is missing -- that state used to return
         # early and stay broken forever.
         def _misordered(lines):
             s = [ln.strip() for ln in lines]
-            return (NEG in s and '.embody/*' in s
-                    and s.index(NEG) < s.index('.embody/*'))
+            if NEG not in s:
+                return False
+            last = _last_embody_ignore_index(s)
+            return last != -1 and s.index(NEG) < last
 
         needs_reorder = _misordered(existing_lines)
         if (not missing and not found_stale and not merged
@@ -1661,11 +1897,15 @@ def configure_gitignore(ext, git_root):
         # order alone cannot guarantee it (see _misordered above).
         reordered = False
         stripped_new = [ln.strip() for ln in new_lines]
-        if NEG in stripped_new and '.embody/*' in stripped_new:
-            if stripped_new.index(NEG) < stripped_new.index('.embody/*'):
+        if NEG in stripped_new:
+            last = _last_embody_ignore_index(stripped_new)
+            if last != -1 and stripped_new.index(NEG) < last:
                 new_lines.pop(stripped_new.index(NEG))
                 stripped_new = [ln.strip() for ln in new_lines]
-                new_lines.insert(stripped_new.index('.embody/*') + 1, NEG)
+                # Below the LAST form: a user's legacy '.embody/*' sitting
+                # under the managed block would otherwise win last-match.
+                new_lines.insert(
+                    _last_embody_ignore_index(stripped_new) + 1, NEG)
                 reordered = True
 
         new_content = '\n'.join(new_lines)
@@ -1682,7 +1922,7 @@ def configure_gitignore(ext, git_root):
                 ext._log(f'Consolidated {merged} duplicate Embody block(s) '
                          f'in .gitignore')
             else:
-                ext._log('Reordered !.embody/project.json below .embody/* '
+                ext._log(f'Reordered {NEG} below the .embody ignore '
                          'in .gitignore')
             try:  # record the marked block so Uninstall strips only it (never the user's file)
                 Embody = op.Embody.ext.Embody
@@ -1714,7 +1954,7 @@ def configure_gitignore(ext, git_root):
             details = [f'{merged} redundant "{HEADER}" header(s) merged '
                        f'into the first; no entries added or removed']
         else:
-            action = ('reorder !.embody/project.json below .embody/* in '
+            action = (f'reorder {NEG} below the .embody ignore in '
                       f'.gitignore in {git_root}')
             details = ['git is last-match-wins; the committed '
                        '.embody/project.json was silently untracked']
@@ -1726,20 +1966,21 @@ def configure_gitignore(ext, git_root):
 
 
 def configure_gitattributes(ext, git_root):
-    """Ensure .gitattributes normalizes line endings for TD-exported files
-    and enables semantic diffs for .tdn. TouchDesigner writes CRLF on all
-    platforms; this forces LF in git so externalized files don't show as
-    dirty after every TD save. The `diff=tdn` attribute pairs with the git
-    diff driver registered by _configureTdnDiffDriver, so `git diff` on a
-    .tdn shows only real network changes -- the volatile export header
-    (build/timestamp/version/source .toe) is stripped before diffing.
-    Idempotent -- migrates an existing managed block that predates the
-    diff driver."""
+    """Ensure .gitattributes normalizes line endings for TD-exported files.
+    TouchDesigner writes CRLF on all platforms; this forces LF in git so
+    externalized files don't show as dirty after every TD save. Idempotent
+    -- migrates a managed block that predates `diff=tdxn`, and one still
+    naming the pre-6.2.35 `diff=tdn`."""
     MANAGED_BLOCK = (
         '\n# Embody / Envoy -- normalize TD line endings (auto-managed)\n'
         '*.py text eol=lf\n'
         '*.md text eol=lf\n'
-        '*.tdn text eol=lf diff=tdn\n'
+        # `diff=tdxn` names a driver Embody no longer registers
+        # (retire_tdxn_diff_driver, issue #106), so git shows a plain diff.
+        # Kept rather than removed: older Embody versions sharing the repo
+        # would re-add the lines on every start.
+        '*.tdxn text eol=lf diff=tdxn\n'
+        '*.tdn text eol=lf diff=tdxn\n'
         '*.json text eol=lf\n'
         '*.tsv text eol=lf\n'
         '*.xml text eol=lf\n'
@@ -1755,14 +1996,24 @@ def configure_gitattributes(ext, git_root):
             existing = gitattr.read_text(encoding='utf-8')
 
         if MARKER in existing:
-            # Migrate a managed block that predates the .tdn diff driver.
-            if ('*.tdn text eol=lf diff=tdn' not in existing
+            # Migrate a managed block that predates `diff=tdxn`, and one
+            # still naming the pre-6.2.35 `diff=tdn`.
+            # Scoped to OUR two attribute lines: a user's own `diff=tdn`
+            # on some other pattern is their driver, not ours.
+            ours = [t + ' text eol=lf diff=tdn' for t in ('*.tdxn', '*.tdn')]
+            if any(o in existing for o in ours):
+                for o in ours:
+                    existing = existing.replace(o, o[:-3] + 'tdxn')
+                gitattr.write_text(existing, encoding='utf-8', newline='\n')
+                ext._log('Migrated .gitattributes: diff=tdn is now '
+                         'diff=tdxn')
+            elif ('*.tdn text eol=lf diff=tdxn' not in existing
                     and '*.tdn text eol=lf' in existing):
                 existing = existing.replace(
-                    '*.tdn text eol=lf', '*.tdn text eol=lf diff=tdn')
+                    '*.tdn text eol=lf', '*.tdn text eol=lf diff=tdxn')
                 gitattr.write_text(existing, encoding='utf-8', newline='\n')
                 ext._log(
-                    'Migrated .gitattributes: enabled .tdn semantic diff')
+                    'Migrated .gitattributes: added diff=tdxn to *.tdn')
 
             # Backfill attribute lines added by later releases. Without
             # this the function returned on ANY existing marker, so a
@@ -1830,7 +2081,7 @@ def configure_gitattributes(ext, git_root):
         # Advanced mode: confirm before editing the user's .gitattributes.
         op.Embody.ext.Embody._guardFileWrite(
             'Git config',
-            f'add line-ending + .tdn-diff rules to .gitattributes in {git_root}',
+            f'add line-ending rules to .gitattributes in {git_root}',
             [ln for ln in MANAGED_BLOCK.strip().splitlines()
              if ln and not ln.startswith('#')],
             _write)
@@ -1839,89 +2090,112 @@ def configure_gitattributes(ext, git_root):
         ext._log(f'Could not auto-configure .gitattributes: {e}', 'WARNING')
 
 
-def configure_tdn_diff_driver(ext, target_dir, python_cmd):
-    """Deploy the .tdn git textconv script and register it as a git diff
-    driver in the repo. With the `*.tdn diff=tdn` attribute (set by
-    _configureGitattributes), this makes `git diff` / `git log -p` /
-    `git show` on .tdn files show only semantic network changes -- the
-    volatile export header is stripped before diffing, so re-exporting an
-    unchanged network produces an empty diff. This is the committed/on-disk
-    counterpart to the live `diff_tdn` MCP tool. The driver definition must
-    live in the repo's git config (git refuses to run textconv commands
-    defined by a cloned repo), so Embody configures it the same way it
-    manages .gitignore/.gitattributes/.mcp.json. Idempotent."""
+def _driver_leftovers_present(target_dir):
+    """Spawn-free check for anything the retired .tdxn driver left: its
+    script under .embody/, or a mention of it in the repo's own git config
+    file (a worktree's .git file is followed to the shared config). Keeps a
+    clean project from paying git spawns on every open and Envoy start."""
     from pathlib import Path
+    target_dir = Path(target_dir)
+    names = ('tdxn_textconv.py', 'tdn_textconv.py')
+    if any((target_dir / '.embody' / n).is_file() for n in names):
+        return True
     try:
-        target_dir = Path(target_dir)
-        embody_dir = target_dir / '.embody'
-        embody_dir.mkdir(parents=True, exist_ok=True)
-        script_path = embody_dir / 'tdn_textconv.py'
+        git = target_dir / '.git'
+        if git.is_file():                    # worktree: "gitdir: <path>"
+            gd = Path(git.read_text(encoding='utf-8').split(':', 1)[1].strip())
+            gd = gd if gd.is_absolute() else target_dir / gd
+            common = gd / 'commondir'
+            if common.is_file():
+                gd = gd / common.read_text(encoding='utf-8').strip()
+            cfg = gd / 'config'
+        else:
+            cfg = git / 'config'
+        text = cfg.read_text(encoding='utf-8', errors='replace')
+    except (OSError, IndexError, ValueError):
+        return False
+    return any(n in text for n in names)
 
-        # Source from the templates textDAT, else the dev/embody fallback.
-        content = None
+
+def retire_tdxn_diff_driver(ext, target_dir):
+    """Remove the git textconv diff driver older Embody versions installed.
+
+    The driver stripped the .tdxn export header from git's diff output.
+    VS Code reads committed files through `git show --textconv`, so it also
+    hid the header there, showed it as "added" in every diff, and let
+    Stage/Revert Selected Ranges write header-less files (issue #106).
+    Header churn is cut at the source instead (TDXNExt._applyHeaderProvenance).
+
+    ORDER: a textconv key left pointing at a missing script makes every
+    .tdxn `git diff` / `log -p` / `blame` fail (exit 128). A --local key is
+    unset only when it points at OUR .embody/ script, re-read to confirm,
+    and the script is deleted only once nothing references it; when git
+    cannot answer (no git, a repo it refuses to read) nothing is touched. A
+    driver a user pointed at their own tool is left alone. The `diff=tdxn`
+    lines in .gitattributes stay: with no driver defined git shows a plain
+    diff. Also retires the pre-6.2.35 `tdn` driver. No git spawn unless
+    _driver_leftovers_present finds something. Unguarded, like that legacy
+    retirement: it only removes Embody's own keys, and Advanced mode defers
+    every startup write, so a guarded run would never happen. Never raises."""
+    from pathlib import Path
+    if not _driver_leftovers_present(target_dir):
+        return
+    embody_dir = Path(target_dir) / '.embody'
+    # creationflags: no console flash over TD's GUI (see embody_git).
+    git_kwargs = dict(cwd=str(target_dir), capture_output=True,
+                      text=True, timeout=10,
+                      encoding='utf-8', errors='replace',
+                      stdin=subprocess.DEVNULL,
+                      creationflags=getattr(
+                          subprocess, 'CREATE_NO_WINDOW', 0))
+
+    def _get(key):
+        # '' = unset (rc 1); None = git cannot answer -> touch nothing.
         try:
-            templates = ext.ownerComp.op('templates')
-            dat = templates.op('text_tdn_textconv') if templates else None
-            if dat:
-                content = dat.text
-        except Exception:
-            pass
-        if not content:
-            source = Path(project.folder) / 'embody' / 'tdn_textconv.py'
-            if source.exists():
-                content = source.read_text(encoding='utf-8')
-        if not content:
-            ext._log(
-                'tdn_textconv source not found -- skipping .tdn diff driver',
-                'DEBUG')
+            res = subprocess.run(['git', 'config', '--local', '--get', key],
+                                 **git_kwargs)
+        except (subprocess.SubprocessError, OSError):
+            return None
+        if res.returncode == 1:
+            return ''
+        if res.returncode != 0:
+            return None
+        return (res.stdout or '').strip()
+
+    def _ours(val, script):
+        return ('/.embody/' + script) in val.replace('\\', '/')
+
+    todo = []
+    for name, script in (('tdxn', 'tdxn_textconv.py'),
+                         ('tdn', 'tdn_textconv.py')):
+        val = _get(f'diff.{name}.textconv')
+        if val is None:
             return
+        ours = _ours(val, script)
+        if ours or (embody_dir / script).is_file():
+            todo.append((name, script, ours))
 
-        # Write only if changed, to avoid touching mtime needlessly.
-        if not (script_path.exists()
-                and script_path.read_text(encoding='utf-8') == content):
-            script_path.write_text(content, encoding='utf-8')
-
-        # Register the driver in the repo's git config (idempotent).
-        script_str = str(script_path).replace('\\', '/')
-        driver = '"%s" "%s"' % (python_cmd, script_str)
-        # creationflags: no console flash over TD's GUI (see embody_git).
-        git_kwargs = dict(cwd=str(target_dir), capture_output=True,
-                          text=True, timeout=10,
-                          encoding='utf-8', errors='replace',
-                          stdin=subprocess.DEVNULL,
-                          creationflags=getattr(
-                              subprocess, 'CREATE_NO_WINDOW', 0))
-        current = subprocess.run(
-            ['git', 'config', '--get', 'diff.tdn.textconv'], **git_kwargs)
-        if (current.stdout or '').strip() != driver:
-            def _write():
-                subprocess.run(
-                    ['git', 'config', 'diff.tdn.textconv', driver],
-                    check=True, **git_kwargs)
-                subprocess.run(
-                    ['git', 'config', 'diff.tdn.cachetextconv', 'false'],
-                    check=True, **git_kwargs)
-                ext._log('Configured git diff driver for .tdn (semantic diffs)')
-                try:  # record so Uninstall un-sets the repo git config
-                    op.Embody.ext.Embody._manifestRecordGitConfig(
-                        str(target_dir),
-                        ['diff.tdn.textconv', 'diff.tdn.cachetextconv'])
-                except Exception:
-                    pass
-
-            # Advanced: confirm before mutating the repo's .git/config.
-            op.Embody.ext.Embody._guardFileWrite(
-                'Git config',
-                f'register the .tdn semantic-diff driver in '
-                f'{target_dir}/.git/config',
-                ['git config diff.tdn.textconv',
-                 'git config diff.tdn.cachetextconv'],
-                _write)
-
-    except (subprocess.SubprocessError, OSError) as e:
-        ext._log(f'Could not configure .tdn git diff driver: {e}', 'DEBUG')
-    except Exception as e:
-        ext._log(f'Could not deploy tdn_textconv: {e}', 'WARNING')
+    for name, script, ours in todo:
+        key = f'diff.{name}.textconv'
+        try:
+            if ours:
+                for k in (key, f'diff.{name}.cachetextconv'):
+                    subprocess.run(
+                        ['git', 'config', '--local', '--unset-all', k],
+                        **git_kwargs)
+                left = _get(key)
+                if left is None or _ours(left, script):
+                    ext._log(f'Could not unset {key}; keeping .embody/'
+                             f'{script} so git diff keeps working',
+                             'WARNING')
+                    continue
+                ext._log(f'Retired the .{name} git diff driver (issue #106)')
+            path = embody_dir / script
+            if path.is_file():
+                path.unlink()
+        except Exception as e:
+            ext._log(f'Could not retire the .{name} git diff driver: {e}',
+                     'DEBUG')
 
 
 def cleanup_temp_files(ext):

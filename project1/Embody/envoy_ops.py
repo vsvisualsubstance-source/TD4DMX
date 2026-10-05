@@ -15,9 +15,11 @@ route through the ext keep the `ext.` hop.
 """
 
 from __future__ import annotations
+from typing import Optional
 
 
-def create_op(ext, parent_path: str, op_type: str, name: str = None) -> dict:
+def create_op(ext, parent_path: str, op_type: str, name: Optional[str] = None,
+              language: Optional[str] = None) -> dict:
     """Create an operator"""
     parent = ext._resolve_op(parent_path)
     if not parent:
@@ -29,6 +31,20 @@ def create_op(ext, parent_path: str, op_type: str, name: str = None) -> dict:
     try:
         # op_type can be a string like 'baseCOMP', 'noiseTOP', etc.
         new_op = parent.create(op_type, name) if name else parent.create(op_type)
+        # a fresh textDAT reads 'text'; an agent's text DAT is almost always
+        # code, so default python. Set before auto-externalize, which infers
+        # the file type from the language (issue #139)
+        if language is None and new_op.OPType == 'textDAT':
+            language = 'python'
+        if language is not None:
+            lang_par = getattr(new_op.par, 'language', None)
+            valid = list(lang_par.menuNames) if lang_par is not None else []
+            if language not in valid:
+                new_op.destroy()
+                return {'error': f'language {language!r} is not valid for {op_type}: '
+                                 + (f'use one of {valid}' if valid
+                                    else 'it has no Content Language parameter')}
+            new_op.par.language = language
         ext._find_non_overlapping_position(parent, new_op)
         docks_placed = ext._placeDockedOps(new_op)
         # Auto-externalize per the Envoy 'Autoexternalize' preference. create_op
@@ -37,7 +53,7 @@ def create_op(ext, parent_path: str, op_type: str, name: str = None) -> dict:
         # never raises (must not break op creation).
         auto_tag = None
         try:
-            auto_tag = op.Embody.ext.Embody.AutoExternalizeNewOp(new_op)
+            auto_tag = op.Embody.ext.Embody.autoExternalizeNewOp(new_op)
         except Exception as e:
             ext._log(f'auto-externalize failed for {new_op.path}: {e}', 'WARNING')
         result = {
@@ -67,9 +83,9 @@ def delete_op(ext, op_path: str) -> dict:
     try:
         name = target.name
         # Purge externalization tracking (ANY strategy) for this op + any
-        # tracked descendant BEFORE destroying: an unsaved TDN delete + crash
+        # tracked descendant BEFORE destroying: an unsaved TDXN delete + crash
         # can't leave an orphan row that export-mode autosave recovery would
-        # resurrect on next open, and non-TDN rows/files no longer outlive
+        # resurrect on next open, and non-TDXN rows/files no longer outlive
         # their deleted op (issue #57 follow-up).
         try:
             op.Embody.ext.Embody._purgeExternalizationTracking(op_path)
@@ -82,8 +98,8 @@ def delete_op(ext, op_path: str) -> dict:
 
 
 def set_parameter(ext, op_path: str, par_name: str, value=None,
-                  mode: str = None, expr: str = None,
-                  bind_expr: str = None) -> dict:
+                  mode: Optional[str] = None, expr: Optional[str] = None,
+                  bind_expr: Optional[str] = None) -> dict:
     """Set a parameter value, expression, bind expression, or mode"""
     target = ext._resolve_op(op_path)
     if not target:
@@ -106,6 +122,14 @@ def set_parameter(ext, op_path: str, par_name: str, value=None,
             par.mode = ParMode.BIND
         # Set constant value (with type coercion for numeric/toggle pars)
         elif value is not None:
+            if par.style == 'Pulse' or getattr(par, 'isPulse', False):
+                # A Pulse has no value: writing one 'succeeded' and did
+                # nothing (an update check never ran, field 2026-09-21).
+                # Fire it and say so.
+                par.pulse()
+                return {'success': True, 'path': op_path,
+                        'parameter': par_name, 'pulsed': True,
+                        'value': '', 'mode': str(par.mode)}
             # TD silently coerces invalid Menu values to index 0 and reports
             # success; a lying success is worse than an error (guard adapted
             # from TDMCP).
@@ -257,7 +281,7 @@ def disconnect_op(ext, op_path: str, input_index: int = 0,
         return {'error': f'Failed to disconnect: {e}'}
 
 
-def copy_op(ext, source_path: str, dest_parent: str, new_name: str = None) -> dict:
+def copy_op(ext, source_path: str, dest_parent: str, new_name: Optional[str] = None) -> dict:
     """Copy an operator"""
     source = ext._resolve_op(source_path)
     dest = ext._resolve_op(dest_parent)
@@ -279,7 +303,7 @@ def copy_op(ext, source_path: str, dest_parent: str, new_name: str = None) -> di
         # own path and never shares the source's files. Never breaks the copy.
         auto_tag = None
         try:
-            auto_tag = op.Embody.ext.Embody.AutoExternalizeCopiedOp(new_op)
+            auto_tag = op.Embody.ext.Embody.autoExternalizeCopiedOp(new_op)
         except Exception as e:
             ext._log(f'auto-externalize (copy) failed for {new_op.path}: {e}', 'WARNING')
         result = {
@@ -299,8 +323,8 @@ def copy_op(ext, source_path: str, dest_parent: str, new_name: str = None) -> di
         return {'error': f'Failed to copy: {e}'}
 
 
-def set_dat_content(ext, op_path: str, text: str = None,
-                    rows: list = None, clear: bool = False,
+def set_dat_content(ext, op_path: str, text: Optional[str] = None,
+                    rows: Optional[list] = None, clear: bool = False,
                     confirm_wipe: bool = False) -> dict:
     """Set DAT content from text or table rows.
 
@@ -472,11 +496,14 @@ def edit_dat_content(ext, op_path: str, old_string: str,
         return {'error': f'Failed to edit DAT content: {e}'}
 
 
-def set_op_flags(ext, op_path: str, bypass: bool = None, lock: bool = None,
-                 display: bool = None, render: bool = None,
-                 viewer: bool = None, current: bool = None,
-                 expose: bool = None, allowCooking: bool = None,
-                 selected: bool = None) -> dict:
+def set_op_flags(ext, op_path: str, bypass: Optional[bool] = None, lock: Optional[bool] = None,
+                 display: Optional[bool] = None, render: Optional[bool] = None,
+                 viewer: Optional[bool] = None, current: Optional[bool] = None,
+                 expose: Optional[bool] = None, allowCooking: Optional[bool] = None,
+                 selected: Optional[bool] = None, cloneImmune: Optional[bool] = None,
+                 componentCloneImmune: Optional[bool] = None,
+                 showCustomOnly: Optional[bool] = None,
+                 showDocked: Optional[bool] = None) -> dict:
     """Set flags on an operator"""
     target = ext._resolve_op(op_path)
     if not target:
@@ -501,15 +528,32 @@ def set_op_flags(ext, op_path: str, bypass: bool = None, lock: bool = None,
             target.selected = selected
         if allowCooking is not None and target.isCOMP:
             target.allowCooking = allowCooking
+        # Authored flags TDXN round-trips. componentCloneImmune is COMP-only;
+        # the rest are OP_Class. Probe rather than assume, and say so when a
+        # flag cannot be set instead of dropping it silently (2026-09-04).
+        unsupported = []
+        for name, value in (('cloneImmune', cloneImmune),
+                            ('componentCloneImmune', componentCloneImmune),
+                            ('showCustomOnly', showCustomOnly),
+                            ('showDocked', showDocked)):
+            if value is None:
+                continue
+            if not hasattr(target, name):
+                unsupported.append(name)
+                continue
+            setattr(target, name, value)
 
-        return ext._get_op_flags(op_path)
+        result = ext._get_op_flags(op_path)
+        if unsupported and isinstance(result, dict):
+            result['unsupported_flags'] = unsupported
+        return result
     except Exception as e:
         return {'error': f'Failed to set flags: {e}'}
 
 
-def set_op_position(ext, op_path: str, x: int = None, y: int = None,
-                    width: int = None, height: int = None,
-                    color: list = None, comment: str = None) -> dict:
+def set_op_position(ext, op_path: str, x: Optional[int] = None, y: Optional[int] = None,
+                    width: Optional[int] = None, height: Optional[int] = None,
+                    color: Optional[list] = None, comment: Optional[str] = None) -> dict:
     """Set operator position and visual properties"""
     target = ext._resolve_op(op_path)
     if not target:
@@ -567,10 +611,10 @@ def set_op_position(ext, op_path: str, x: int = None, y: int = None,
 
 def create_annotation(ext, parent_path: str, mode: str = "annotate",
                       text: str = "", title: str = "",
-                      x: int = None, y: int = None,
-                      width: int = None, height: int = None,
-                      color: list = None, opacity: float = None,
-                      name: str = None) -> dict:
+                      x: Optional[int] = None, y: Optional[int] = None,
+                      width: Optional[int] = None, height: Optional[int] = None,
+                      color: Optional[list] = None, opacity: Optional[float] = None,
+                      name: Optional[str] = None) -> dict:
     """Create an annotation in the network editor."""
     parent = ext._resolve_op(parent_path)
     if not parent:
@@ -586,11 +630,11 @@ def create_annotation(ext, parent_path: str, mode: str = "annotate",
         ann = parent.create('annotateCOMP')
 
         # Match TD UI behavior: UI-drawn annotations are utility=True, and
-        # Embody's TDN import applies the same convention on every annotation
+        # Embody's TDXN import applies the same convention on every annotation
         # it (re)creates. A NON-utility annotation is an ordinary COMP
         # subtree -- visible to .children and every default findChildren --
         # which is exactly what let externalization sweeps tag its internal
-        # widget ops as bogus per-op boundaries (TDN annotation
+        # widget ops as bogus per-op boundaries (TDXN annotation
         # double-serialization bug). All Envoy op-path tools resolve utility
         # ops via resolve_op, so nothing is lost by hiding it.
         ann.utility = True
@@ -653,10 +697,10 @@ def create_annotation(ext, parent_path: str, mode: str = "annotate",
         return {'error': f'Failed to create annotation: {e}'}
 
 
-def set_annotation(ext, op_path: str, text: str = None, title: str = None,
-                   color: list = None, opacity: float = None,
-                   width: int = None, height: int = None,
-                   x: int = None, y: int = None) -> dict:
+def set_annotation(ext, op_path: str, text: Optional[str] = None, title: Optional[str] = None,
+                   color: Optional[list] = None, opacity: Optional[float] = None,
+                   width: Optional[int] = None, height: Optional[int] = None,
+                   x: Optional[int] = None, y: Optional[int] = None) -> dict:
     """Modify an existing annotation."""
     target = ext._resolve_annotation(op_path)
     if not target:
@@ -737,19 +781,19 @@ def cook_op(ext, op_path: str, force: bool = True,
         return {'error': f'Failed to cook: {e}'}
 
 
-def externalize_op(ext, op_path: str, tag_type: str = None) -> dict:
+def externalize_op(ext, op_path: str, tag_type: Optional[str] = None) -> dict:
     """Tag an operator for Embody externalization and write it to disk"""
     target = ext._resolve_op(op_path)
     if not target:
         return {'error': f'Operator not found: {op_path}'}
 
     # Annotations are never externalized per-op: the annotateCOMP round-trips
-    # through the parent TDN COMP's semantic annotations: section, and its
+    # through the parent TDXN COMP's semantic annotations: section, and its
     # internal widget ops are TD-managed stock content. Tagging either one
     # creates bogus boundaries whose reconstruction guts the widget.
     if target.family == 'COMP' and target.type == 'annotate':
         return {'error': f'{op_path} is an annotation. Annotations are '
-                         f'captured semantically in the parent TDN COMP\'s '
+                         f'captured semantically in the parent TDXN COMP\'s '
                          f'annotations: section -- edit via set_annotation; '
                          f'they are not externalizable per-op.'}
     if op.Embody.ext.Embody._isInsideAnnotate(target):
@@ -767,16 +811,35 @@ def externalize_op(ext, op_path: str, tag_type: str = None) -> dict:
             else:
                 return {'error': f'Cannot externalize {target.family} operators'}
 
-        # Apply the tag and run Update to externalize to disk
-        op.Embody.ext.Embody.applyTagToOperator(target, tag_type)
-        op.Embody.Update()
+        # The TDXN boundary tag has two accepted spellings (the configured
+        # 'tdxn' and the legacy 'tdn' it replaced in 6.2.30). Normalize onto
+        # the configured value BEFORE tagging, or a caller passing the other
+        # one tags the COMP with a string the report branch below does not
+        # recognize -- success with an empty 'file'.
+        tdxn_tag = op.Embody.par.Tdxntag.eval()
+        if tag_type in op.Embody.ext.Embody._tdxnTags():
+            tag_type = tdxn_tag
 
-        # Report the file actually written for the strategy: TDN comps track
-        # their .tdn in the externalizations table (externaltox would report
-        # a stale/wrong .tox -- the tox par plays no role in TDN strategy).
+        # The tagger REFUSES unknown values -- an unchecked return reported
+        # success while nothing was tagged. MCP never raises the locked-
+        # content modal: its WARNING rides back in _logs (issue #108).
+        with op.Embody.ext.TDXN.suppressLockedDialogs():
+            tagged = op.Embody.ext.Embody.applyTagToOperator(target, tag_type)
+            if tagged:
+                op.Embody.Update()
+        if not tagged:
+            return {'error': f'{op_path}: tag_type {tag_type!r} was rejected. '
+                             f'COMPs accept "tox" or {tdxn_tag!r} (the TDXN '
+                             f'strategy tag, legacy "tdn" also accepted); '
+                             f'DATs accept a source type such as "py". '
+                             f'Nothing was tagged.'}
+
+        # Report the file actually written for the strategy: TDXN comps track
+        # their .tdxn in the externalizations table (externaltox would report
+        # a stale/wrong .tox -- the tox par plays no role in TDXN strategy).
         if target.family == 'DAT':
             file_path = target.par.file.eval()
-        elif tag_type == op.Embody.par.Tdntag.eval():
+        elif tag_type == tdxn_tag:
             file_path = (op.Embody.ext.Embody._getStrategyFilePath(
                 target.path, 'tdn')
                 or target.fetch('_tdn_rel_path', '', search=False))
@@ -806,8 +869,8 @@ def remove_externalization_tag(ext, op_path: str,
     """Remove Embody externalization tracking and clean up.
 
     Routes through Embody's own removal handlers rather than stripping
-    tags raw: the Update sweep deliberately EXCLUDES TDN comps from
-    subtraction detection (their lifecycle belongs to RemoveTDNEntry),
+    tags raw: the Update sweep deliberately EXCLUDES TDXN comps from
+    subtraction detection (their lifecycle belongs to RemoveTDXNEntry),
     so a raw tag-strip + Update left the table row and the
     _tdn_rel_path breadcrumb behind -- a ghost row that Refresh kept
     resurrecting.
@@ -847,19 +910,19 @@ def remove_externalization_tag(ext, op_path: str,
         embody = op.Embody.ext.Embody
         removed = [tag for tag in embody.getTags()
                    if target.tags and tag in target.tags]
-        is_tdn = (op.Embody.par.Tdntag.eval() in removed
+        is_tdxn = (op.Embody.par.Tdxntag.eval() in removed
                   or bool(embody._getStrategyFilePath(target.path, 'tdn')))
         rows_before = _tracked_rows(embody, target.path)
 
-        if is_tdn:
+        if is_tdxn:
             # Strips tags, drops the row + _tdn_rel_path breadcrumb,
             # resets color (issue #48).
-            embody.RemoveTDNEntry(target.path, delete_file=delete_file)
+            embody.removeTDXNEntry(target.path, delete_file=delete_file)
         elif removed:
             rel_fp = embody.getExternalPath(target)
-            embody.RemoveListerRow(target.path, rel_fp,
+            embody.removeListerRow(target.path, rel_fp,
                                    delete_file=delete_file)
-        # No tags and no TDN row: nothing tracked -- report success with
+        # No tags and no TDXN row: nothing tracked -- report success with
         # an empty removal list (previous behavior, kept for callers that
         # untag defensively).
 
@@ -901,7 +964,7 @@ def remove_externalization_tag(ext, op_path: str,
             'summary': summary,
             # Deletion is best-effort: RemoveListerRow's safety checks
             # (clones, files still referenced elsewhere) can keep the file.
-            'file_delete_requested': bool(delete_file and (is_tdn or removed))
+            'file_delete_requested': bool(delete_file and (is_tdxn or removed))
         }
     except Exception as e:
         return {'error': f'Failed to remove tag: {e}'}
@@ -917,7 +980,9 @@ def save_externalization(ext, op_path: str) -> dict:
         if target.family == 'COMP':
             strategy = op.Embody.ext.Embody._getCompStrategy(target)
             if strategy == 'tdn':
-                written = op.Embody.SaveTDN(op_path)
+                # Log-only locked-content warning from MCP (issue #108).
+                with op.Embody.ext.TDXN.suppressLockedDialogs():
+                    written = op.Embody.ext.Embody.saveTDXN(op_path)
             else:
                 written = op.Embody.Save(op_path)
             if not written:
@@ -947,15 +1012,21 @@ def save_externalization(ext, op_path: str) -> dict:
 
 
 def create_extension(ext, parent_path: str, class_name: str,
-                     name: str = None, code: str = None,
-                     promote: bool = True, ext_name: str = None,
-                     ext_index: int = None,
-                     existing_comp: bool = False) -> dict:
+                     name: Optional[str] = None, code: Optional[str] = None,
+                     promote: bool = True, ext_name: Optional[str] = None,
+                     ext_index: Optional[int] = None,
+                     existing_comp: bool = False,
+                     parent_shortcut: Optional[str] = None) -> dict:
     """Create a TD extension: COMP + text DAT + extension wiring"""
 
     # Validate class_name
     if not class_name.isidentifier():
         return {'error': f'class_name must be a valid Python identifier, got: {class_name}'}
+    # A parent shortcut is dereferenced as parent.<Name>, so it must be an
+    # identifier too -- 'my feature' would be written verbatim and resolve nowhere.
+    if parent_shortcut is not None and not str(parent_shortcut).isidentifier():
+        return {'error': 'parent_shortcut must be a valid Python identifier '
+                         f'(it is reached as parent.<Name>), got: {parent_shortcut!r}'}
 
     # Resolve or create the target COMP
     created_comp = False
@@ -1015,19 +1086,32 @@ def create_extension(ext, parent_path: str, class_name: str,
         if created_comp:
             comp.destroy()
         return {'error': f'Failed to create text DAT: {e}'}
+    text_dat.par.language = 'python'  # see create_op
 
     # Write extension code
     if code:
         text_dat.text = code
     else:
+        # Skeleton follows the three tiers in td-python.md: only UpperCamelCase
+        # is promoted to the COMP, so the lifecycle hooks are lowerCamel (tier 2)
+        # and reached through .ext -- promoting a frame hook is a design flaw.
+        # Typed (td-python.md, Type Hints): COMP is a real name inside TD, and
+        # the hooks return nothing. The hint is the soft check a checker reads;
+        # asType(checkType=True) is the runtime half.
         text_dat.text = (
             f'class {class_name}:\n'
-            f'    """\n'
-            f'    {class_name} description.\n'
-            f'    """\n'
+            f'    """TODO: one line on what this component does."""\n'
             f'\n'
-            f'    def __init__(self, ownerComp):\n'
+            f'    def __init__(self, ownerComp: COMP) -> None:\n'
             f'        self.ownerComp = ownerComp\n'
+            f'\n'
+            f'    def onDestroyTD(self) -> None:\n'
+            f'        """Teardown of the OLD instance before TD reinitializes."""\n'
+            f'        pass\n'
+            f'\n'
+            f'    def onInitTD(self) -> None:\n'
+            f'        """End of the frame after init; the network is cooked."""\n'
+            f'        pass\n'
         )
 
     # Set extension parameters
@@ -1045,6 +1129,22 @@ def create_extension(ext, parent_path: str, class_name: str,
             text_dat.destroy()
         return {'error': f'Failed to set extension parameters: {e}'}
 
+    shortcut_warning = None
+    # Optional parent shortcut. Without one, descendants have no
+    # parent.<Name> to reach the COMP by and fall back to parent() chains,
+    # which encode nesting depth (issue #94). Never overwrite an existing
+    # shortcut -- that would silently re-point references already in use.
+    if parent_shortcut:
+        try:
+            current = str(comp.par.parentshortcut.eval()).strip()
+            if current and current != parent_shortcut:
+                shortcut_warning = (f'parent_shortcut not set: {comp.path} already '
+                                f'declares "{current}"')
+            else:
+                comp.par.parentshortcut = parent_shortcut
+        except Exception as e:
+            shortcut_warning = f'parent_shortcut could not be set: {e}'
+
     # Initialize the extension
     init_warning = None
     try:
@@ -1056,18 +1156,18 @@ def create_extension(ext, parent_path: str, class_name: str,
     comp.viewer = False
 
     # Auto-externalize per the Autoexternalize preference. Externalize the
-    # host COMP only if WE created it (COMP -> TDN; the code DAT is then
+    # host COMP only if WE created it (COMP -> TDXN; the code DAT is then
     # captured inside it). The code DAT is always a fresh op: under 'dats'
     # (COMP not externalized) it becomes its own .py; under 'comps'/'both'
-    # the COMP's TDN already captures it, so its own call boundary-skips.
+    # the COMP's TDXN already captures it, so its own call boundary-skips.
     auto_ext = {}
     try:
         emb = op.Embody.ext.Embody
         if created_comp:
-            t = emb.AutoExternalizeNewOp(comp)
+            t = emb.autoExternalizeNewOp(comp)
             if t:
                 auto_ext['comp'] = t
-        t = emb.AutoExternalizeNewOp(text_dat)
+        t = emb.autoExternalizeNewOp(text_dat)
         if t:
             auto_ext['dat'] = t
     except Exception as e:
@@ -1087,17 +1187,20 @@ def create_extension(ext, parent_path: str, class_name: str,
     if auto_ext:
         result['externalized'] = auto_ext
 
-    if init_warning:
-        result['warning'] = init_warning
+    # Both, never one or the other: an init failure must not hide a refused
+    # shortcut (the silent-refusal shape issue #94 exists to remove).
+    warnings = [w for w in (init_warning, shortcut_warning) if w]
+    if warnings:
+        result['warning'] = ' | '.join(warnings)
 
     return result
 
 
 def import_network(ext, target_path, tdn, clear_first=False,
-                   restore_tdn_shells=True):
-    """Delegate to TDN extension for network import.
+                   restore_tdxn_shells=True):
+    """Delegate to TDXN extension for network import.
 
-    restore_tdn_shells=True (default) fills nested externalized-TDN
+    restore_tdxn_shells=True (default) fills nested externalized-TDXN
     children from their own .tdn files in the same import, recursively
     -- one import of a deeply nested boundary therefore fans out into
     one ImportNetwork per nested tracked COMP (correctness over speed:
@@ -1107,11 +1210,11 @@ def import_network(ext, target_path, tdn, clear_first=False,
     rebuilt from disk -- unsaved live edits inside those children were
     replaced by the disk copies.
     """
-    if not getattr(ext.ownerComp.ext, 'TDN', None):
-        return {'error': 'TDN extension not loaded on Embody COMP'}
-    return ext.ownerComp.ext.TDN.ImportNetwork(
+    if not getattr(ext.ownerComp.ext, 'TDXN', None):
+        return {'error': 'TDXN extension not loaded on Embody COMP'}
+    return ext.ownerComp.ext.TDXN.ImportNetwork(
         target_path=target_path,
         tdn=tdn,
         clear_first=clear_first,
-        restore_tdn_shells=restore_tdn_shells,
+        restore_tdxn_shells=restore_tdxn_shells,
     )

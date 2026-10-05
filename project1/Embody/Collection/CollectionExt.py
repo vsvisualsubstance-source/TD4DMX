@@ -1,8 +1,8 @@
 """CollectionExt -- embody.tools community/platform integration.
 
-Owns the untrusted-content layer for community TDN (source == "embody.tools"):
+Owns the untrusted-content layer for community TDXN (source == "embody.tools"):
 the capability scanner and the default-inert safe-import. Trusted own-network
-Copy/Paste lives in TDNExt and never reaches here. The scan/inert logic lives in
+Copy/Paste lives in TDXNExt and never reaches here. The scan/inert logic lives in
 the self-contained `scanner` and `safe_import` DATs beside this extension, loaded
 independently (no cross-import chain). This class is the thin TD glue, and the
 future home of the rest of the platform client (browse / fetch / submit).
@@ -14,14 +14,14 @@ class CollectionExt:
     def __init__(self, ownerComp):
         self.ownerComp = ownerComp
 
-    def ScanTdn(self, tdn):
-        """Return the C2 capability report for a TDN dict."""
-        return self.ownerComp.op('scanner').module.scan_tdn(tdn if isinstance(tdn, dict) else {})
+    def ScanTdxn(self, tdn):
+        """Return the C2 capability report for a TDXN dict."""
+        return self.ownerComp.op('scanner').module.scan_tdxn(tdn if isinstance(tdn, dict) else {})
 
     def PlanCommunityPaste(self, tdn):
-        """Scan a community TDN dict and return the import plan (live or inert).
+        """Scan a community TDXN dict and return the import plan (live or inert).
 
-        Reached only for source == "embody.tools" -- TDNExt unwraps the envelope
+        Reached only for source == "embody.tools" -- TDXNExt unwraps the envelope
         and hands over the inner tdn. Nothing here executes.
 
         Live-if-scanned-clean: a specimen whose only expressions are PROVABLY PURE
@@ -33,14 +33,11 @@ class CollectionExt:
         the genuinely side-effecting surfaces. The purity predicate is the scanner's
         own is_pure_value_expression, so the verdict and the neutralization agree.
         """
-        tdn = tdn if isinstance(tdn, dict) else {}
         scanner = self.ownerComp.op('scanner').module
         safe_import = self.ownerComp.op('safe_import').module
-        capability = scanner.scan_tdn(tdn)
-        if capability.get('verdict') == 'clean':
-            return {'mode': 'live', 'tdn': tdn,
-                    'capability': capability, 'summary': safe_import._empty_summary()}
-        inert_tdn, summary = safe_import.make_inert(
-            tdn, is_pure_expr=scanner.is_pure_value_expression)
-        return {'mode': 'inert', 'tdn': inert_tdn,
-                'capability': capability, 'summary': summary}
+        # Pure logic lives in safe_import.plan_community_paste so it is tested
+        # off-TD. Global shortcuts are stripped on the LIVE path too: the
+        # palette carve-out is sound only if the pasted network cannot
+        # register an op.TD<Name> itself (issue #94 review).
+        return safe_import.plan_community_paste(
+            tdn, scanner.scan_tdxn, scanner.is_pure_value_expression)

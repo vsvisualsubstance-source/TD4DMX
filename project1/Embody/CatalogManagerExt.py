@@ -4,7 +4,7 @@ CatalogManager - background scanner and cross-build default patching.
 On every startup, checks if a creation-values catalog exists for the
 current TD build in .embody/. If not, runs a background scan (1-2 ops
 per frame, no dropped frames) and writes the catalog. After scanning,
-compares against the source build of each TDN-externalized COMP and
+compares against the source build of each TDXN-externalized COMP and
 patches any parameters whose creation defaults shifted between builds.
 """
 
@@ -122,7 +122,7 @@ class CatalogManagerExt:
 	# =================================================================
 
 	def EnsureCatalogs(self):
-		"""Ensure op-type defaults + palette catalog are loaded into TDN.
+		"""Ensure op-type defaults + palette catalog are loaded into TDXN.
 
 		Called from execute.py onStart and onCreate. Non-blocking.
 		  - If .embody/catalog_<build>.json exists: loads from disk (fast).
@@ -133,8 +133,8 @@ class CatalogManagerExt:
 		# Idempotent: onStart and onCreate both call this; skip when
 		# the current run already populated the catalog.
 		try:
-			tdn_ext = self.ownerComp.ext.TDN
-			if tdn_ext._divergent_loaded and tdn_ext._palette_catalog:
+			tdxn_ext = self.ownerComp.ext.TDXN
+			if tdxn_ext._divergent_loaded and tdxn_ext._palette_catalog:
 				return
 		except Exception:
 			pass
@@ -157,10 +157,11 @@ class CatalogManagerExt:
 				complete = ('_palette' in catalog
 							and not catalog.get('_palette_partial'))
 				if complete:
-					self._populateTDNExt(catalog)
+					self._populateTDXNExt(catalog)
 					self._log(f'Loaded catalog for build {self._build_str}')
 					# Still check for cross-build patches
 					self._patchCrossBuildDefaults(catalog)
+					self._clearStaleScanStatus()
 					return
 				# Op-type half cached, palette phase missing/interrupted:
 				# resume it (issue #60). Push the OP-TYPE half only -- a
@@ -173,7 +174,7 @@ class CatalogManagerExt:
 				# an earlier session (see _palette_blocked in __init__).
 				self._palette_blocked.update(
 					catalog.get('_palette_blocked', []))
-				self._populateTDNExt(op_catalog)
+				self._populateTDXNExt(op_catalog)
 				self._patchCrossBuildDefaults(op_catalog)
 				self._scan_in_flight = True
 				self._pending_resume = (op_catalog, done)
@@ -182,7 +183,7 @@ class CatalogManagerExt:
 					f'cached) - resuming palette scan')
 				# Defer past the frame 30-90 restore phases (execute.py):
 				# stacking heavy palette loadTox calls on top of
-				# RestoreTOXComps / ReconstructTDNComps makes the first
+				# RestoreTOXComps / ReconstructTDXNComps makes the first
 				# seconds of a resumed launch needlessly choppy.
 				run('args[0]._resumePaletteScan()', self, delayFrames=60)
 				return
@@ -205,7 +206,7 @@ class CatalogManagerExt:
 	# Background Scan
 	# =================================================================
 
-	CHUNK_SIZE = 2  # ops per frame - keeps frame time well under 16ms
+	_CHUNK_SIZE = 2  # ops per frame - keeps frame time well under 16ms
 
 	def _startBackgroundScan(self):
 		"""Begin async scan of all creatable op types."""
@@ -231,11 +232,29 @@ class CatalogManagerExt:
 		self._setScanStatus(f'Scanning defaults (0/{self._scan_total})')
 		run('args[0]._processChunk()', self, delayFrames=1)
 
+	def _clearStaleScanStatus(self):
+		"""A scan readout the .toe carried in from an earlier session.
+
+		par.Status is saved with the project: a save taken mid-scan keeps
+		`Scanning palette (35/249)` even after that scan finished and the
+		next open loads the finished catalog without scanning, so nothing
+		ever rewrote it (TEC-B4A, 2026-09-22 -- Embody was working, the
+		readout said otherwise). Only a scan's own words are cleared;
+		Disabled stays Disabled (_setScanStatus).
+		"""
+		try:
+			current = str(self.ownerComp.par.Status)
+		except Exception:
+			return
+		if current.startswith('Scanning ') or current.endswith(
+				'failed -- see log'):
+			self._setScanStatus('Enabled')
+
 	def _setScanStatus(self, text):
 		"""Write a scan Status value UNLESS Embody is Disabled.
 
 		EnsureCatalogs runs regardless of the Status par (it is gated only
-		on Tdnmode), but Update() gates on Status == 'Disabled' -- so a
+		on Tdxnmode), but Update() gates on Status == 'Disabled' -- so a
 		scan writing 'Scanning...' / 'Enabled' over 'Disabled' would
 		silently re-enable a user's disabled Embody (panel finding).
 		"""
@@ -296,8 +315,8 @@ class CatalogManagerExt:
 			self._finalizeScan()
 			return
 
-		chunk = self._scan_queue[:self.CHUNK_SIZE]
-		self._scan_queue = self._scan_queue[self.CHUNK_SIZE:]
+		chunk = self._scan_queue[:self._CHUNK_SIZE]
+		self._scan_queue = self._scan_queue[self._CHUNK_SIZE:]
 
 		import td as _td
 
@@ -356,7 +375,7 @@ class CatalogManagerExt:
 		run('args[0]._processChunk()', self, delayFrames=1)
 
 	def _finalizeScan(self):
-		"""Write op-type catalog to disk, load into TDNExt, start palette scan."""
+		"""Write op-type catalog to disk, load into TDXNExt, start palette scan."""
 		self._cleanupWorkspace()
 
 		if self._scan_errors:
@@ -368,8 +387,8 @@ class CatalogManagerExt:
 		self._log(f'Scan complete: {self._scan_count} types, '
 				  f'{sum(len(v) for v in self._scan_results.values())} params')
 
-		# Load op-type defaults into TDNExt immediately (palette scan follows)
-		self._populateTDNExt(self._scan_results)
+		# Load op-type defaults into TDXNExt immediately (palette scan follows)
+		self._populateTDXNExt(self._scan_results)
 
 		# Run cross-build patch check (uses op-type catalog)
 		self._patchCrossBuildDefaults(self._scan_results)
@@ -425,8 +444,8 @@ class CatalogManagerExt:
 	# Palette Component Scan - toeexpand (primary, off-main-thread)
 	# =================================================================
 
-	TOEEXPAND_TIMEOUT = 60      # seconds per .tox expansion subprocess
-	TOEEXPAND_POLL_FRAMES = 30  # main-thread drain cadence (~0.5s at 60fps)
+	_TOEEXPAND_TIMEOUT = 60      # seconds per .tox expansion subprocess
+	_TOEEXPAND_POLL_FRAMES = 30  # main-thread drain cadence (~0.5s at 60fps)
 
 	def _toeexpandExe(self):
 		"""Absolute path to TD's bundled toeexpand, or None if absent."""
@@ -523,11 +542,11 @@ class CatalogManagerExt:
 			target=self._toeexpandWorker,
 			args=(exe, palette_dir, sorted(rel_paths),
 				  self._tox_scan_queue, self._tox_scan_done,
-				  self._tox_scan_stop, self.TOEEXPAND_TIMEOUT),
+				  self._tox_scan_stop, self._TOEEXPAND_TIMEOUT),
 			name='EmbodyPaletteScan', daemon=True)
 		worker.start()
 		run('args[0]._pollToeexpandScan()', self,
-			delayFrames=self.TOEEXPAND_POLL_FRAMES)
+			delayFrames=self._TOEEXPAND_POLL_FRAMES)
 		return True
 
 	@staticmethod
@@ -701,7 +720,7 @@ class CatalogManagerExt:
 					fatal = item[2]
 
 			if (len(self._palette_results) - self._palette_checkpointed
-					>= self.PALETTE_CHECKPOINT_EVERY):
+					>= self._PALETTE_CHECKPOINT_EVERY):
 				self._checkpointPaletteScan()
 			done = len(self._palette_results)
 			self._setScanStatus(
@@ -731,7 +750,7 @@ class CatalogManagerExt:
 				self._finalizePaletteScan()
 				return
 			run('args[0]._pollToeexpandScan()', self,
-				delayFrames=self.TOEEXPAND_POLL_FRAMES)
+				delayFrames=self._TOEEXPAND_POLL_FRAMES)
 		except Exception as e:
 			self._log(f'Background palette scan aborted: {e}', 'ERROR')
 			self._setScanAborted('Scanning palette')
@@ -747,8 +766,8 @@ class CatalogManagerExt:
 	# Palette Component Scan - legacy in-TD loadTox (fallback only)
 	# =================================================================
 
-	PALETTE_CHUNK_SIZE = 1  # .tox files per frame - some palette .tox are heavy
-	PALETTE_CHECKPOINT_EVERY = 25  # partial-catalog write cadence (components)
+	_PALETTE_CHUNK_SIZE = 1  # .tox files per frame - some palette .tox are heavy
+	_PALETTE_CHECKPOINT_EVERY = 25  # partial-catalog write cadence (components)
 
 	def _startPaletteScan(self, op_catalog, resume_results=None):
 		"""Begin async scan of all shipped palette .tox components.
@@ -888,8 +907,8 @@ class CatalogManagerExt:
 			self._finalizePaletteScan()
 			return
 
-		chunk = self._palette_queue[:self.PALETTE_CHUNK_SIZE]
-		self._palette_queue = self._palette_queue[self.PALETTE_CHUNK_SIZE:]
+		chunk = self._palette_queue[:self._PALETTE_CHUNK_SIZE]
+		self._palette_queue = self._palette_queue[self._PALETTE_CHUNK_SIZE:]
 
 		palette_dir = self._getPaletteDir()
 		total = len(self._palette_results) + len(self._palette_queue) + len(chunk)
@@ -968,7 +987,7 @@ class CatalogManagerExt:
 		# a struggling TD mid-first-launch) resumes on the next open
 		# instead of restarting from zero (issue #60).
 		if (len(self._palette_results) - self._palette_checkpointed
-				>= self.PALETTE_CHECKPOINT_EVERY):
+				>= self._PALETTE_CHECKPOINT_EVERY):
 			self._checkpointPaletteScan()
 
 		done = len(self._palette_results)
@@ -1034,9 +1053,9 @@ class CatalogManagerExt:
 		# Clean outcome - nothing wedged; drop the forensics marker.
 		self._clearInflightSentinel()
 
-		# Push palette mapping into TDNExt
+		# Push palette mapping into TDXNExt
 		try:
-			self.ownerComp.ext.TDN._palette_catalog = self._palette_results
+			self.ownerComp.ext.TDXN._palette_catalog = self._palette_results
 		except Exception:
 			pass
 
@@ -1052,7 +1071,7 @@ class CatalogManagerExt:
 	def _patchCrossBuildDefaults(self, current_catalog):
 		"""Compare catalogs across builds and patch shifted defaults.
 
-		For each TDN-externalized COMP, reads the td_build from its .tdn
+		For each TDXN-externalized COMP, reads the td_build from its .tdn
 		file, loads that build's catalog, and patches any params whose
 		creation default changed between builds.
 		"""
@@ -1060,26 +1079,26 @@ class CatalogManagerExt:
 		patches = []  # [(op_path, par_name, old_val, new_val)]
 
 		try:
-			tdn_comps = self.ownerComp.ext.Embody._getTDNStrategyComps()
+			tdxn_comps = self.ownerComp.ext.Embody._getTDXNStrategyComps()
 		except Exception:
 			return
 
-		if not tdn_comps:
+		if not tdxn_comps:
 			return
 
 		# Cache loaded source catalogs to avoid re-reading
 		source_catalogs = {}
 
-		for comp_path, rel_tdn_path in tdn_comps:
+		for comp_path, rel_tdxn_path in tdxn_comps:
 			# Read td_build from the .tdn file header
 			try:
 				abs_path = str(self.ownerComp.ext.Embody.buildAbsolutePath(
-					rel_tdn_path))
+					rel_tdxn_path))
 				if not os.path.isfile(abs_path):
 					continue
 				with open(abs_path, 'r', encoding='utf-8') as f:
-					tdn_doc = self.ownerComp.ext.TDN.tdn_load(f.read())
-				source_build = tdn_doc.get('td_build', '')
+					tdxn_doc = self.ownerComp.ext.TDXN.tdxn_load(f.read())
+				source_build = tdxn_doc.get('td_build', '')
 			except Exception:
 				continue
 
@@ -1142,7 +1161,7 @@ class CatalogManagerExt:
 		"""Patch operators in a COMP where defaults shifted.
 
 		Only patches params where the current value equals the NEW default
-		(meaning the user had the OLD default, which was omitted from TDN,
+		(meaning the user had the OLD default, which was omitted from TDXN,
 		and TD created it with the wrong new default).
 
 		Returns list of (op_path, par_name, old_val, new_val) tuples.
@@ -1205,30 +1224,30 @@ class CatalogManagerExt:
 			self._log(f'  {op_path}.{par_name}: {from_val} -> {to_val}')
 
 	# =================================================================
-	# TDNExt Integration
+	# TDXNExt Integration
 	# =================================================================
 
-	def _populateTDNExt(self, catalog):
-		"""Load catalog data into TDNExt.
+	def _populateTDXNExt(self, catalog):
+		"""Load catalog data into TDXNExt.
 
 		Separates the reserved _palette key from op-type parameter data.
 		Op-type defaults go into _divergent_defaults; palette name->type
 		mapping goes into _palette_catalog.
 		"""
 		try:
-			tdn_ext = self.ownerComp.ext.TDN
+			tdxn_ext = self.ownerComp.ext.TDXN
 		except Exception:
 			return
 
 		palette = catalog.get('_palette', {})
 		if palette:
-			tdn_ext._palette_catalog = palette
+			tdxn_ext._palette_catalog = palette
 
 		# Strip reserved keys so op-type lookup stays clean
 		param_catalog = {k: v for k, v in catalog.items()
 						 if not k.startswith('_')}
-		tdn_ext._divergent_defaults = param_catalog
-		tdn_ext._divergent_loaded = True
+		tdxn_ext._divergent_defaults = param_catalog
+		tdxn_ext._divergent_loaded = True
 
 	# =================================================================
 	# Bootstrap Palette Catalog (shipped tableDAT)
@@ -1287,7 +1306,7 @@ class CatalogManagerExt:
 		the current build; does not remove rows for other builds.
 		"""
 		try:
-			palette = dict(self.ownerComp.ext.TDN._palette_catalog)
+			palette = dict(self.ownerComp.ext.TDXN._palette_catalog)
 		except Exception as e:
 			self._log(f'ExportPaletteCatalog: no palette catalog: {e}', 'ERROR')
 			return

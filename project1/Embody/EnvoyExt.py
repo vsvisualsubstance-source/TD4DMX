@@ -34,7 +34,7 @@ import time
 from collections import deque
 from html import unescape
 from queue import Queue, Empty
-from threading import Lock, Event, Thread
+from threading import Lock, Event, Thread, get_ident
 from typing import Optional, Any, Callable, Literal
 
 ENVOY_VERSION = "1.4.0"
@@ -77,7 +77,14 @@ _TOUCH_RING_CAP = 8       # touches kept per scope
 _TOUCH_SCOPE_CAP = 200    # scopes kept (evict oldest-touched beyond this)
 
 _PATH_PARAM_KEYS = ('op_path', 'parent_path', 'source_path', 'dest_path',
-                    'target_path', 'comp_path', 'root_path')
+                    'dest_parent', 'target_path', 'comp_path', 'root_path')
+
+# Result keys that name an operator this call CREATED. Recording only 'path'
+# left copy_op, rename_op and create_extension registering their container
+# instead of the thing they made, so a peer editing the new op saw no overlap
+# (issue #94 audit). copy_op/rename_op return 'new_path'; create_extension
+# returns 'comp_path' + 'dat_path'.
+_RESULT_PATH_KEYS = ('path', 'new_path', 'comp_path', 'dat_path')
 
 
 # --- Recovery hints: reactive guidance on error envelopes ---
@@ -90,12 +97,19 @@ _PATH_PARAM_KEYS = ('op_path', 'parent_path', 'source_path', 'dest_path',
 # The reactive cousin of the .claude skills: the same hard-won knowledge,
 # delivered at the moment of failure rather than relying on a pre-loaded doc.
 #
-# Each entry is (compiled_regex, cause, action, next_tools). Keep it small and
-# tuned to errors an agent ACTUALLY hits -- noise here trains the agent to
-# ignore the block. `next_tools` are real Envoy tool names.
+# Each entry is (compiled_regex, code, cause, action, next_tools). Keep it
+# small and tuned to errors an agent ACTUALLY hits -- noise here trains the
+# agent to ignore the block. `next_tools` are real Envoy tool names.
+#
+# `code` is the stable machine-readable id that rides the envelope as
+# `error_code` (envoy.<area>.<condition>); messages may be reworded, codes
+# may not. Every envelope gets one -- `envoy.error` when no rule matches.
+# Idea adopted from td-mcp-rs's diagnostics catalog (credited in README).
+_ERROR_CODE_FALLBACK = 'envoy.error'
 _RECOVERY_HINT_RULES = [
     (re.compile(r'(operator|parent|source|destination|comp|op) not found'
                 r'|does not exist|no operator at', re.IGNORECASE),
+     'envoy.op.not_found',
      'the operator path does not resolve',
      "Never guess paths. Call query_network on the parent COMP (or '/') to "
      "list real children, or find_children to search by name, then retry with "
@@ -106,20 +120,33 @@ _RECOVERY_HINT_RULES = [
      ['query_network', 'find_children', 'get_op', 'get_annotations']),
 
     (re.compile(r'parameter not found|no parameter', re.IGNORECASE),
+     'envoy.par.not_found',
      'no parameter by that name on the operator',
-     "List the operator's real parameters with get_op (or read_tdn for a TDN "
+     "List the operator's real parameters with get_op (or read_tdn for a TDXN "
      "COMP) before setting. Custom-parameter names are Capitalized; built-in "
      "names are lowercase.",
      ['get_op', 'get_parameter']),
 
-    (re.compile(r'is not a top|is not a comp|\(family:|wrong family',
+    (re.compile(r'cannot create children in', re.IGNORECASE),
+     'envoy.parent.not_comp',
+     'the parent path is not a COMP, so nothing can be created inside it',
+     "create_op needs a COMP as parent_path. Verify it with get_op (family "
+     "COMP) or query_network, and prefer the container that holds the Embody "
+     "COMP (execute_python: result = op.Embody.parent().path) over / or /local.",
+     ['get_op', 'query_network']),
+
+    (re.compile(r'is not a (top|comp|dat|chop|sop|pop|mat)|\(family:|wrong family',
                 re.IGNORECASE),
+     'envoy.op.wrong_family',
      'the operator is the wrong family for this tool',
      "Check the operator's family with get_op. capture_top needs a TOP; "
-     "connect_ops needs compatible families; annotations need a COMP.",
+     "capture_op takes every family (non-TOPs render through an OP Viewer "
+     "TOP). connect_ops needs compatible families; annotations and parents "
+     "need a COMP; DAT tools need a DAT.",
      ['get_op', 'query_network']),
 
     (re.compile(r'no pixel data available', re.IGNORECASE),
+     'envoy.top.empty',
      'the TOP produced an empty texture (zero resolution or never cooked)',
      "Check the TOP's resolution and whether it cooked "
      "(get_op_performance -> cookedThisFrame), verify a Null terminates the "
@@ -127,8 +154,18 @@ _RECOVERY_HINT_RULES = [
      "debug-operator skill.",
      ['get_op_performance', 'get_op_errors', 'get_op']),
 
+    (re.compile(r'failed to (capture|encode)|could not (create|aim) a viewer'
+                r'|destroyed before it rendered', re.IGNORECASE),
+     'envoy.capture.failed',
+     'the capture pipeline could not produce an image',
+     "Check the operator with get_op_errors and get_op_performance, then "
+     "re-capture. A non-TOP renders through an OP Viewer TOP that needs a "
+     "few frames; one retry is reasonable.",
+     ['get_op_errors', 'get_op_performance', 'capture_op', 'capture_top']),
+
     (re.compile(r'thread conflict|outside the main thread|main-thread',
                 re.IGNORECASE),
+     'envoy.thread.violation',
      'a TD object was touched off the main thread, or a raw op was returned',
      "Don't return raw op()/parent() objects from execute_python -- assign "
      "strings instead (result = op('x').path). Resolve any values on the main "
@@ -138,17 +175,75 @@ _RECOVERY_HINT_RULES = [
     (re.compile(r'unknown (op|operator) type|not a valid operator'
                 r"|has no attribute '\w+(TOP|CHOP|SOP|DAT|COMP|MAT|POP)'",
                 re.IGNORECASE),
+     'envoy.op.unknown_type',
      'the operator type name is misspelled or unavailable in this build',
      "Operator type names are exact (e.g. noiseTOP, not noise). Confirm the "
      "spelling and availability via get_docs before create_op.",
      ['get_docs', 'get_td_classes']),
 
     (re.compile(r'timed out after|operation timed out', re.IGNORECASE),
+     'envoy.timeout',
      'the operation exceeded the MCP timeout (main-thread work too heavy)',
      "Break the work into smaller steps; check get_project_performance for a "
      "cook stall, and prefer batch_operations over many single calls.",
      ['get_project_performance', 'batch_operations']),
+
+    (re.compile(r'multi-session gate|another (live )?session', re.IGNORECASE),
+     'envoy.session.gated',
+     'another live session owns or just touched this scope',
+     "Call get_sessions to see who is there and load /multi-session-etiquette; "
+     "coordinate or claim the scope, and pass override=True only with "
+     "explicit user direction.",
+     ['get_sessions', 'claim_scope']),
+
+    (re.compile(r'confirm_wipe|would (leave|empty) the dat|wipe', re.IGNORECASE),
+     'envoy.dat.wipe_refused',
+     'the write would empty the DAT and was refused',
+     "If emptying it is intended, pass confirm_wipe=True; otherwise send the "
+     "full replacement text or rows (get_dat_content shows what is there).",
+     ['set_dat_content', 'get_dat_content']),
+
+    (re.compile(r'saved \.toe|recovery point|dirty or unsaved|unsaved',
+                re.IGNORECASE),
+     'envoy.project.unsaved',
+     'the project has no fresh save to fall back on',
+     "Save first with save_project (it returns a job id; poll get_job_status), "
+     "then retry. confirm_saved=True accepts losing everything since the last "
+     "save.",
+     ['save_project', 'get_job_status']),
+
+    (re.compile(r'tdxn extension not loaded|externalizations table not found',
+                re.IGNORECASE),
+     'envoy.embody.unavailable',
+     "Embody's extension or tracking table is not ready",
+     "Check get_op_errors on the Embody COMP and get_td_info; on a fresh open "
+     "wait for the startup restore (frame 60) and retry.",
+     ['get_op_errors', 'get_td_info']),
+
+    (re.compile(r'web lookup|no page content|found no match', re.IGNORECASE),
+     'envoy.docs.lookup_failed',
+     'the documentation lookup found nothing for that query',
+     "Use the exact wiki page name with get_docs, or read the live API with "
+     "get_td_class_details / get_module_help.",
+     ['get_docs', 'get_td_class_details', 'get_module_help']),
+
+    (re.compile(r'idempotency|no job with id|job records|convoy', re.IGNORECASE),
+     'envoy.job.error',
+     'a background job or Convoy delivery could not be resolved',
+     "Check get_job_status (or get_convoy_status for fleet work); a retry "
+     "must reuse the same idempotency_key rather than start a duplicate.",
+     ['get_job_status', 'get_convoy_status']),
 ]
+
+
+def _error_code_for(message) -> str:
+    """The stable code for an error message: the first matching rule's,
+    else the fallback. Pure and side-effect free."""
+    if isinstance(message, str) and message:
+        for pattern, code, _cause, _action, _next_tools in _RECOVERY_HINT_RULES:
+            if pattern.search(message):
+                return code
+    return _ERROR_CODE_FALLBACK
 
 
 def _recovery_hints_for(message: str) -> list:
@@ -159,9 +254,10 @@ def _recovery_hints_for(message: str) -> list:
     if not message:
         return []
     hints = []
-    for pattern, cause, action, next_tools in _RECOVERY_HINT_RULES:
+    for pattern, code, cause, action, next_tools in _RECOVERY_HINT_RULES:
         if pattern.search(message):
             hints.append({
+                'code': code,
                 'cause': cause,
                 'action': action,
                 'next_tools': list(next_tools),
@@ -450,7 +546,7 @@ def _task_public(task: dict, now: float) -> dict:
 # results on disk (.embody/jobs/<id>.json), so they survive restarts and
 # reinits; get_job_status polls. Records are os/json-only plain data --
 # writable from the main thread (tiny file) and readable from the worker.
-# This registry is the intended shape for future kinds (TDN export, movie
+# This registry is the intended shape for future kinds (TDXN export, movie
 # export) -- see docs/roadmap.md.
 
 _JOB_RETENTION_S = 24 * 3600.0    # finished records kept this long
@@ -684,8 +780,15 @@ def _job_public(job, now):
         out['age_s'] = round(now - float(job.get('started', now)), 1)
     except (TypeError, ValueError):
         out['age_s'] = None
-    if (out.get('status') == 'running' and out['age_s'] is not None
-            and out['age_s'] > _JOB_STALE_RUNNING_S):
+    # a heartbeating job (soak_test refreshes `updated` every few seconds) is
+    # stale when the heartbeat stops, not when it has merely run long; jobs
+    # without `updated` keep the started-based rule
+    try:
+        since = round(now - float(job.get('updated') or job.get('started', now)), 1)
+    except (TypeError, ValueError):
+        since = None
+    if (out.get('status') == 'running' and since is not None
+            and since > _JOB_STALE_RUNNING_S):
         out['stale'] = True
         out['hint'] = ('running far longer than expected -- the completion '
                        'poll may have died in an extension reinit; check '
@@ -731,6 +834,47 @@ def _list_jobs(now):
     return records[:_JOB_LIST_CAP]
 
 
+def _save_warnings(before: Optional[deque], mark: int,
+                   after: Optional[deque], cap: int = 8) -> list:
+    """WARNING/ERROR messages a save logged, for its job record (issue #109).
+
+    `before` is EmbodyExt's log deque captured before project.save(): only
+    entries past `mark` (its last id then) count. `after` is the deque after
+    the save; a reinit replaces the buffer and restarts ids, so when it is a
+    different object every entry in it counts (the new instance's own init
+    lines included). No `before` means no baseline: nothing is attributed.
+    ERRORs first, then WARNINGs, each oldest first with repeats collapsed,
+    so late per-op lines never evict the pre-save content report; past
+    `cap`, one '... (+N more ...)' entry counts the rest. Pure.
+    """
+    if before is None:
+        return []
+    entries = [e for e in list(before) if e.get('id', 0) > mark]
+    if after is not None and after is not before:
+        entries += list(after)
+    picked = []
+    for level in ('ERROR', 'WARNING'):
+        for e in entries:
+            msg = str(e.get('message', ''))
+            if e.get('level') == level and msg not in picked:
+                picked.append(msg)
+    if len(picked) > cap:
+        extra = len(picked) - cap
+        picked = picked[:cap] + [
+            '... (+%d more, see get_logs or the Embody log files)' % extra]
+    return picked
+
+
+def _save_log_ring(embody_ext: Any) -> Optional[deque]:
+    """The deque _save_warnings reads: EmbodyExt's WARNING/ERROR ring, which
+    a busy save's DEBUG churn cannot evict, else (an EmbodyExt predating it)
+    its full log ring; None when neither exists (issue #109)."""
+    ring = getattr(embody_ext, '_notable_log_buffer', None)
+    if ring is None:
+        ring = getattr(embody_ext, '_log_buffer', None)
+    return ring
+
+
 def _scope_overlaps(a: str, b: str) -> bool:
     """True when two scopes denote overlapping territory.
 
@@ -744,6 +888,13 @@ def _scope_overlaps(a: str, b: str) -> bool:
         shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
         return longer.startswith(shorter + '/')
     return False
+
+
+def _is_deferred(result) -> bool:
+    """A main-thread handler that needs real frames to finish returns
+    {'_defer': {'frames': N, 'continue': callable}} (see
+    EnvoyExt._scheduleDeferred). Pure."""
+    return isinstance(result, dict) and isinstance(result.get('_defer'), dict)
 
 
 def _scopes_for_operation(operation: str, params: dict, result=None) -> list:
@@ -781,9 +932,10 @@ def _scopes_for_operation(operation: str, params: dict, result=None) -> list:
                     and '/' in base):
                 scopes.append(base.rsplit('/', 1)[0] + '/' + new_name)
         if isinstance(result, dict):
-            created = result.get('path')
-            if isinstance(created, str) and created.startswith('/'):
-                scopes.append(created)
+            for key in _RESULT_PATH_KEYS:
+                created = result.get(key)
+                if isinstance(created, str) and created.startswith('/'):
+                    scopes.append(created)
     seen = set()
     deduped = []
     for s in scopes:
@@ -816,19 +968,19 @@ def durable_claim_alive(claim: dict, now: float,
 
 
 def compute_landing_conflicts(landing_files, main_dirty, peer_files,
-                              tdn_unsaved) -> dict:
+                              tdxn_unsaved) -> dict:
     """Intersect a worktree landing's file list with the three hazard sets.
     Pure function; all args are iterables of repo-relative POSIX paths."""
     landing = set(landing_files)
     return {
         'main_dirty': sorted(landing & set(main_dirty)),
         'peers': sorted(landing & set(peer_files)),
-        'tdn_unsaved': sorted(landing & set(tdn_unsaved)),
+        'tdxn_unsaved': sorted(landing & set(tdxn_unsaved)),
     }
 
 
 def read_tsv_dirty_paths(repo_root: str) -> set:
-    """Repo-relative paths of externalized files whose live TDN/DAT state
+    """Repo-relative paths of externalized files whose live TDXN/DAT state
     is UNSAVED (dirty column truthy in externalizations.tsv). LEGACY
     tsvs only since 2026-08-20 -- the live project's dirty state is
     runtime-only and merged from the sys mirror at the call site. Pure
@@ -1080,6 +1232,104 @@ def _worker_run_findings(source) -> list:
     return findings
 
 
+# --- Host-destroy guard (issue #110) ---
+# A request runs nested inside the Embody COMP hosting Envoy, so destroying
+# or reloading that COMP, an ancestor, '/' or the EnvoyExt DAT from inside
+# it cuts the branch the request sits on (it has hung TD). The structured
+# tools are checked inline here and fail CLOSED (no module DAT to lose);
+# execute_python's static lint lives in envoy_guard and fails OPEN.
+_HOST_DESTROY_CODE = 'envoy.embody.host_destroy_refused'
+_HOST_DESTROY_METHODS = frozenset({'destroy', 'reload', 'changeType',
+                                   'progressiveUnload'})
+_HOST_RELOAD_PULSES = frozenset({'enableexternaltoxpulse', 'reinitnet',
+                                 'enablecloningpulse'})
+# execute_python's lint prefilter: every call envoy_guard can flag names one
+# of these (lowercased), so token-free code skips the module entirely.
+_HOST_LINT_TOKENS = tuple(sorted(name.lower() for name in
+                                 _HOST_DESTROY_METHODS | _HOST_RELOAD_PULSES))
+
+
+def _host_destroy_shape(operation: Any, params: Any) -> Optional[tuple]:
+    """(op_path, what) when a structured call would destroy or reload its
+    target, else None -- a non-str op_path gives no verdict (the handler
+    reports it). Pure; never raises."""
+    if not isinstance(params, dict):
+        return None
+    if operation == 'import_network':
+        # clear_first destroys the target's children (issue #110 review).
+        target = params.get('target_path')
+        if isinstance(target, str) and params.get('clear_first'):
+            return target, 'import_network(clear_first=True)'
+        return None
+    op_path = params.get('op_path')
+    if not isinstance(op_path, str):
+        return None
+    if operation == 'delete_op':
+        return op_path, 'delete_op'
+    if operation == 'exec_op_method':
+        method = params.get('method')
+        if isinstance(method, str) and method in _HOST_DESTROY_METHODS:
+            return op_path, '%s()' % method
+        return None
+    if operation == 'set_parameter':
+        par_name = params.get('par_name')
+        if isinstance(par_name, str) and par_name.lower() in _HOST_RELOAD_PULSES:
+            return op_path, 'setting %s' % par_name
+    return None
+
+
+def _host_relation(target: str, chain: list) -> str:
+    """How a refused target relates to the host chain [Embody COMP,
+    ancestors..., '/', EnvoyExt DAT], worded for a refusal. Pure."""
+    host = chain[0] if chain else ''
+    if target == host:
+        return 'the Embody COMP that Envoy runs inside'
+    if target == '/':
+        return ('the project root, which contains the Embody COMP that '
+                'Envoy runs inside')
+    if host and target.startswith(host + '/'):
+        return "Envoy's own extension DAT, whose code is running this call"
+    return 'an ancestor of the Embody COMP (%s) that Envoy runs inside' % host
+
+
+def _host_refusal_text(what: str, target: str, relation: str,
+                       purges_tracking: bool) -> str:
+    """Structured-tool refusal. No destroy recipe on purpose: an agent that
+    hits this rarely knew Embody lived there, so it stops and asks."""
+    losses = 'That would take Envoy away from every connected AI client'
+    if purges_tracking:
+        losses += (', delete_op would first purge the externalization '
+                   'tracking (rows and files) of everything under it')
+    return ("HOST-DESTROY REFUSED (nothing changed): %s on %s would destroy "
+            "or reload %s, while Envoy's own request is still executing. %s, "
+            "and doing this from inside an Envoy call has hung TouchDesigner "
+            "(issue #110). override=True does not bypass this check. Stop "
+            "and ask the user." % (what, target, relation, losses))
+
+
+def _host_refusal(message: str, target: Optional[str]) -> dict:
+    """The refusal envelope. error_code rides here, so no recovery-hint rule
+    exists for it (and none matches): the message is the guidance."""
+    return {'error': message, 'error_code': _HOST_DESTROY_CODE,
+            'refused_target': target}
+
+
+# Main-thread liveness for the bridge (issue #110). EnvoyExt._onRefresh
+# stamps sys._envoy_main_tick (time.monotonic) every frame; the WORKER serves
+# its age at _MAIN_TICK_ROUTE, so a main thread stuck with the GIL released
+# reads as main_thread_stalled instead of healthy. sys survives reinits.
+_MAIN_TICK_ROUTE = '/envoy/main_tick'
+
+
+def _main_tick_age(now: Optional[float] = None) -> Optional[float]:
+    """Seconds since the main thread last entered Envoy's request loop, or
+    None before the first stamp. A pure read of a float: worker-safe."""
+    tick = getattr(sys, '_envoy_main_tick', None)
+    if not isinstance(tick, float):
+        return None
+    return max(0.0, (time.monotonic() if now is None else now) - tick)
+
+
 # Worker threads must not print(): TD replaces sys.stdout with a Textport
 # catcher, a main-thread object, so a worker print is the same defect class
 # as worker-side run() (Derivative-confirmed 2026-08-17). Workers buffer
@@ -1094,6 +1344,111 @@ def _queueWorkerLog(message, level='WARNING'):
         _WORKER_LOG_LINES.append((level, str(message)))
     except Exception:
         pass
+
+
+# Startup phases a server worker reports through sys._envoy_startup_phase
+# ({gen: (phase, thread_ident, startup_event)}) so a startup timeout can say
+# WHERE the worker stopped instead of blaming the port. bind() happens only
+# after _PHASE_SERVE, so a worker that died before it is no evidence against
+# its port. The startup_event names the start: two EnvoyExt instances in one
+# process can reuse a gen number.
+_PHASE_INIT = 'building MCP server'
+_PHASE_LOOP = 'creating event loop'
+_PHASE_SERVE = 'starting uvicorn'
+_PRE_BIND_PHASES = (_PHASE_INIT, _PHASE_LOOP)
+
+
+def _markStartupPhase(gen: int, phase: str, owner: Any = None) -> None:
+    """Worker-side: record this worker's phase. Plain dict on sys, no TD.
+    Diagnostics only, so it never raises into a start."""
+    try:
+        reg = getattr(sys, '_envoy_startup_phase', None)
+        if not isinstance(reg, dict):
+            reg = {}
+            sys._envoy_startup_phase = reg
+        reg[gen] = (phase, get_ident(), owner)
+        for old in sorted(k for k in reg if isinstance(k, int))[:-16]:
+            reg.pop(old, None)
+    except Exception:
+        pass
+
+
+class _EventLoopWedged(RuntimeError):
+    """Event-loop construction never completed (see _newEventLoopBounded)."""
+
+
+def _newEventLoopBounded(timeout: float = 1.5, attempts: int = 4,
+                         factory: Optional[Callable[[], Any]] = None,
+                         cancel: Optional[Event] = None
+                         ) -> Optional[asyncio.AbstractEventLoop]:
+    """Build an event loop on a daemon thread, with a deadline per attempt.
+
+    Every asyncio loop opens a self-pipe via socket.socketpair(); on Windows
+    that is CPython's _fallback_socketpair, whose non-blocking connect can
+    fail silently (WSAEADDRINUSE on an ephemeral-port collision, measured
+    2026-09-10) and leave accept() waiting forever -- here, on the non-daemon
+    TDThread, before bind (issue #98 follow-up). A failed attempt never
+    recovers, so attempts are short. Each wedge leaks one daemon builder; a
+    late finisher closes its own loop. OSError from the build is retried.
+    Returns None once `cancel` is set; raises _EventLoopWedged after
+    `attempts`.
+    """
+    if factory is None:
+        # Selector, not Proactor: the IOCP proactor can permanently kill the
+        # listener on restart (WinError 64 in accept()). Built directly --
+        # never through a process-global set_event_loop_policy().
+        factory = (asyncio.SelectorEventLoop if sys.platform.startswith('win')
+                   else asyncio.new_event_loop)
+    last_err = None
+    for attempt in range(1, attempts + 1):
+        if cancel is not None and cancel.is_set():
+            return None
+        box = {}
+        lock = Lock()
+        done = Event()
+
+        # Per-attempt state binds as defaults: a closure would read the NEXT
+        # attempt's box once the for-loop rebinds it (review 2026-09-10).
+        def build(box: dict = box, lock: Any = lock,
+                  done: Event = done) -> None:
+            try:
+                loop = factory()
+            except BaseException as e:
+                with lock:
+                    box['err'] = e
+                done.set()
+                return
+            with lock:
+                late = box.get('abandoned', False)
+                if not late:
+                    box['loop'] = loop
+            if late:
+                try:
+                    loop.close()
+                except Exception:
+                    pass
+            done.set()
+
+        Thread(target=build, daemon=True,
+               name=f'envoy-loop-init-{attempt}').start()
+        done.wait(timeout)
+        with lock:
+            if 'loop' in box:
+                return box['loop']
+            err = box.get('err')
+            if err is None:
+                box['abandoned'] = True
+        if err is not None and not isinstance(err, OSError):
+            raise err
+        last_err = err
+        what = f'failed ({err})' if err is not None else f'stalled >{timeout:g}s'
+        _queueWorkerLog(
+            f'Event loop creation {what} in socket.socketpair() '
+            f'(attempt {attempt}/{attempts})')
+    raise _EventLoopWedged(
+        f'Event loop creation failed in socket.socketpair() on {attempts} '
+        f'attempts ({timeout:g}s each) -- a loopback connection never '
+        f'completed; the Envoy port was never tried') from last_err
 
 
 class EnvoyMCPServer:
@@ -1220,9 +1575,39 @@ class EnvoyMCPServer:
                 _root.removeHandler(_h)
         _root.setLevel(_pre_level)
         self._register_tools()
+        try:
+            self._registerMainTickRoute()
+        except Exception as e:
+            _queueWorkerLog(f'Main-thread tick route unavailable: {e}')
+        # Direct delivery for EnvoyExt._answerAfterHostDestroyed (issue #110):
+        # response_checker stops once shutdown_event is set, which the dying
+        # host's onDestroyTD does. Same function it runs; pure Python.
+        try:
+            response_queue.envoy_deliver = self.check_responses
+        except Exception:
+            pass
 
-    def _touch_session(self, sid: str, label: str = None,
-                       operation: str = None) -> None:
+    def _registerMainTickRoute(self) -> None:
+        """GET _MAIN_TICK_ROUTE -> {'main_tick_age_s': float | None}, the
+        bridge's main_thread_stalled signal (issue #110). Served here on the
+        worker, so it answers while the main thread is stuck. Loopback Host
+        only: the SDK's DNS-rebinding check covers /mcp, not custom routes."""
+        from starlette.responses import JSONResponse
+
+        async def main_tick(request: Any) -> Any:
+            host = (request.headers.get('host') or '').rsplit(':', 1)[0]
+            if host not in ('127.0.0.1', 'localhost', '[::1]'):
+                return JSONResponse({'error': 'forbidden host'},
+                                    status_code=403)
+            age = _main_tick_age()
+            return JSONResponse(
+                {'main_tick_age_s': None if age is None else round(age, 3)})
+
+        self.mcp.custom_route(_MAIN_TICK_ROUTE, methods=['GET'],
+                              include_in_schema=False)(main_tick)
+
+    def _touch_session(self, sid: str, label: Optional[str] = None,
+                       operation: Optional[str] = None) -> None:
         """Register or refresh a session in the presence registry.
 
         Called from the ASGI middleware on every headered HTTP request and
@@ -1720,13 +2105,13 @@ class EnvoyMCPServer:
         except Exception as e:
             return {'error': 'git preflight failed: %s' % e}
 
-        tdn_unsaved = read_tsv_dirty_paths(root)
+        tdxn_unsaved = read_tsv_dirty_paths(root)
         # Dirty is runtime-only since 2026-08-20 (the tsv column is blank
         # by contract): merge the live mirror EmbodyExt._setDirtyState
         # maintains in a sys slot -- worker-safe, no TD objects. The file
         # scan above stays for foreign/legacy tsvs in the tree.
         try:
-            tdn_unsaved |= set(
+            tdxn_unsaved |= set(
                 dict(getattr(sys, '_embody_dirty_files', {}) or {})
                 .values())
         except Exception:
@@ -1748,7 +2133,7 @@ class EnvoyMCPServer:
                         break
 
         collisions = compute_landing_conflicts(
-            landing, main_dirty, peer_files, tdn_unsaved)
+            landing, main_dirty, peer_files, tdxn_unsaved)
         has_conflicts = any(collisions.values())
         result = {
             'worktree': wt,
@@ -1761,7 +2146,7 @@ class EnvoyMCPServer:
                 'Reconcile before landing: rebase the worktree on the '
                 'main tree for main_dirty collisions, coordinate with the '
                 'listed peers, and save the project (or re-export) for '
-                'tdn_unsaved collisions. Never overwrite blind.')
+                'tdxn_unsaved collisions. Never overwrite blind.')
 
         # Shared-ledger context: ACTIVE tasks whose file: scopes intersect
         # the landing set. Report-only in this iteration (the verdict stays
@@ -1871,6 +2256,14 @@ class EnvoyMCPServer:
                 skill_file = os.path.join(skills_dir, slug, 'SKILL.md')
                 if os.path.isfile(skill_file):
                     register(slug, 'skill', skill_file)
+                    # a skill's long tail: references/*.md, served as
+                    # '<slug>/<file>' so skills-folder-less clients get it
+                    refs_dir = os.path.join(skills_dir, slug, 'references')
+                    if os.path.isdir(refs_dir):
+                        for ref in sorted(os.listdir(refs_dir)):
+                            if ref.lower().endswith('.md'):
+                                register('%s/%s' % (slug, os.path.splitext(ref)[0]),
+                                         'reference', os.path.join(refs_dir, ref))
         except Exception:
             pass
         return index
@@ -1992,15 +2385,24 @@ class EnvoyMCPServer:
         if not event.wait(timeout=timeout):
             with self.lock:
                 del self.pending_requests[request_id]
-            return {'error': f'Operation timed out after {timeout} seconds. '
-                    f'The operation may still execute on the main thread.'}
+            message = (f'Operation timed out after {timeout} seconds. '
+                       f'The operation may still execute on the main thread.')
+            # A stale tick says WHY (issue #110): the main thread never came
+            # back to the request loop -- a dialog, or a call that is stuck.
+            stuck_s = _main_tick_age()
+            if stuck_s is not None and stuck_s >= timeout:
+                message += (f' TouchDesigner has not come back to the Envoy '
+                            f'request loop for {stuck_s:.0f}s (a blocking '
+                            f'dialog, or a call still running); call '
+                            f'list_dialogs before retrying.')
+            return {'error': message}
 
         with self.lock:
             result = self.pending_requests[request_id].get('result', {'error': 'No result'})
             del self.pending_requests[request_id]
         return result
 
-    def check_responses(self, first_response: dict = None) -> None:
+    def check_responses(self, first_response: Optional[dict] = None) -> None:
         """Check for responses from main thread"""
         def process_response(response):
             request_id = response['id']
@@ -2033,11 +2435,64 @@ class EnvoyMCPServer:
                 break
             process_response(response)
 
+    def _captureResponse(self, result, inline: bool):
+        """Worker-side finish for capture_top / capture_op: save the decoded
+        image to a temp file, describe it, ride the Quality verdict along as
+        text, and embed a small preview only when asked."""
+        import base64
+        import os
+        import uuid
+
+        if not isinstance(result, dict) or 'error' in result:
+            return result
+
+        image_bytes = base64.b64decode(result['image_b64'])
+        ext = '.jpg' if result['format'] == 'jpeg' else f".{result['format']}"
+        file_path = os.path.join(tempfile.gettempdir(),
+                                 f'envoy_capture_{uuid.uuid4().hex[:8]}{ext}')
+        with open(file_path, 'wb') as f:
+            f.write(image_bytes)
+
+        size_kb = result['size_bytes'] / 1024
+        if result.get('captured_via') == 'opviewerTOP':
+            label = (f"{result.get('op_type')} ({result.get('family')}) capture "
+                     f"via OP Viewer TOP")
+        else:
+            label = 'TOP capture'
+        info = (f"{label}: {result['original_width']}x{result['original_height']}"
+                f" -> {result['width']}x{result['height']} {result['format'].upper()}"
+                f" ({size_kb:.1f} KB)\nSaved to: {file_path}")
+
+        # Surface the black/empty-frame verdict as text so the agent can
+        # branch on it WITHOUT reading the image -- enforces the
+        # "never declare a visual task done on a black frame" rule.
+        q = result.get('quality') or {}
+        if q:
+            if q.get('pass'):
+                info += (f"\nQuality: OK (max_lum={q.get('max_luminance')}, "
+                         f"std={q.get('std_luminance')})")
+            else:
+                info += (f"\nQuality: FAIL {q.get('fail_reasons')} "
+                         f"(max_lum={q.get('max_luminance')}, "
+                         f"mean_lum={q.get('mean_luminance')}"
+                         + (f", mean_alpha={q['mean_alpha']}"
+                            if 'mean_alpha' in q else '') + ") -- the frame "
+                         f"is likely black/empty/transparent. Do NOT declare "
+                         f"the task done; load /debug-operator and fix the "
+                         f"chain, then re-capture.")
+
+        # Inline base64 images are token-heavy, so only embed when the caller
+        # explicitly asks (inline=True) and the image is small.
+        if inline and result['size_bytes'] < 20000:
+            return [info, self._Image(data=image_bytes, format=result['format'])]
+        return info + "\n(Use Read tool on the file path above to view the image)"
+
     def _register_tools(self):
         """Register all MCP tools"""
 
         @self.mcp.tool()
-        def create_op(parent_path: str, op_type: str, name: str = None) -> dict:
+        def create_op(parent_path: str, op_type: str, name: str = None,
+                      language: str = None) -> dict:
             """
             Create a new operator in TouchDesigner.
 
@@ -2049,10 +2504,18 @@ class EnvoyMCPServer:
             companions it spawns (callback/shader/info DATs) into a tight row
             hugging the host's bottom edge (docks_placed in the result).
 
+            A textDAT is created with language 'python' unless `language`
+            says otherwise. Pass it whenever the DAT will hold anything but
+            Python: it is set before auto-externalize picks the file type, so
+            a shader lands in .glsl, not .py.
+
             Args:
                 parent_path: Path to parent COMP (e.g., "/project1" or "/project1/base1")
                 op_type: Operator type (e.g., "baseCOMP", "noiseTOP", "waveCHOP", "textDAT")
                 name: Optional name for the new operator
+                language: Content Language for any DAT: python (the textDAT
+                    default), glsl, json, yaml, xml, text. An invalid token, or
+                    one on a non-DAT, errors and creates nothing.
 
             Returns:
                 Dict with path, name, and type of created operator
@@ -2060,13 +2523,18 @@ class EnvoyMCPServer:
             return self._execute_in_td('create_op', {
                 'parent_path': parent_path,
                 'op_type': op_type,
-                'name': name
+                'name': name,
+                'language': language
             })
 
         @self.mcp.tool()
         def delete_op(op_path: str, override: bool = False) -> dict:
             """
             Delete an operator.
+
+            Refuses the Embody COMP, its ancestors, '/' and Envoy's own
+            extension DAT (error_code envoy.embody.host_destroy_refused);
+            override does not bypass that check.
 
             Args:
                 op_path: Full path to the operator (e.g., "/project1/base1")
@@ -2116,7 +2584,12 @@ class EnvoyMCPServer:
             Invalid Menu values are rejected with the valid menuNames because
             TD would otherwise silently coerce them to index 0. Sequence-block
             parameters auto-grow their sequence, e.g. const5name grows
-            numBlocks to 6.
+            numBlocks to 6. A Pulse parameter is pulsed instead of assigned
+            (any value; the result carries pulsed: true). A reload or clone
+            pulse (enableexternaltoxpulse,
+            reinitnet, enablecloningpulse) on the Embody COMP, an ancestor,
+            '/' or Envoy's extension DAT is refused
+            (envoy.embody.host_destroy_refused).
 
             Args:
                 op_path: Full path to the operator
@@ -2296,6 +2769,11 @@ class EnvoyMCPServer:
             Python. Ops created here bypass auto-layout: position them per the
             network-layout rule or a LAYOUT WARNING rides back in _logs.
 
+            Refused before anything runs (envoy.embody.host_destroy_refused)
+            when the code would destroy or reload the Embody COMP, an
+            ancestor, '/' or Envoy's extension DAT in this call -- me and
+            parent() ARE the Embody COMP here; the refusal says how to defer.
+
             Args:
                 code: Python code to execute
 
@@ -2372,6 +2850,10 @@ class EnvoyMCPServer:
             Call a method on a TouchDesigner operator.
             Example: exec_op_method("/project1/table1", "appendRow", args=[["a", "b", "c"]])
 
+            destroy/reload/changeType/progressiveUnload on the Embody COMP,
+            an ancestor, '/' or Envoy's extension DAT are refused
+            (envoy.embody.host_destroy_refused).
+
             Args:
                 op_path: Path to the operator
                 method: Method name to call (e.g., "appendRow", "clear", "cook")
@@ -2413,6 +2895,42 @@ class EnvoyMCPServer:
             """
             return self._execute_in_td('get_td_class_details', {
                 'class_name': class_name
+            })
+
+        @self.mcp.tool()
+        def describe_op_type(op_type: str, pattern: str = None,
+                             page: str = None,
+                             include_menus: bool = True) -> dict:
+            """
+            Parameter names, labels, styles, defaults and menu values for an
+            operator TYPE -- before the operator exists.
+
+            The look-before-you-guess read: TD abbreviates parameter names
+            unpredictably (blurTOP blur amount is `size`, lagCHOP has `lag1`/
+            `lag2`, rectanglePOP sizes are `sizeu`/`sizev`), so call this once
+            per unfamiliar type instead of guessing into set_parameter. Read
+            off a throwaway instance in /sys/quiet (cooking disabled, outside
+            the project), then cached per type for the session.
+
+            Args:
+                op_type: TD class name of the type (noiseTOP, lfoCHOP, baseCOMP, gridPOP)
+                pattern: Glob or substring matched against parameter names AND
+                    labels, case-insensitive ("resol", "*color*", "Filter Size")
+                page: Only parameters on this page ("Noise", "Common")
+                include_menus: False drops menu value lists to save tokens
+
+            Returns:
+                Dict with op_type, family, pages, count, total, parameters
+                (name, label, style, page, default = the value a fresh
+                operator actually holds, plus declared_default when
+                Par.default disagrees; menu + menu_labels for menus;
+                sequence for sequence blocks; read_only), cached.
+                Unknown type -> error with did_you_mean. A filter matching
+                nothing -> hint: the name guess was wrong, not the operator.
+            """
+            return self._execute_in_td('describe_op_type', {
+                'op_type': op_type, 'pattern': pattern, 'page': page,
+                'include_menus': include_menus,
             })
 
         @self.mcp.tool()
@@ -2486,7 +3004,7 @@ class EnvoyMCPServer:
                     Omit to get the topic list.
 
             Returns:
-                Without topic: dict with topics (topic, kind 'rule'|'skill',
+                Without topic: dict with topics (topic, kind 'rule'|'skill'|'reference',
                 description), count, source, usage. With topic: dict with
                 topic, kind, description, path, content, and truncated/note
                 when the document exceeded the response cap. On a miss: the
@@ -2524,11 +3042,28 @@ class EnvoyMCPServer:
                 '1. Use the "create_extension" tool with a class_name and parent_path.\n'
                 '   - Set existing_comp=True to add an extension to an existing COMP.\n'
                 '   - Provide custom code via the "code" parameter, or omit for boilerplate.\n\n'
-                '2. Extension class conventions:\n'
-                '   - __init__(self, ownerComp) is required\n'
-                '   - Capitalized methods are promoted: op.CompName.Method()\n'
-                '   - Lowercase methods need: op.CompName.ext.ClassName.method()\n'
-                '   - Store the owner as self.ownerComp\n\n'
+                '2. Extension class conventions -- THREE namespace tiers:\n'
+                '   - __init__(self, ownerComp) is required; store it as\n'
+                '     self.ownerComp and navigate from there (never a bare\n'
+                '     global parent() inside the class).\n'
+                '   - Tier 1 PUBLIC API: UpperCamelCase, promoted to the COMP\n'
+                '     as op.CompName.Method(). TD promotes every capitalized\n'
+                '     member INCLUDING class constants, so a capital letter is\n'
+                '     the access modifier. A user autocompleting on the COMP\n'
+                '     must see nothing but tier 1.\n'
+                '   - Tier 2 WIRING: lowerCamelCase, NOT promoted, reached as\n'
+                '     op.CompName.ext.ExtName.method(). This is where frame\n'
+                '     hooks, callback entry points and dispatchers belong --\n'
+                '     promoting one is a design flaw, not a shortcut.\n'
+                '   - Tier 3 PRIVATE: _lowerCamelCase, called only inside the\n'
+                '     class.\n'
+                '   - ext.<Name> resolves by the Extension NAME parameter, not\n'
+                '     the class name: with ext_name="MyFeature" and class\n'
+                '     MyFeatureExt, ext.MyFeature works and ext.MyFeatureExt\n'
+                '     raises.\n'
+                '   - op.CompName needs a Global OP Shortcut (par.opshortcut);\n'
+                '     this tool does not set one. Without it, op.CompName\n'
+                '     raises AttributeError.\n\n'
                 '3. TD auto-reinitializes extensions when their source DATs change.\n'
                 '   To force a reinit: exec_op_method on the COMP, method="initializeExtensions".\n'
                 '   Implement onDestroyTD(self) for clean teardown of old instances.\n'
@@ -2708,7 +3243,10 @@ class EnvoyMCPServer:
                         display: bool = None, render: bool = None,
                         viewer: bool = None, current: bool = None,
                         expose: bool = None, allowCooking: bool = None,
-                        selected: bool = None) -> dict:
+                        selected: bool = None, cloneImmune: bool = None,
+                        componentCloneImmune: bool = None,
+                        showCustomOnly: bool = None,
+                        showDocked: bool = None) -> dict:
             """
             Set one or more flags/properties on an operator.
 
@@ -2723,6 +3261,11 @@ class EnvoyMCPServer:
                 expose: Expose flag
                 allowCooking: Allow cooking flag
                 selected: Selected flag in network editor
+                cloneImmune: The operator survives a clone re-sync
+                componentCloneImmune: The COMP and everything inside it
+                    survive a clone re-sync (COMPs only)
+                showCustomOnly: The parameter dialog shows only custom pages
+                showDocked: This node stays visible while docked to another
 
             Returns:
                 Dict with success status and updated flags
@@ -2737,7 +3280,11 @@ class EnvoyMCPServer:
                 'current': current,
                 'expose': expose,
                 'allowCooking': allowCooking,
-                'selected': selected
+                'selected': selected,
+                'cloneImmune': cloneImmune,
+                'componentCloneImmune': componentCloneImmune,
+                'showCustomOnly': showCustomOnly,
+                'showDocked': showDocked
             })
 
         # === Node Positioning & Layout Tools ===
@@ -3027,7 +3574,9 @@ class EnvoyMCPServer:
                 include_children: Include aggregate children performance data
 
             Returns:
-                Dict with CPU/GPU cook times, memory usage, cook counts
+                Dict with CPU/GPU cook times in MILLISECONDS (same unit as
+                get_project_performance's frameTimeMs -- frame budget is
+                16.7ms at 60fps), memory usage in bytes, cook counts
             """
             return self._execute_in_td('get_op_performance', {
                 'op_path': op_path,
@@ -3057,6 +3606,61 @@ class EnvoyMCPServer:
                 'include_hotspots': include_hotspots
             })
 
+        @self.mcp.tool()
+        def run_soak_test(duration_s: float = 600, interval_s: float = 1.0,
+                          fps_target: float = None, label: str = None,
+                          stop: bool = False,
+                          idempotency_key: str = None) -> dict:
+            """
+            Run a low-overhead performance soak as a background job.
+
+            Testing a show means watching it run for minutes to hours, not
+            reading one frame. This samples Envoy's Perform CHOP on the frame
+            hook -- three channel reads per frame (microseconds), memory and
+            op counts once per interval, nothing cooked, captured or created
+            -- so the instrument does not move the needle it reads. Returns a
+            job_id immediately; poll get_job_status(job_id): a running record
+            carries `progress` (elapsed_s, last_sample, summary_so_far,
+            verdict_so_far), the finished record a `result` with per-metric
+            first/last/min/max/mean/slope_per_min (fps, frame_ms, gpu_mb,
+            cpu_mb, active_ops), exact dropped-frame counts, the worst frame
+            time, GPU headroom, hotspots at start and end, up to 600
+            downsampled samples, and a PASS/WARN/FAIL verdict with reasons on
+            the performance rule's thresholds (fps under 90% of target, any
+            dropped frame, GPU headroom under 20%, memory climbing).
+
+            Observer effect: Envoy calls that cook, capture, write or execute
+            while a soak runs (capture_top, cook_op, execute_python,
+            save_project, create_op, ...) are logged as perturbations, and
+            samples within 2 s of one leave the `clean` statistics the verdict
+            uses -- a capture taken mid-soak never reads as a show defect.
+            Read-only counters (get_project_performance, get_job_status) are
+            free. One soak runs at a time per instance.
+
+            Args:
+                duration_s: How long to sample, 5 s to 12 h (default 600).
+                interval_s: Seconds between samples, 0.25 to 60 (default 1.0).
+                    Drops and frame-time extremes are exact regardless.
+                fps_target: Frame-rate target for the floor; default the
+                    project cook rate (root.time.rate).
+                label: Free text kept in the record (what was running).
+                stop: True ends the running soak now and returns its
+                    finished record.
+                idempotency_key: Stable key so a retried start reconciles to
+                    the soak it already began instead of erroring.
+
+            Returns:
+                {'job_id', 'status': 'running', duration_s, interval_s,
+                fps_target, hint}; with stop=True the finished job record;
+                {'job_id', 'status': 'running', elapsed_s, hint} when a soak
+                is already running.
+            """
+            return self._execute_in_td('run_soak_test', {
+                'duration_s': duration_s, 'interval_s': interval_s,
+                'fps_target': fps_target, 'label': label, 'stop': stop,
+                'idempotency_key': idempotency_key,
+            })
+
         # === Embody Integration Tools ===
 
         @self.mcp.tool()
@@ -3072,12 +3676,15 @@ class EnvoyMCPServer:
                 tag_type: Tag type - "tox" for COMPs, "py"/"txt"/"tsv"/"json" etc for DATs
                          If None, will auto-detect based on operator type
 
-            Unattended sessions: a TDN operation that meets a TD palette
+            Unattended sessions: a TDXN operation that meets a TD palette
             component can raise the Black-Box-vs-Full-Export dialog.
             Decide programmatically BEFORE the call: set the
-            Tdnpalettehandling parameter on the Embody COMP ('blackbox' |
+            Tdxnpalettehandling parameter on the Embody COMP ('blackbox' |
             'fullexport' | 'ask'), or per COMP via
             comp.store('_tdn_palette_handling', 'blackbox').
+            This tool's exports never raise the locked-content dialog: the
+            _logs WARNING lists each locked op's source and the COMP to tag
+            'tox'.
 
             File-removal behavior likewise follows the Filecleanup parameter
             ('ask' | 'keep' | 'delete') -- set it rather than letting a modal
@@ -3096,7 +3703,7 @@ class EnvoyMCPServer:
                                        delete_file: bool = False) -> dict:
             """
             Remove Embody externalization tracking from an operator
-            (tag, table row, and TDN breadcrumb).
+            (tag, table row, and TDXN breadcrumb).
 
             Args:
                 op_path: Path to the operator
@@ -3163,7 +3770,8 @@ class EnvoyMCPServer:
                              name: str = None, code: str = None,
                              promote: bool = True, ext_name: str = None,
                              ext_index: int = None,
-                             existing_comp: bool = False) -> dict:
+                             existing_comp: bool = False,
+                             parent_shortcut: str = None) -> dict:
             """
             Create or attach a TouchDesigner extension COMP and code DAT.
 
@@ -3179,6 +3787,9 @@ class EnvoyMCPServer:
                 ext_name: Custom extension name
                 ext_index: Extension slot 0-3; omitted auto-detects
                 existing_comp: True attaches to parent_path instead of creating
+                parent_shortcut: Set par.parentshortcut so descendants reach
+                    the COMP as parent.<Name> rather than a depth-coupled
+                    parent() chain. Refuses to overwrite an existing one.
 
             Returns:
                 Dict with comp_path, dat_path, class_name, ext_index, success status
@@ -3192,9 +3803,10 @@ class EnvoyMCPServer:
                 'ext_name': ext_name,
                 'ext_index': ext_index,
                 'existing_comp': existing_comp,
+                'parent_shortcut': parent_shortcut,
             })
 
-        # === TDN Network Format Tools ===
+        # === TDXN Network Format Tools ===
 
         @self.mcp.tool()
         def export_network(root_path: str = "/",
@@ -3203,26 +3815,32 @@ class EnvoyMCPServer:
                           max_depth: int = None,
                           embed_all: bool = False) -> dict:
             """
-            Export a TouchDesigner network to .tdn JSON format.
+            Export a TouchDesigner network as a TDXN document (a dict over
+            MCP; YAML in a .tdxn/.tdn file on disk).
             Only non-default properties are included, keeping output minimal.
 
             Args:
                 root_path: Root COMP to export from (default "/" for entire project)
-                include_dat_content: Include DAT text/table content (default None = use Embeddatsintdns toggle)
-                output_file: File path to write JSON. Use "auto" to generate name. None returns dict only.
+                include_dat_content: Include DAT text/table content (default None = use Embeddatsintdxns toggle)
+                output_file: File path to write the TDXN to. Use "auto" to generate name. None returns dict only.
+                    An output_file that is NOT the COMP's tracked file is a snapshot: the
+                    tracking row and the canonical file are left alone.
                 max_depth: Maximum recursion depth (None = unlimited)
-                embed_all: If True, recurse into TDN-tagged COMPs instead of
+                embed_all: If True, recurse into TDXN-tagged COMPs instead of
                     skipping their children. Produces a self-contained export.
 
-            Unattended sessions: a TDN operation that meets a TD palette
+            Unattended sessions: a TDXN operation that meets a TD palette
             component can raise the Black-Box-vs-Full-Export dialog.
             Decide programmatically BEFORE the call: set the
-            Tdnpalettehandling parameter on the Embody COMP ('blackbox' |
+            Tdxnpalettehandling parameter on the Embody COMP ('blackbox' |
             'fullexport' | 'ask'), or per COMP via
             comp.store('_tdn_palette_handling', 'blackbox').
 
             Returns:
-                Dict with the .tdn JSON document and optional file path
+                Without output_file: {'success', 'tdn': <document>}.
+                With output_file: {'success', 'file', 'summary': {network_path,
+                version, operators, annotations}, 'note'} -- the document is
+                NOT echoed back; Read the file for its contents.
             """
             return self._execute_in_td('export_network', {
                 'root_path': root_path,
@@ -3237,20 +3855,21 @@ class EnvoyMCPServer:
                           clear_first: bool = False,
                           override: bool = False) -> dict:
             """
-            Import a .tdn network into a TouchDesigner COMP, recreating all operators.
+            Import a TDXN network into a TouchDesigner COMP, recreating all operators.
 
             Args:
                 target_path: Destination COMP path to import into
-                tdn: The .tdn JSON document (full document or just the operators array)
+                tdn: The TDXN document as a dict (full document, or a dict holding
+                    just an 'operators' array)
                 clear_first: If True, delete all existing children before importing
                 override: Bypass the multi-session gate when another live
                     session claimed this COMP or wrote it very recently
                     (applies only with clear_first=True)
 
-            Unattended sessions: a TDN operation that meets a TD palette
+            Unattended sessions: a TDXN operation that meets a TD palette
             component can raise the Black-Box-vs-Full-Export dialog.
             Decide programmatically BEFORE the call: set the
-            Tdnpalettehandling parameter on the Embody COMP ('blackbox' |
+            Tdxnpalettehandling parameter on the Embody COMP ('blackbox' |
             'fullexport' | 'ask'), or per COMP via
             comp.store('_tdn_palette_handling', 'blackbox').
 
@@ -3265,12 +3884,12 @@ class EnvoyMCPServer:
             })
 
         @self.mcp.tool()
-        def read_tdn(comp_path: str = "/",
-                     include_dat_content: bool = None,
-                     max_depth: int = None,
-                     embed_all: bool = False) -> dict:
+        def read_tdxn(comp_path: str = "/",
+                      include_dat_content: bool = None,
+                      max_depth: int = None,
+                      embed_all: bool = False) -> dict:
             """
-            Read live authored state under comp_path as a compact TDN dict.
+            Read live authored state under comp_path as a compact TDXN dict.
 
             This is authored-state, not runtime: use runtime probes for
             evaluated values, cook errors, output pixels/data, timing, or flags.
@@ -3279,22 +3898,37 @@ class EnvoyMCPServer:
                 comp_path: Root COMP to read (default "/" for entire project)
                 include_dat_content: Include DAT text/table content
                 max_depth: Maximum recursion depth (None = unlimited)
-                embed_all: Recurse into TDN-tagged COMPs instead of skipping
+                embed_all: Recurse into TDXN-tagged COMPs instead of skipping
 
             Returns:
-                Dict with the TDN document under 'tdn', or {'error': ...}
+                Dict with the TDXN document under 'tdn', or {'error': ...}
             """
-            return self._execute_in_td('read_tdn', {
+            return self._execute_in_td('read_tdxn', {
                 'comp_path': comp_path,
                 'include_dat_content': include_dat_content,
                 'max_depth': max_depth,
                 'embed_all': embed_all,
             })
+
         @self.mcp.tool()
-        def diff_tdn(target: str = "",
-                     max_changed_ops: int = 200,
-                     max_bytes: int = 60000) -> dict:
-            """Diff live in-memory TDN state against on-disk .tdn files.
+        def read_tdn(comp_path: str = "/",
+                     include_dat_content: bool = None,
+                     max_depth: int = None,
+                     embed_all: bool = False) -> dict:
+            """DEPRECATED alias for read_tdxn -- prefer read_tdxn.
+
+            Kept because the old name is published: it is in shipped rule
+            files, saved agent prompts and third-party integrations, and
+            removing it would break them silently. Identical behaviour.
+            """
+            return read_tdxn(comp_path, include_dat_content, max_depth,
+                             embed_all)
+
+        @self.mcp.tool()
+        def diff_tdxn(target: str = "",
+                      max_changed_ops: int = 200,
+                      max_bytes: int = 60000) -> dict:
+            """Diff live in-memory TDXN state against on-disk .tdxn files.
 
             Empty target (or "/" / "project") returns a project summary; a
             COMP path or .tdn filename returns that COMP in detail. Read-only.
@@ -3307,11 +3941,22 @@ class EnvoyMCPServer:
             Returns:
                 Diff envelope, project summary, or {'error': ...}
             """
-            return self._execute_in_td('diff_tdn', {
+            return self._execute_in_td('diff_tdxn', {
                 'target': target,
                 'max_changed_ops': max_changed_ops,
                 'max_bytes': max_bytes,
             })
+
+        @self.mcp.tool()
+        def diff_tdn(target: str = "",
+                     max_changed_ops: int = 200,
+                     max_bytes: int = 60000) -> dict:
+            """DEPRECATED alias for diff_tdxn -- prefer diff_tdxn.
+
+            Kept for the same reason as read_tdn: the name is published.
+            Identical behaviour.
+            """
+            return diff_tdxn(target, max_changed_ops, max_bytes)
 
 
         # === TOP Capture ===
@@ -3324,6 +3969,9 @@ class EnvoyMCPServer:
                         sample_grid: int = 0) -> list:
             """
             Capture a TOP as a temp image file or sampled RGBA grid.
+
+            TOP only -- for any other family (CHOP, SOP, POP, DAT, COMP, MAT)
+            use capture_op, which renders through an OP Viewer TOP.
 
             File path is returned by default; inline=True embeds a small preview.
             sample_grid>=2 returns an NxN RGBA grid instead, clamped 2..32 with
@@ -3347,10 +3995,6 @@ class EnvoyMCPServer:
                 Saved path text (with a Quality verdict line), inline image
                 content, or sample-grid dict
             """
-            import base64
-            import os
-            import uuid
-
             try:
                 sample_grid_value = int(sample_grid or 0)
             except Exception:
@@ -3363,51 +4007,49 @@ class EnvoyMCPServer:
                 'max_resolution': max_resolution,
                 'sample_grid': sample_grid_value,
             })
-
-            if 'error' in result:
-                return result
-
             if sample_grid_value >= 2:
                 return result
+            return self._captureResponse(result, inline)
 
-            # Decode the base64 image data from the main thread
-            image_bytes = base64.b64decode(result['image_b64'])
+        @self.mcp.tool()
+        def capture_op(op_path: str,
+                       format: Literal["jpeg", "png"] = "jpeg",
+                       quality: float = 0.8,
+                       max_resolution: int = 640, inline: bool = False) -> list:
+            """
+            Capture any operator's current output as a temp image file.
 
-            # Always save to temp file (Claude Code can Read images natively)
-            ext = '.jpg' if result['format'] == 'jpeg' else f".{result['format']}"
-            file_path = os.path.join(tempfile.gettempdir(), f'envoy_capture_{uuid.uuid4().hex[:8]}{ext}')
-            with open(file_path, 'wb') as f:
-                f.write(image_bytes)
+            A TOP is read natively (same pixels as capture_top). Every other
+            family -- CHOP, SOP, POP, DAT, COMP, MAT -- is rendered through a
+            transient OP Viewer TOP, the picture the network editor's viewer
+            shows, created inside the Embody COMP for this call and destroyed
+            after. The capture waits a few frames for the viewer to render;
+            the returned text says when a viewer was used. Use capture_top
+            when you need TOP-only features (sample grids).
 
-            size_kb = result['size_bytes'] / 1024
-            info = (f"TOP capture: {result['original_width']}x{result['original_height']}"
-                    f" -> {result['width']}x{result['height']} {result['format'].upper()}"
-                    f" ({size_kb:.1f} KB)\nSaved to: {file_path}")
+            File path is returned by default; inline=True embeds a small
+            preview. The text carries the same Quality verdict as capture_top:
+            never declare a visual task done on a FAIL.
 
-            # Surface the black/empty-frame verdict as text so the agent can
-            # branch on it WITHOUT reading the image -- enforces the
-            # "never declare a visual task done on a black frame" rule.
-            q = result.get('quality') or {}
-            if q:
-                if q.get('pass'):
-                    info += (f"\nQuality: OK (max_lum={q.get('max_luminance')}, "
-                             f"std={q.get('std_luminance')})")
-                else:
-                    info += (f"\nQuality: FAIL {q.get('fail_reasons')} "
-                             f"(max_lum={q.get('max_luminance')}, "
-                             f"mean_lum={q.get('mean_luminance')}"
-                             + (f", mean_alpha={q['mean_alpha']}"
-                                if 'mean_alpha' in q else '') + ") -- the frame "
-                             f"is likely black/empty/transparent. Do NOT declare "
-                             f"the task done; load /debug-operator and fix the "
-                             f"chain, then re-capture.")
+            Args:
+                op_path: Path to any operator
+                format: "jpeg" or "png"
+                quality: JPEG compression quality 0.0-1.0
+                max_resolution: Max pixels on longest edge (a non-TOP viewer
+                    renders at this width, 16:9); 0 = native / 1280 wide
+                inline: True embeds a small base64 preview
 
-            # Inline base64 images are token-heavy, so only embed when the caller
-            # explicitly asks (inline=True) and the image is small. By default
-            # return just the path; Read the file when actually judging a frame.
-            if inline and result['size_bytes'] < 20000:
-                return [info, self._Image(data=image_bytes, format=result['format'])]
-            return info + "\n(Use Read tool on the file path above to view the image)"
+            Returns:
+                Saved path text (with a Quality verdict line) or inline image
+                content
+            """
+            result = self._execute_in_td('capture_op', {
+                'op_path': op_path,
+                'format': format,
+                'quality': quality,
+                'max_resolution': max_resolution,
+            })
+            return self._captureResponse(result, inline)
 
         # === Logging ===
 
@@ -3596,7 +4238,7 @@ class EnvoyMCPServer:
             also dirty in the MAIN tree (a running TD re-exports
             externalized files -- blind overwrite is the classic landing
             failure), landing files claimed or recently written by PEER
-            sessions, and landing files whose live TDN/DAT state is
+            sessions, and landing files whose live TDXN/DAT state is
             UNSAVED (dirty in externalizations.tsv). Run it before porting
             any worktree diff; a 'conflicts' verdict means reconcile first.
 
@@ -3606,7 +4248,7 @@ class EnvoyMCPServer:
 
             Returns:
                 Dict with worktree, landing_files, collisions {main_dirty,
-                peers, tdn_unsaved}, verdict 'clear'|'conflicts', or
+                peers, tdxn_unsaved}, verdict 'clear'|'conflicts', or
                 {'error': ...}. May also carry 'ledger_tasks' (active
                 shared-ledger tasks whose file: scopes intersect the
                 landing, each with 'overlap') and 'ledger_hint' when one is
@@ -3621,12 +4263,19 @@ class EnvoyMCPServer:
         @self.mcp.tool()
         def run_tests(suite_name: str = None, test_name: str = None,
                       override: bool = False, background: bool = False,
-                      idempotency_key: str = None) -> dict:
+                      idempotency_key: str = None,
+                      confirm_saved: bool = False) -> dict:
             """
             Run Embody test suites and return results.
 
-            Prerequisite: load the project's /run-tests skill (when present)
-            and save the project before a full run.
+            Prerequisite: load the project's /run-tests skill (when present).
+
+            A FULL run (no suite_name) is REFUSED when the saved .toe is
+            missing or over an hour old -- it mutates the live network for
+            ~25 minutes and that file is the only recovery point. Call
+            save_project first, or pass confirm_saved=True to accept losing
+            anything since the last save. Every response reports the
+            recovery point's age; a single-suite run is never refused.
 
             background=True is the RESILIENT mode -- recommended for full
             runs: the run starts and this call returns a job id
@@ -3648,6 +4297,9 @@ class EnvoyMCPServer:
                     reconciles to the original run's handle instead of
                     starting (or being refused as) a duplicate. Omit for a
                     one-shot run.
+                confirm_saved: Run a FULL suite even though the saved .toe
+                    is missing or stale, accepting that anything changed
+                    since that save is unrecoverable if the run goes wrong.
 
             Returns:
                 Synchronous: dict with passed/failed/error/skip counts and
@@ -3669,7 +4321,8 @@ class EnvoyMCPServer:
                 return self._execute_in_td('run_tests', {
                     'suite_name': suite_name, 'test_name': test_name,
                     'override': override, 'background': True,
-                    'idempotency_key': idempotency_key})
+                    'idempotency_key': idempotency_key,
+                    'confirm_saved': confirm_saved})
 
             # Use a dedicated Event so the worker thread can wait directly
             # for test completion -- bypasses the response_queue which is
@@ -3686,7 +4339,8 @@ class EnvoyMCPServer:
                 'id': -1,  # Sentinel -- no normal response expected
                 'operation': 'run_tests',
                 'params': {'suite_name': suite_name, 'test_name': test_name,
-                           'override': override},
+                           'override': override,
+                           'confirm_saved': confirm_saved},
                 'sid': _SESSION_CTX.get()[0],
             })
 
@@ -3713,7 +4367,7 @@ class EnvoyMCPServer:
         def get_job_status(job_id: str = None) -> dict:
             """
             Status of background jobs (run_tests background=True,
-            save_project).
+            save_project, run_soak_test).
 
             Jobs are disk-backed (.embody/jobs/), so they survive server
             restarts and extension reinits -- the failure mode that severs
@@ -3721,7 +4375,14 @@ class EnvoyMCPServer:
             tool returned; omit it to list recent jobs. A finished
             run_tests job carries the summary (counts + the failing
             tests); a finished save_project job carries
-            version_before/version_after.
+            version_before/version_after. It also carries warnings: the
+            WARNING/ERROR lines logged during the save (ERRORs first, then
+            oldest first, repeats collapsed, at most 8 plus a '(+N more)'
+            entry), which the save's own extension reinit can keep out of
+            _logs. INFO lines are not listed; read them with get_logs.
+            A run_soak_test job carries progress (elapsed_s, last_sample,
+            summary_so_far, verdict_so_far) while running and result
+            (summary, verdict, reasons, samples) when finished.
 
             Args:
                 job_id: The id the starting tool returned (job_...). Omit
@@ -3754,13 +4415,29 @@ class EnvoyMCPServer:
             Save the TouchDesigner project as a tracked background job.
 
             project.save() blocks TD's main thread for many seconds (the
-            TDN strip/restore cycle plus the release-tox export) and
+            TDXN strip/restore cycle plus the release-tox export) and
             reinitializes extensions, so a synchronous MCP call is severed
             even though the save succeeds. This tool returns a job id
             immediately; the save runs a few frames later. Poll
             get_job_status(job_id) -- the finished record carries
             version_before/version_after and the saved .toe name. Expect
             this session's next call to ride a brief bridge reconnect.
+
+            Unattended sessions: a save never shows a dialog. Editable,
+            unexternalized DAT content is always written into its COMP's
+            .tdxn (tdxn_exclude:dat_content opts out; generated DATs are
+            recreated by TD). get_job_status(job_id)['warnings'] lists the
+            save's WARNING/ERROR lines: storage a save or the next open
+            destroys (Roundtrip mode with Strip on Save or Create on Start,
+            Embed Storage off) and any other save-time warning. Storage
+            only a rebuild from the .tdxn would lose (Export mode, a TDXN
+            COMP's own keys) is logged at INFO: get_logs and Embody's log
+            files, not the record. The Tdxndatsafety parameter on the
+            Embody COMP ('ask' | 'externalize' | 'ignore') governs that
+            report; set it before saving, like Tdxnpalettehandling and
+            Filecleanup. For an unattended save prefer this tool over
+            execute_python project.save(): the save reinitializes
+            extensions, so a warning may never reach _logs.
 
             Args:
                 idempotency_key: A stable key that makes a RETRY safe. A
@@ -3978,7 +4655,7 @@ class EnvoyMCPServer:
     def _docsDefaultsIndex(self) -> dict:
         """{op_type_lower: {par_name: default}} of creation defaults.
 
-        Source priority mirrors TDNExt._loadDivergentDefaults so the two
+        Source priority mirrors TDXNExt._loadDivergentDefaults so the two
         cannot disagree about what a default IS:
           1. .embody/catalog_<build>.json -- probed from real instances on
              THIS build by CatalogManager (~650 op types, complete).
@@ -4431,11 +5108,26 @@ class EnvoyMCPServer:
         # if the old server thread is stuck and won't release the port.
         sys._envoy_uvi_server = uvi_server
         sys._envoy_uvi_gen = self.gen
+        # Per-generation registry BESIDE that single slot: the slot names only
+        # the NEWEST worker, so every earlier one became unreachable and its
+        # listener leaked for the life of the process -- +1 port drift on each
+        # restart (issue #98, 2026-09-08: one TD listening on 9871 AND 9872).
+        # _reapStaleServers walks this. Plain dict on sys -- same cross-thread
+        # channel as the slot, and it survives an extension reinit.
+        _live = getattr(sys, '_envoy_uvi_servers', None)
+        if not isinstance(_live, dict):
+            _live = {}
+        _live[self.gen] = (uvi_server, self.port)
+        sys._envoy_uvi_servers = _live
 
-        # Monitor shutdown_event and tell uvicorn to exit
+        # Monitor shutdown_event and tell uvicorn to exit. Both monitors also
+        # end with the worker (self.running): one that dies before serving
+        # (_EventLoopWedged) otherwise orphans them, polling for good.
         def shutdown_monitor():
-            self.shutdown_event.wait()
-            uvi_server.should_exit = True
+            while self.running:
+                if self.shutdown_event.wait(0.5):
+                    uvi_server.should_exit = True
+                    return
 
         Thread(target=shutdown_monitor, daemon=True).start()
 
@@ -4446,7 +5138,7 @@ class EnvoyMCPServer:
         # instant the task was enqueued (zombie status over a dead socket).
         def startup_monitor():
             import time as _t
-            while not self.shutdown_event.is_set():
+            while self.running and not self.shutdown_event.is_set():
                 if getattr(uvi_server, 'started', False):
                     if self.startup_event is not None:
                         self.startup_event.set()
@@ -4457,13 +5149,26 @@ class EnvoyMCPServer:
             Thread(target=startup_monitor, daemon=True).start()
 
         try:
-            # On Windows, use SelectorEventLoop instead of the default ProactorEventLoop.
-            # The IOCP proactor can permanently kill the listener socket on server restarts
-            # with "WinError 64: The specified network name is no longer available" during
-            # accept(). SelectorEventLoop handles TCP reliably without IOCP quirks.
-            if sys.platform.startswith('win'):
-                asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-            asyncio.run(uvi_server.serve())
+            # asyncio.run() minus its unbounded new_event_loop(): the loop is
+            # built by _newEventLoopBounded (Selector on Windows) and handed to
+            # a Runner, which keeps asyncio.run's shutdown sequence.
+            _markStartupPhase(self.gen, _PHASE_LOOP, self.startup_event)
+            loop = _newEventLoopBounded(cancel=self.shutdown_event)
+            if loop is None or self.shutdown_event.is_set():
+                # Signalled down mid-build (timeout, Stop, revive): serving now
+                # would bind a port the replacement start may already hold.
+                if loop is not None:
+                    loop.close()
+                return
+            _markStartupPhase(self.gen, _PHASE_SERVE, self.startup_event)
+            try:
+                asyncio.set_event_loop(loop)
+                with asyncio.Runner(loop_factory=lambda: loop) as runner:
+                    runner.run(uvi_server.serve())
+            finally:
+                asyncio.set_event_loop(None)
+                if not loop.is_closed():
+                    loop.close()
         finally:
             self.running = False
             # Clear the global handle so the next Start does not mistake
@@ -4473,8 +5178,11 @@ class EnvoyMCPServer:
             if getattr(sys, '_envoy_uvi_server', None) is uvi_server:
                 sys._envoy_uvi_server = None
                 sys._envoy_uvi_gen = 0
-            if sys.platform.startswith('win'):
-                asyncio.set_event_loop_policy(None)
+            _live = getattr(sys, '_envoy_uvi_servers', None)
+            if isinstance(_live, dict):
+                _entry = _live.get(self.gen)
+                if _entry is not None and _entry[0] is uvi_server:
+                    _live.pop(self.gen, None)
 
 
 # ============================================================
@@ -4569,7 +5277,6 @@ class EnvoyExt:
         self._runtime_port: Optional[int] = None
         self._startup_event: Optional[Event] = None
         self._startup_deadline: float = 0.0
-        self._venv_recreated: bool = False  # Guard: only auto-recreate venv once per session
         # Guard: probe each venv python binary at most once per session --
         # Start() re-runs on every watchdog revive, and re-probing each time
         # was a recurring synchronous main-thread stall (issue #60). Holds
@@ -4661,7 +5368,7 @@ class EnvoyExt:
         self._crash_trace_f = None                    # open handle to the breadcrumb file
 
         # Get Thread Manager from TDResources
-        self.ThreadManager = op.TDResources.ThreadManager
+        self._threadManager = op.TDResources.ThreadManager
 
         # Shut down any server left over from a previous init cycle.
         # Extensions get re-initialized when TD recompiles externalized code
@@ -4759,13 +5466,13 @@ class EnvoyExt:
         - Multiple rapid reinits
         """
         try:
-            self.ThreadManager.ext.ThreadManagerExt
+            self._threadManager.ext.ThreadManagerExt
         except Exception:
             return
 
         # Log Thread Manager state before cleanup
         thread_info = []
-        for t in self.ThreadManager.ext.ThreadManagerExt.Threads:
+        for t in self._threadManager.ext.ThreadManagerExt.Threads:
             task = getattr(t, 'TDTask', None)
             target = getattr(task, 'target', None) if task else None
             name = getattr(target, '__name__', '?') if target else 'None'
@@ -4777,7 +5484,7 @@ class EnvoyExt:
                 f'{"; ".join(thread_info)}', 'DEBUG')
 
         cleaned = 0
-        for thread in list(self.ThreadManager.ext.ThreadManagerExt.Threads):
+        for thread in list(self._threadManager.ext.ThreadManagerExt.Threads):
             task = getattr(thread, 'TDTask', None)
             if task is None:
                 continue
@@ -4797,21 +5504,21 @@ class EnvoyExt:
             # onDestroyTD already cleaned the previous instance's thread,
             # and self.current_task is None (new task not created yet).
             thread.clean()
-            with self.ThreadManager.ext.ThreadManagerExt.ManagerCondition:
-                if task in self.ThreadManager.ext.ThreadManagerExt.Tasks:
-                    self.ThreadManager.ext.ThreadManagerExt.Tasks.remove(task)
+            with self._threadManager.ext.ThreadManagerExt.ManagerCondition:
+                if task in self._threadManager.ext.ThreadManagerExt.Tasks:
+                    self._threadManager.ext.ThreadManagerExt.Tasks.remove(task)
             cleaned += 1
 
         if cleaned:
             # CRITICAL: sync the Runningthreads parameter so EnqueueTask
             # sees the actual thread count, not the stale pre-cleanup value.
-            self.ThreadManager.par.Runningthreads.val = len(
-                self.ThreadManager.ext.ThreadManagerExt.Threads)
+            self._threadManager.par.Runningthreads.val = len(
+                self._threadManager.ext.ThreadManagerExt.Threads)
             self._log(
                 f'Cleaned {cleaned} stale Envoy thread(s) -- '
-                f'{len(self.ThreadManager.ext.ThreadManagerExt.Threads)}'
+                f'{len(self._threadManager.ext.ThreadManagerExt.Threads)}'
                 f' threads remain '
-                f'(capacity: {self.ThreadManager.ext.ThreadManagerExt.MaxNumberOfThreads.eval()})', 'DEBUG')
+                f'(capacity: {self._threadManager.ext.ThreadManagerExt.MaxNumberOfThreads.eval()})', 'DEBUG')
 
     def _forceCloseOldServer(self) -> bool:
         """Force-close a stuck old uvicorn server so the port is freed.
@@ -4887,6 +5594,73 @@ class EnvoyExt:
             return True   # We actually closed a live socket of ours.
         return False  # Nothing of ours was holding any port.
 
+    def _reapStaleServers(self) -> list:
+        """Close every uvicorn listener of OURS left over from an abandoned
+        start; return the ports freed.
+
+        _forceCloseOldServer can only reach sys._envoy_uvi_server, which names
+        the NEWEST worker -- so a start abandoned by the startup timeout, an
+        extension reinit, or a save-as kept its socket for the life of the
+        process and _findAvailablePort just scanned past it (issue #98 port
+        drift). A reinit makes this the ONLY reachable handle: the previous
+        worker's shutdown event is replaced in sys._envoy_shutdown_events and
+        self.shutdown_event is a fresh object.
+
+        Never runs while a start of ours is in flight, and never touches a
+        generation NEWER than ours -- closing a healthy newborn is the
+        2026-07-15 restart storm.
+        """
+        live = getattr(sys, '_envoy_uvi_servers', None)
+        if not isinstance(live, dict) or not live:
+            return []
+        if self._starting:
+            self._log('Reap skipped -- a start of ours is in flight', 'DEBUG')
+            return []
+        # A server we believe is SERVING is never surplus. _continueStart is
+        # only ever reached with this False (Start() returns early otherwise),
+        # so this costs nothing on the real path -- it is the hard stop that
+        # keeps a direct call (a test driving _findAvailablePort, a stale
+        # queued Start) from shooting down the live MCP socket.
+        if self.ownerComp.fetch('envoy_running', False):
+            self._log('Reap skipped -- a server of ours is running', 'DEBUG')
+            return []
+        freed = []
+        for gen in sorted(live):
+            if gen > self._server_gen:
+                continue
+            entry = live.get(gen) or (None, None)
+            server, port = entry[0], entry[1]
+            live.pop(gen, None)
+            if server is None:
+                continue
+            try:
+                # force_exit skips the graceful drain: a keep-alive MCP client
+                # would otherwise hold the port open indefinitely.
+                server.should_exit = True
+                server.force_exit = True
+                for srv in getattr(server, 'servers', []):
+                    for sock in getattr(srv, 'sockets', ()) or ():
+                        try:
+                            sock.close()
+                        except Exception:
+                            pass
+                    try:
+                        srv.close()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            if port:
+                freed.append(port)
+        if freed:
+            self._log(
+                f'Reaped {len(freed)} orphaned Envoy listener(s) on port(s) '
+                f'{", ".join(str(p) for p in freed)}', 'WARNING')
+            if not live:
+                sys._envoy_uvi_server = None
+                sys._envoy_uvi_gen = 0
+        return freed
+
     def _findAvailablePort(self, base_port: int, range_size: int = 10) -> 'int | None':
         """Find an available port in [base_port, base_port + range_size).
 
@@ -4950,6 +5724,18 @@ class EnvoyExt:
                     or not _port_bindable(port)
                     or _port_registered_by_other(port))
 
+        # Reap our own orphans BEFORE probing anything. Without this the scan
+        # below steps past our own abandoned listener and the port drifts +1 on
+        # every restart until the range runs out (issue #98). Cheap no-op when
+        # nothing is registered.
+        reaped = self._reapStaleServers()
+        if reaped:
+            import time as _reap_time
+            for _ in range(3):   # <=300ms for the OS to release; force_exit +
+                _reap_time.sleep(0.1)   # sock.close() frees it near-instantly
+                if all(_port_bindable(p) for p in reaped):
+                    break
+
         # Fast path: preferred port is free AND not claimed by another instance
         if not _port_taken(base_port):
             return base_port
@@ -5003,11 +5789,13 @@ class EnvoyExt:
 
     def Start(self) -> None:
         """Start MCP server via op.TDResources.ThreadManager"""
+        # Fresh main-thread tick (issue #110): sys outlives Stop, so a new
+        # worker must not serve an age left over from before a long disable.
+        sys._envoy_main_tick = time.monotonic()
         # Envoyenable is the master switch. Queued restart fires (auto-restart
-        # backoff, watchdog revive) can land AFTER the user -- or the give-up
-        # path in _scheduleRestart -- disabled Envoy; without this gate they
-        # kept spawning servers for minutes after 'Envoy disabled'
-        # (2026-07-15 storm, issue #57 follow-up).
+        # backoff, watchdog revive) can land AFTER the user disabled Envoy;
+        # without this gate they kept spawning servers for minutes after
+        # 'Envoy disabled' (2026-07-15 storm, issue #57 follow-up).
         if not self.ownerComp.par.Envoyenable.eval():
             self._log('Start ignored -- Envoy is disabled', 'DEBUG')
             return
@@ -5025,9 +5813,11 @@ class EnvoyExt:
             self._log('Server already running/starting (duplicate Start ignored)',
                       'DEBUG')
             return
-        # The envoy_running store can be lost on extension reinit (file sync
-        # replaces baked-in code -> extension reinitializes -> storage cleared).
-        # Check the status parameter as a backup -- it survives reinit.
+        # The envoy_running store can be lost when this COMP's contents are
+        # REPLACED -- a tox reload/restore wipes storage (probed 2026-08-29:
+        # enableexternaltoxpulse -> storage keys go to []). Extension reinit
+        # alone does NOT clear storage; it lives on the COMP, not the instance,
+        # and survives a source-file edit. The status parameter survives both.
         # Only 'Running' means the server thread is actually active.
         # 'Starting...' is just a UI hint -- not proof of an active thread.
         status = str(self.ownerComp.par.Envoystatus.eval())
@@ -5366,9 +6156,106 @@ class EnvoyExt:
             pass
         self._continueStart(git_root)
 
+    def _beginAsyncVenvRepair(self) -> None:
+        """Repair a venv whose interpreter no longer runs, on a worker thread,
+        then rewrite the MCP client config (embody_pyenv.repair_venv_interpreter).
+
+        Called by envoy_setup.configure_mcp_client on a 'broken' probe. The
+        server is already running from this venv's packages, so the repair
+        never deletes anything. One attempt per venv per TD process: the
+        state lives on sys so an extension reinit cannot re-arm a failing
+        repair on every watchdog revive. The result is published on sys and
+        polled through op(path).ext.Envoy, so a reinit mid-repair adopts it.
+        """
+        spec = op.Embody.ext.Embody._venvPaths()
+        states = getattr(sys, '_embody_venv_repair_state', None)
+        if states is None:
+            states = sys._embody_venv_repair_state = {}
+        key = os.path.normcase(os.path.abspath(spec['venv_dir']))
+        state = states.get(key)
+        if state == 'running':
+            self._log('Venv interpreter repair already in progress', 'DEBUG')
+            return
+        if state is not None:
+            self._log(
+                f'Venv interpreter repair already attempted this session '
+                f'({state}) -- restart TouchDesigner to retry', 'WARNING')
+            return
+        states[key] = 'running'
+        results = getattr(sys, '_embody_venv_repair_results', None)
+        if results is None:
+            results = sys._embody_venv_repair_results = {}
+        results.pop(key, None)
+        repair = mod.embody_pyenv.repair_venv_interpreter
+
+        def worker():
+            msgs = []
+            try:
+                ok = repair(spec, lambda m, lvl='INFO': msgs.append((lvl, m)))
+            except BaseException as e:
+                ok = False
+                msgs.append(('ERROR', f'Venv interpreter repair crashed: {e}'))
+            # Single dict-item assignment: atomic under the GIL.
+            results[key] = (ok, msgs)
+
+        Thread(target=worker, daemon=True).start()
+        run(f"op({self.ownerComp.path!r}).ext.Envoy._pollVenvRepair({key!r})",
+            fromOP=self.ownerComp, delayFrames=30)
+
+    def _pollVenvRepair(self, key: str) -> None:
+        """Main-thread poll for _beginAsyncVenvRepair: replay the worker's log,
+        then regenerate client config so it points back at the venv Python."""
+        result = sys._embody_venv_repair_results.pop(key, None)
+        if result is None:
+            run(f"op({self.ownerComp.path!r}).ext.Envoy._pollVenvRepair({key!r})",
+                fromOP=self.ownerComp, delayFrames=30)
+            return
+        ok, msgs = result
+        sys._embody_venv_repair_state[key] = 'repaired' if ok else 'failed'
+        for lvl, m in msgs:
+            self._log(m, lvl)
+        if not ok:
+            return
+        self._venv_probe_ok = ''
+        # Only a live, client-configuring server has config to rewrite; the
+        # next Start() picks the venv Python up on its own otherwise.
+        if not self.ownerComp.par.Envoyenable.eval():
+            return
+        if not str(self.ownerComp.par.Envoystatus.eval()).startswith(
+                ('Running', 'Starting')):
+            return
+        if not self._shouldConfigureAIClient(self.ownerComp.par.Aiclient.eval()):
+            return
+        port = (getattr(self, '_runtime_port', None)
+                or int(self.ownerComp.par.Envoyport.eval()))
+        Embody = op.Embody.ext.Embody
+        # Same write posture as _continueStart: an Advanced-mode guard defers
+        # with a breadcrumb instead of popping a modal from a timer.
+        prior_pass = Embody._startup_config_pass
+        Embody._startup_config_pass = True
+        try:
+            self._configureMCPClient(port, target_dir=Embody._findProjectRoot())
+        finally:
+            Embody._startup_config_pass = prior_pass
+
     @staticmethod
     def _shouldConfigureAIClient(client) -> bool:
-        """Only the explicit ``none`` token selects internal-only startup."""
+        """Whether startup should write AI client config at all.
+
+        The question is whether any client is selected under Configure
+        For -- NOT what the Launch Client menu says. Since the two were
+        split, 'Launch Client: None' is a normal state for someone who
+        opens their editor themselves, and gating on that token would
+        skip config generation for a fully configured project. The
+        argument is still accepted (and still means 'none' -> off) so
+        callers passing the old token keep working.
+        """
+        try:
+            selected = mod.embody_git.selected_clients(op.Embody.ext.Embody)
+        except Exception:
+            return str(client or '').strip().lower() != 'none'
+        if selected:
+            return True
         return str(client or '').strip().lower() != 'none'
 
     def _continueStart(self, git_root) -> None:
@@ -5378,9 +6265,9 @@ class EnvoyExt:
         import-gate flag is already warm, from _pollImportGate(), or from
         _pollBootstrap() after a background dependency install. Allocates the
         port and spawns the server worker via the Thread Manager. MCP / git
-        client config is written only when Aiclient is not ``none``; Convoy-only
-        mode uses the same loopback command substrate without configuring or
-        launching an AI coding client.
+        client config is written only when at least one client is selected
+        under Configure For; Convoy-only mode uses the same loopback command
+        substrate without configuring or launching an AI coding client.
         """
         base_port = self.ownerComp.par.Envoyport.eval()
         port = self._findAvailablePort(base_port)
@@ -5472,7 +6359,7 @@ class EnvoyExt:
         sys._envoy_queues = _q_registry
 
         # Create and enqueue a TDTask
-        self.current_task = self.ThreadManager.TDTask(
+        self.current_task = self._threadManager.TDTask(
             target=self._runServer,
             args=(port, self.request_queue, self.response_queue,
                   self.shutdown_event, startup_event, gen),
@@ -5480,7 +6367,7 @@ class EnvoyExt:
             ExceptHook=guarded_error,
             RefreshHook=self._onRefresh
         )
-        thread = self.ThreadManager.EnqueueTask(
+        thread = self._threadManager.EnqueueTask(
             self.current_task, standalone=True)
 
         if thread is None:
@@ -5491,14 +6378,16 @@ class EnvoyExt:
                 'Thread Manager could not start a standalone server worker.',
                 'ERROR')
             self._starting = False
-            self._onServerError('Thread Manager could not start server worker')
+            # No worker ever ran, so nothing touched the port.
+            self._onServerError('Thread Manager could not start server worker',
+                                blacklist_port=False)
             return
 
         # H1: status stays 'Starting...' (set above) until the worker confirms
         # the socket is bound; _pollStartup flips it to 'Running on port N' or
         # escalates on timeout/failure. When an AI client is selected its config
         # is written below; Convoy-only startup deliberately skips that work.
-        self._startup_deadline = time.time() + 10.0
+        self._startup_deadline = time.time() + self._startupBudget()
         run(f"op({self.ownerComp.path!r}).ext.Envoy._pollStartup({gen})",
             fromOP=self.ownerComp, delayFrames=6)
 
@@ -5523,8 +6412,26 @@ class EnvoyExt:
             # Cache the repo root for WORKER-side features (durable worktree
             # claims, preflight_landing) -- workers must never touch TD
             # objects, so resolve it here on the main thread once.
+            #
+            # ONLY an absolute path is cacheable. A sentinel ('no-git') or a
+            # relative string would be joined against TD's cwd by every
+            # reader, silently pointing the job layer, task ledger, docs
+            # catalog, and worktree claims at nowhere -- and it persists for
+            # the rest of the session because nothing but a restart rewrites
+            # it. _jobs_dir() grew its own isabs guard after this bit in
+            # 2026-07-29; guarding the WRITE instead means no reader has to
+            # repeat it (recurred 2026-08-27 via a suite patching
+            # _findProjectRoot to 'no-git', which then failed two unrelated
+            # docs tests for the rest of the run).
             try:
-                sys._envoy_repo_root = str(target_dir) if target_dir else None
+                cached = str(target_dir) if target_dir else None
+                if cached and not os.path.isabs(cached):
+                    self._log(
+                        f'Ignoring non-absolute project root {cached!r} -- '
+                        f'worker-side features stay disabled until a real '
+                        f'root resolves', 'DEBUG')
+                    cached = None
+                sys._envoy_repo_root = cached
             except Exception:
                 sys._envoy_repo_root = None
             try:
@@ -5556,6 +6463,20 @@ class EnvoyExt:
             # Clear the wizard's batch consent now its deferred-Start writes are
             # done (the bounded timer in _enableEnvoyResolved is the backstop).
             Embody._consent_bulk = False
+
+    def _startupBudget(self) -> float:
+        """Seconds to allow the worker to reach a bound socket.
+
+        A COLD process imports the MCP SDK and registers the whole tool surface
+        before uvicorn binds; on a slow or AV-scanned venv that alone outruns a
+        flat 10s, and the timeout then abandons a worker that was seconds from
+        succeeding -- the engine of issue #98's port drift. Warm imports bind
+        in well under a second, so the generous budget costs nothing after the
+        first start. _reviveDeadServer's in-flight guard reads the same
+        deadline, so the ~24s watchdog nudge leaves a cold start alone.
+        """
+        warm = 'mcp.server.mcpserver' in sys.modules
+        return 15.0 if warm else 45.0
 
     def _pollStartup(self, gen: int) -> None:
         """Main-thread poll (H1): declare 'Running' only after the worker
@@ -5623,15 +6544,80 @@ class EnvoyExt:
             # Never bound within the readiness window -> route to the error path
             # so the restart/escalation logic engages (not a silent zombie).
             self._starting = False
-            self._onServerError(
-                f'Envoy did not bind port {self._runtime_port} within the '
-                f'startup timeout')
+            # The worker is STILL ALIVE here -- it has not bound YET, which is
+            # not the same as having failed. Left running it binds seconds
+            # later and holds that port for the life of the process, so every
+            # retry scans past it and drifts +1 (issue #98). Signal it down,
+            # and do NOT blacklist the port: a slow start is no evidence the
+            # port is bad, and a 10-minute blacklist guarantees the drift.
+            try:
+                self.shutdown_event.set()
+            except Exception:
+                pass
+            # Say where the worker stopped: a pre-bind stall read as "did not
+            # bind port N" sent every investigation hunting port conflicts
+            # (issue #98 follow-up).
+            port = self._runtime_port
+            phase, stack = self._startupWorkerState(gen, with_stack=True)
+            if stack:
+                self._log(
+                    f'Startup worker (gen {gen}) at timeout, phase {phase!r}:\n  '
+                    + '\n  '.join(stack), 'WARNING')
+            if phase in _PRE_BIND_PHASES:
+                reason = (f'Envoy worker stalled before binding port {port} '
+                          f'({phase}) -- the port was never tried')
+            else:
+                reason = (f'Envoy did not bind port {port} within the '
+                          f'startup timeout')
+            # Stale the signalled worker: its late exit hook would otherwise
+            # run a second restart (or a second give-up) for this start.
+            self._server_gen += 1
+            sys._envoy_server_gen = self._server_gen
+            self._onServerError(reason, blacklist_port=False)
             return
         # Not yet bound, not timed out -- keep polling.
         run(f"op({self.ownerComp.path!r}).ext.Envoy._pollStartup({gen})",
             fromOP=self.ownerComp, delayFrames=6)
 
+    def _startupWorkerState(self, gen: int, with_stack: bool = False
+                            ) -> tuple[Optional[str], list[str]]:
+        """(phase, innermost stack frames) that gen's worker last reported.
+
+        Reads the worker's _markStartupPhase entry -- only if it belongs to
+        THIS start (same startup_event) -- and, on request, its live frame via
+        sys._current_frames(): a main-thread read of Python frames, never a TD
+        object, and no source-line lookup. (None, []) when nothing matches.
+        """
+        reg = getattr(sys, '_envoy_startup_phase', None)
+        entry = reg.get(gen) if isinstance(reg, dict) else None
+        if (not isinstance(entry, tuple) or len(entry) < 3
+                or entry[2] is None or entry[2] is not self._startup_event):
+            return None, []
+        phase, ident = entry[0], entry[1]
+        if not with_stack:
+            return phase, []
+        import traceback
+        frame = sys._current_frames().get(ident)
+        if frame is None:
+            return phase, []
+        summary = traceback.StackSummary.extract(
+            traceback.walk_stack(frame), limit=8, lookup_lines=False)
+        return phase, [f'{os.path.basename(f.filename)}:{f.lineno} {f.name}'
+                       for f in reversed(summary)]
+
     # === Liveness watchdog (pure Python run()-loop -- no operator, no timer) ===
+
+    def _checkConvoyLoop(self) -> None:
+        """Convoy's reconcile loop is a run()-chain that can die silently
+        (2026-09-05: 80 min dead, Status latched 'Install failed'); this
+        watchdog is the independent chain that notices. See
+        ConvoyExt.ensureTickAlive."""
+        try:
+            convoy = self.ownerComp.op('convoy')
+            if convoy is not None and self.ownerComp.par.Convoyenable.eval():
+                convoy.ext.ConvoyExt.ensureTickAlive()
+        except Exception as e:
+            self.Log(f'Convoy loop check skipped: {e}', 'DEBUG')
 
     def _watchdogTick(self, gen: int = 0) -> None:
         """Self-healing liveness loop, one per extension instance.
@@ -5655,6 +6641,7 @@ class EnvoyExt:
                 return
         except Exception:
             pass
+        self._checkConvoyLoop()
         # Die ONLY when a reinit has replaced this instance (the new instance
         # arms its own loop). Server-generation churn must NOT end the loop.
         try:
@@ -5837,13 +6824,10 @@ class EnvoyExt:
 
     def Stop(self) -> None:
         """Stop MCP server"""
-        # Always reset auto-restart counter on Stop, even when envoy_running
-        # is already False.  Without this, the restart-limit path in
-        # _scheduleRestart sets Envoyenable=False -> parexec -> Stop(), but
-        # envoy_running was already cleared by _onServerError, so the old
-        # code returned early and left _restart_count stuck above MAX.
-        # The next manual toggle would immediately hit the limit again,
-        # making Envoyenable appear to "do nothing."
+        # Always reset the restart window on Stop, even when envoy_running is
+        # already False: after _scheduleRestart gives up, the user's off/on
+        # toggle IS the retry, and a stale window would give up again on the
+        # first failure -- making Envoyenable appear to "do nothing".
         self._restart_count = 0
         self._restart_window_start = 0.0  # fresh retry window on the next storm
         if not self.ownerComp.fetch('envoy_running', False):
@@ -5902,6 +6886,7 @@ class EnvoyExt:
 
         preset = shutdown_event.is_set()
         t0 = time.monotonic()
+        _markStartupPhase(gen, _PHASE_INIT, startup_event)
         try:
             server = EnvoyMCPServer(
                 request_queue=None,  # Not used, we use InfoQueue
@@ -5929,6 +6914,8 @@ class EnvoyExt:
             # from the worker; read + cleared on the main thread.
             sys._envoy_exit_context = ctx
             return ctx
+        except _EventLoopWedged:
+            raise   # pre-bind; the generic wrappers below would blame the port
         except OSError as e:
             if e.errno == 48 or 'address already in use' in str(e).lower():
                 raise RuntimeError(
@@ -6148,7 +7135,7 @@ class EnvoyExt:
     def _expandFileScopes(self, scopes):
         """Append file: scopes for op-path scopes covered by the
         externalizations table (the op's own row, or a tracked ancestor
-        such as a TDN COMP). Main thread only -- reads the live table."""
+        such as a TDXN COMP). Main thread only -- reads the live table."""
         out = list(scopes)
         try:
             table = op.Embody.ext.Embody.Externalizations
@@ -6331,7 +7318,12 @@ class EnvoyExt:
             if not isinstance(result, dict):
                 return
             message = result.get('error')
-            if not isinstance(message, str) or 'recovery_hints' in result:
+            if not isinstance(message, str):
+                return
+            # Every error envelope carries a stable code; handlers that set
+            # their own keep it.
+            result.setdefault('error_code', _error_code_for(message))
+            if 'recovery_hints' in result:
                 return
             hints = _recovery_hints_for(message)
             if hints:
@@ -6423,6 +7415,7 @@ class EnvoyExt:
                 # touched. Never project-wide: reading an Info DAT cooks it
                 # (3.36s cold across the project, 2026-08-21).
                 touched = []
+                checked = []
                 for scope in (scopes or []):
                     if not isinstance(scope, str) or not scope.startswith('/'):
                         continue
@@ -6433,18 +7426,49 @@ class EnvoyExt:
                     # DAT, which owns no Info DAT -- the diagnostics live on
                     # its host. Walk up so set_dat_content('/x/glsl_a_pixel')
                     # still reports /x/glsl_a's compile errors.
-                    for probe in (target, getattr(target, 'dock', None)):
+                    probes = [target, getattr(target, 'dock', None)]
+                    # A shader DAT can also feed GLSL ops that are NOT its
+                    # dock host (a shared source, or one in another network);
+                    # find those by parameter and lint them too. Idea adopted
+                    # from td-mcp-rs (credited in README).
+                    if getattr(target, 'family', None) == 'DAT':
+                        probes.extend(
+                            mod.envoy_read.shader_consumers(self, target))
+                    for probe in probes:
                         if probe is None:
                             continue
+                        if (probe.path not in checked
+                                and mod.envoy_read.is_shader_op(probe)):
+                            checked.append(probe.path)
                         touched.extend(
                             mod.envoy_read.shader_errors(self, probe, True))
+                # Scoped to the ops THIS write touched, so the compile state
+                # is attributable to it: report on the session's first write
+                # too (the project-wide error differ above stays
+                # baseline-only). A shader still failing after a later write
+                # is reported again under shader_errors_persist -- silence
+                # must never read as "fixed".
+                previous_shaders = state.get('shaders') or set()
                 shaders, shader_total, shader_paths = _new_error_entries(
-                    None if first_write else state.get('shaders'),
-                    touched, _EFFECTS_ERROR_CAP)
+                    previous_shaders, touched, _EFFECTS_ERROR_CAP)
                 state['shaders'] = shader_paths
                 if shaders:
                     effects['new_shader_errors'] = shaders
                     effects['new_shader_errors_total'] = shader_total
+                persisting, seen_persist = [], set()
+                for entry in touched:
+                    path = entry.get('nodePath') or ''
+                    if path in previous_shaders and path not in seen_persist:
+                        seen_persist.add(path)
+                        persisting.append({
+                            'path': path,
+                            'message': str(entry.get('message') or '')[:200]})
+                if persisting:
+                    effects['shader_errors_persist'] = persisting[:_EFFECTS_ERROR_CAP]
+                if checked:
+                    # Which shader ops this write was linted against, so a
+                    # quiet footer reads as "compiled clean", not "unchecked".
+                    effects['shaders_checked'] = checked[:_EFFECTS_ERROR_CAP]
 
             # --- meaningful frame-rate drop ---
             fps = self._sampleProjectFps()
@@ -6473,20 +7497,105 @@ class EnvoyExt:
         call that actually EXECUTED, and the write-effect footer runs; leave
         it None (e.g. for a refused multi-session gate, where no TD state
         moved) and only the existing attachments apply."""
-        self._attachRecoveryHints(result)
-        self._attachNotableLogs(result, sid)
-        self._attachEffects(result, operation, sid, scopes)
+        # Each attachment rides its own try: _attachNotableLogs reads
+        # op.Embody, which raises once no COMP holds the shortcut, and the
+        # put below must run regardless (issue #110).
+        try:
+            self._attachRecoveryHints(result)
+        except Exception:
+            pass
+        try:
+            self._attachNotableLogs(result, sid)
+        except Exception:
+            pass
+        try:
+            self._attachEffects(result, operation, sid, scopes)
+        except Exception:
+            pass
 
         self.response_queue.put({
             'id': request_id,
             'result': result
         })
 
+    def _finishOperation(self, request_id, sid, operation, params, result):
+        """Everything that follows a handler: record write touches, gather
+        peer advisories, send the response. Shared by the inline path in
+        _onRefresh and by deferred completions, so both behave alike."""
+        # Multi-session Phase 2: record write touches and gather peer
+        # advisories. Never let awareness break the operation itself.
+        try:
+            scopes = self._expandFileScopes(
+                _scopes_for_operation(operation, params, result))
+            # Failed operations didn't mutate -- don't record them as
+            # writes. Exception: a failed batch may have partially
+            # succeeded (stops on first error), so it still counts.
+            failed = isinstance(result, dict) and 'error' in result
+            if not failed or operation == 'batch_operations':
+                self._recordTouches(sid, operation, scopes)
+        except Exception:
+            scopes = []
+
+        # Deferred operations (e.g. run_tests) return None --
+        # the worker thread handles its own response via Event
+        if result is None:
+            return
+
+        try:
+            self._attachPeerAdvisories(result, sid, operation, scopes)
+        except Exception:
+            pass
+
+        self._send_response(request_id, result, sid, operation=operation,
+                            scopes=scopes)
+
+    def _scheduleDeferred(self, request_id, sid, operation, params, marker):
+        """Re-enter a deferred handler `frames` frames from now. The worker
+        keeps waiting on its Event (its 30s timeout still bounds the whole
+        wait), so nothing about the transport changes. Never raises: a
+        scheduling failure is delivered as the operation's error."""
+        spec = marker.get('_defer') or {}
+        try:
+            frames = max(1, int(spec.get('frames') or 1))
+        except Exception:
+            frames = 1
+        try:
+            run(self._completeDeferred, request_id, sid, operation, params,
+                marker, delayFrames=frames)
+        except Exception as e:
+            self._finishOperation(request_id, sid, operation, params,
+                                  {'error': f'Could not defer {operation}: {e}'})
+
+    def _completeDeferred(self, request_id, sid, operation, params, marker):
+        """The delayed half of _scheduleDeferred: call the continuation; a
+        result that is itself a deferral reschedules, anything else ships."""
+        try:
+            if self.ownerComp.ext.Envoy is not self:
+                return  # stale instance after a reinit; its worker is gone
+        except Exception:
+            return
+        spec = (marker or {}).get('_defer') or {}
+        cont = spec.get('continue')
+        try:
+            result = cont() if callable(cont) else {
+                'error': f'{operation}: deferred continuation missing'}
+        except Exception as e:
+            result = {'error': f'{operation} failed while completing: {e}'}
+        if _is_deferred(result):
+            self._scheduleDeferred(request_id, sid, operation, params, result)
+            return
+        self._finishOperation(request_id, sid, operation, params, result)
+
     def _onRefresh(self):
         """
         RefreshHook - Called every frame on main thread while task is running.
         Polls request_queue for operations queued by the worker thread.
         """
+        # Main-thread liveness tick; the worker serves its age (see
+        # _main_tick_age). Before the stale guard: it proves the MAIN THREAD
+        # is running, whichever instance's hook this is (issue #110).
+        sys._envoy_main_tick = time.monotonic()
+
         # Guard: bail if this RefreshHook fires on a stale instance
         # (e.g., thread wasn't cleaned yet after extension reinit)
         try:
@@ -6494,6 +7603,18 @@ class EnvoyExt:
                 return
         except Exception:
             return
+
+        # One-shot housekeeping: a capture viewer parked by a continuation
+        # that never ran (extension reinit mid-capture) must not survive.
+        if not getattr(self, '_viewer_swept', False):
+            self._viewer_swept = True
+            try:
+                swept = mod.envoy_read.sweep_viewer_leftovers(self)
+                if swept:
+                    self._log(f'Destroyed {swept} leftover capture viewer(s) '
+                              'from an interrupted capture', 'WARNING')
+            except Exception:
+                pass
 
         # Deliver worker-side buffered diagnostics (workers cannot print()
         # or _log() -- both touch main-thread TD objects).
@@ -6532,8 +7653,12 @@ class EnvoyExt:
             sid = info.get('sid')
 
             # Baseline this session's log cursor BEFORE executing, so the
-            # response carries the warnings THIS operation generates.
-            self._baselineLogCursor(sid)
+            # response carries the warnings THIS operation generates. It reads
+            # op.Embody; a raise here would drop the request (issue #110).
+            try:
+                self._baselineLogCursor(sid)
+            except Exception:
+                pass
 
             # Multi-session Phase 3: destructive-op gate. Refusal is
             # instant and skips execution entirely.
@@ -6546,7 +7671,11 @@ class EnvoyExt:
             # permission. Non-gated operations are unaffected: they were
             # never the gate's business, so an internal error there must
             # not break unrelated tools.
-            gate = self._gateVerdict(sid, operation, params)
+            #
+            # The host-destroy guard answers FIRST (issue #110), so a host
+            # target never draws the gate's 'pass override=True' advice.
+            gate = (self._hostDestroyRefusal(operation, params)
+                    or self._gateVerdict(sid, operation, params))
             if gate is not None:
                 if isinstance(request_id, int) and request_id >= 0:
                     # Refused before execution -- no TD state moved, so the
@@ -6563,34 +7692,41 @@ class EnvoyExt:
 
             self._log(f'Processing: {operation}')
 
+            # a running soak (run_soak_test) logs every main-thread call that
+            # may have disturbed what it measures
+            if getattr(sys, '_envoy_soak', None) is not None:
+                try:
+                    mod.envoy_soak.note_operation(operation)
+                except Exception:
+                    pass
+
             result = self._execute_operation(operation, params)
 
-            # Multi-session Phase 2: record write touches and gather peer
-            # advisories. Never let awareness break the operation itself.
-            try:
-                scopes = self._expandFileScopes(
-                    _scopes_for_operation(operation, params, result))
-                # Failed operations didn't mutate -- don't record them as
-                # writes. Exception: a failed batch may have partially
-                # succeeded (stops on first error), so it still counts.
-                failed = isinstance(result, dict) and 'error' in result
-                if not failed or operation == 'batch_operations':
-                    self._recordTouches(sid, operation, scopes)
-            except Exception:
-                scopes = []
+            # The call destroyed the COMP hosting Envoy (issue #110): answer
+            # straight into the worker and stop this server. The normal tail
+            # reads op.Embody and scans the project from a dead instance.
+            if self._hostIsGone():
+                self._answerAfterHostDestroyed(request_id, result)
+                return
 
-            # Deferred operations (e.g. run_tests) return None --
-            # the worker thread handles its own response via Event
-            if result is None:
+            # A handler that needs real frames to finish (a non-TOP capture
+            # waiting for its OP Viewer TOP to render) hands back a deferral
+            # marker: the worker's Event keeps waiting and the handler is
+            # re-entered on a later frame. See _scheduleDeferred.
+            if _is_deferred(result):
+                self._scheduleDeferred(request_id, sid, operation, params, result)
                 continue
 
+            self._finishOperation(request_id, sid, operation, params, result)
+
+        # Soak sampler: a few Perform CHOP channel reads per frame while a
+        # run_soak_test job is active; state lives on sys so a reinit does not
+        # stop it. Wrapped so it can never break the refresh loop.
+        if getattr(sys, '_envoy_soak', None) is not None:
             try:
-                self._attachPeerAdvisories(result, sid, operation, scopes)
+                mod.envoy_soak.tick(self)
             except Exception:
                 pass
-
-            self._send_response(request_id, result, sid, operation=operation,
-                                scopes=scopes)
 
         # Live build visualization (opt-in): camera follow + node pulse + the
         # dancing builder-bot. Runs every frame AFTER the drain loop. Wrapped so
@@ -6640,21 +7776,26 @@ class EnvoyExt:
             self._scheduleRestart('Server exited unexpectedly')
         # If Envoyenable is already off, Stop() set the status -- don't overwrite
 
-    def _onServerError(self, error):
-        """ExceptHook - Called when the thread task errors"""
+    def _onServerError(self, error, blacklist_port: bool = True):
+        """ExceptHook - Called when the thread task errors.
+
+        blacklist_port=False for a startup TIMEOUT: the port never proved bad,
+        the worker was merely slow (issue #98)."""
         self._log(f'Server error: {error}', 'ERROR')
         self.ownerComp.store('envoy_running', False)
         self.current_task = None
         self._starting = False
         # Worker died without ever confirming a bind -> blacklist its port so
         # the restart scans PAST it instead of re-picking the same poisoned
-        # port every attempt. Non-bind pre-startup failures land here too;
-        # blacklisting their port is harmless (entry expires after
-        # _BIND_FAIL_TTL_SECONDS, and a confirmed bind clears it).
+        # port every attempt. Not when it died BEFORE bind() (event-loop wedge,
+        # import failure): that is no evidence against the port, and a
+        # blacklist there forces the +1 drift. An unknown phase still
+        # blacklists; entries expire after _BIND_FAIL_TTL_SECONDS.
         bound = (self._startup_event is not None
                  and self._startup_event.is_set())
         port = getattr(self, '_runtime_port', None)
-        if not bound and port:
+        pre_bind = self._startupWorkerState(self._server_gen)[0] in _PRE_BIND_PHASES
+        if blacklist_port and not bound and port and not pre_bind:
             bad = getattr(sys, '_envoy_bad_bind_ports', {})
             bad[port] = time.time()
             sys._envoy_bad_bind_ports = bad
@@ -6665,7 +7806,13 @@ class EnvoyExt:
         """Auto-restart the MCP server with exponential backoff, retrying for up
         to _RESTART_WINDOW_SECONDS (30 min) before giving up. Replaces the old
         3-strike / ~6-second cap, which a transient port-rebind race could trip
-        permanently -- then disable Envoy and force a manual toggle."""
+        permanently.
+
+        Giving up parks on an 'Error' status (the watchdog idles on it) and
+        leaves Envoyenable ON: the par persists to config.json, so switching
+        it off made one bad session disable Envoy for every later TD launch
+        (issue #98 follow-up). A TD restart, extension reinit (a save in Full
+        mode), Perform Mode exit, or off/on toggle starts a fresh window."""
         now = time.time()
         uptime = now - self._last_start_time
         # A NEW storm: either the very first failure, or the server had been
@@ -6680,9 +7827,12 @@ class EnvoyExt:
             self._log(
                 f'Server kept failing for over {mins} min '
                 f'({self._restart_count} attempts) -- giving up. Last: {reason}. '
-                f'Toggle Envoy off/on to retry.', 'ERROR')
+                f'Toggle Envoy off/on (or restart TD) to retry.', 'ERROR')
             self.ownerComp.par.Envoystatus = f'Error: {reason} (gave up after {mins} min)'
-            self.ownerComp.par.Envoyenable = False
+            # Stale queued restarts and late worker hooks of this storm, so
+            # none can overwrite the parked reason (review 2026-09-10).
+            self._server_gen += 1
+            sys._envoy_server_gen = self._server_gen
             return
 
         self._restart_count += 1
@@ -6740,6 +7890,11 @@ class EnvoyExt:
         # sub-operations that loop back through are covered too.
         if params and 'override' in params:
             params = {k: v for k, v in params.items() if k != 'override'}
+        # Host-destroy guard (issue #110) for direct calls and for each
+        # batch sub-operation, which loops back through here.
+        refused = self._hostDestroyRefusal(operation, params)
+        if refused is not None:
+            return refused
         handlers = {
             'create_op': self._create_op,
             'delete_op': self._delete_op,
@@ -6772,6 +7927,7 @@ class EnvoyExt:
             'find_children': self._find_children,
             'get_op_performance': self._get_op_performance,
             'get_project_performance': self._get_project_performance,
+            'run_soak_test': self._run_soak_test,
             # Introspection & diagnostics
             'get_td_info': self._get_td_info,
             'get_focus': self._get_focus,
@@ -6779,6 +7935,7 @@ class EnvoyExt:
             'exec_op_method': self._exec_op_method,
             'get_td_classes': self._get_td_classes,
             'get_td_class_details': self._get_td_class_details,
+            'describe_op_type': self._describe_op_type,
             'get_module_help': self._get_module_help,
             # Documentation root discovery for worker-side get_docs
             'get_docs_roots': self._get_docs_roots,
@@ -6790,11 +7947,11 @@ class EnvoyExt:
             'get_externalization_status': self._get_externalization_status,
             # Extension creation
             'create_extension': self._create_extension,
-            # TDN network format
+            # TDXN network format
             'export_network': self._export_network,
             'import_network': self._import_network,
-            'read_tdn': self._read_tdn,
-            'diff_tdn': self._diff_tdn,
+            'read_tdxn': self._read_tdxn,
+            'diff_tdxn': self._diff_tdxn,
             # Annotations
             'create_annotation': self._create_annotation,
             'get_annotations': self._get_annotations,
@@ -6804,6 +7961,7 @@ class EnvoyExt:
             'get_logs': self._get_logs,
             # TOP capture
             'capture_top': self._capture_top,
+            'capture_op': self._capture_op,
             # Testing
             'run_tests': self._run_tests,
             'save_project': self._save_project,
@@ -6818,11 +7976,11 @@ class EnvoyExt:
         handler = handlers.get(operation)
         if handler:
             try:
-                # Pre-risky: durably checkpoint the touched TDN root BEFORE a
+                # Pre-risky: durably checkpoint the touched TDXN root BEFORE a
                 # destructive delete so an agent-induced crash during it loses
                 # nothing since it. Best-effort, ~6ms. NOT for import_network: its
                 # .tdn is the user's source-of-truth being reloaded (the canonical
-                # TDN edit->import workflow), so writing the live state over it
+                # TDXN edit->import workflow), so writing the live state over it
                 # would corrupt the edit.
                 if operation == 'delete_op':
                     try:
@@ -6838,7 +7996,7 @@ class EnvoyExt:
                     # nothing is queued -- the steady state -- this costs an
                     # empty-set check.
                     try:
-                        op.Embody.ext.Embody.FlushPendingCheckpoints()
+                        op.Embody.ext.Embody.flushPendingCheckpoints()
                     except Exception:
                         pass
                 undo_open = self._beginUndoBlock(operation)
@@ -6957,7 +8115,7 @@ class EnvoyExt:
                 # the call lands, not the bound on what it changed. Arm coarsely;
                 # the drain discovers which roots actually changed, once, after
                 # the burst.
-                op.Embody.ext.Embody.NoteCoarseCheckpointTouch()
+                op.Embody.ext.Embody.noteCoarseCheckpointTouch()
                 return
             if operation not in self._CHECKPOINT_MUTATING_OPS:
                 return
@@ -6967,7 +8125,7 @@ class EnvoyExt:
                 path = (params.get('op_path') or params.get('target_path')
                         or params.get('dest_path') or params.get('parent_path'))
             if path:
-                op.Embody.ext.Embody.NoteCheckpointTouch(path)
+                op.Embody.ext.Embody.noteCheckpointTouch(path)
         except Exception:
             pass
 
@@ -7127,8 +8285,63 @@ class EnvoyExt:
 
     # --- Testing ---
 
+    # A full run takes ~25 minutes and mutates the live network (sandbox
+    # COMPs, tagging, TDXN exports). Anything unsaved when it starts is at
+    # risk, and the saved .toe is the only recovery point.
+    _RUN_TESTS_SAVE_MAX_AGE_S = 3600.0
+
+    @classmethod
+    def _saveGateRefusal(cls, suite_name, confirm_saved, rp_name, rp_age):
+        """Refusal message for an ungated full run, or None to proceed.
+
+        Pure decision, separated from _run_tests so it can be tested without
+        starting a 25-minute run. Only a FULL run is gated: a single suite is
+        cheap and frequent, and gating it would train callers to pass
+        confirm_saved reflexively, which is how a gate dies.
+        """
+        if suite_name is not None or confirm_saved:
+            return None
+        if rp_age is not None and rp_age <= cls._RUN_TESTS_SAVE_MAX_AGE_S:
+            return None
+        where = (f'"{rp_name}" saved {rp_age / 60.0:.0f} min ago'
+                 if rp_name else 'NO saved .toe on disk')
+        return (f'Full test run refused: {where}. A full run mutates the live '
+                f'network for ~25 minutes and the saved .toe is the only '
+                f'recovery point. Save first (save_project), then re-run -- '
+                f'or pass confirm_saved=True to accept losing anything since '
+                f'that save. A single suite (suite_name=...) is not gated.')
+
+    @staticmethod
+    def _recoveryPoint():
+        """(name, age_seconds) of the saved .toe, or (None, None).
+
+        Main thread only -- reads project.*. The file on disk is the ONLY
+        honest signal: `project.dirty` does not exist on TD 2025 (the gate
+        silently read None), and `project.modified` re-dirties within
+        seconds of a successful save AND returns a LIST of operator paths,
+        not a bool -- which is exactly why "save first if there is unsaved
+        work" has been unactionable prose for months. Same expression the
+        destructive-tier gate uses; falls back to the newest .toe when
+        project.name has drifted to a not-yet-written increment.
+        """
+        try:
+            folder = project.folder
+            primary = os.path.join(folder, project.name)
+            if os.path.isfile(primary):
+                return (project.name,
+                        time.time() - os.path.getmtime(primary))
+            toes = [f for f in os.listdir(folder) if f.endswith('.toe')]
+            if not toes:
+                return None, None
+            newest = max(toes, key=lambda f: os.path.getmtime(
+                os.path.join(folder, f)))
+            return newest, time.time() - os.path.getmtime(
+                os.path.join(folder, newest))
+        except Exception:
+            return None, None
+
     def _run_tests(self, suite_name=None, test_name=None, background=False,
-                   idempotency_key=None):
+                   idempotency_key=None, confirm_saved=False):
         """Run Embody test suites via /embody/unit_tests extension (deferred).
 
         Starts tests with RunTestsDeferredPerTest (one test per frame) to
@@ -7142,6 +8355,30 @@ class EnvoyExt:
         dict, because the sentinel request_id=-1 would be silently dropped
         by check_responses, leaving the worker thread blocked.
         """
+        # Recovery-point gate. A FULL run is the risky one: ~25 minutes of
+        # live-network mutation with no recovery point if the .toe is stale.
+        # The age is reported on EVERY run (targeted ones too) because the
+        # prose version of this rule -- "save the project before a full run"
+        # in the /run-tests skill -- was skipped for months: it asked for a
+        # judgement the caller had no cheap way to make. (2026-09-04)
+        rp_name, rp_age = self._recoveryPoint()
+        msg = self._saveGateRefusal(suite_name, confirm_saved, rp_name, rp_age)
+        if msg:
+            self._log(msg, 'ERROR')
+            if background:
+                return {'error': msg}
+            pending = getattr(sys, '_envoy_pending_test', None)
+            if pending is not None:
+                self._signalTestError(pending, msg)
+                return None
+            return {'error': msg}
+        if rp_name:
+            self._log(f'Recovery point: "{rp_name}" saved '
+                      f'{rp_age / 60.0:.1f} min ago', 'INFO')
+        else:
+            self._log('Recovery point: NO saved .toe on disk -- nothing to '
+                      'reopen if this run goes wrong', 'WARNING')
+
         if background:
             # Job mode: start the deferred run, park progress in a disk
             # record, return the handle. No transport Event involved -- a
@@ -7173,7 +8410,7 @@ class EnvoyExt:
             return None
         try:
             # Suppress Embody's Update/Refresh cycle during tests to
-            # prevent extension reinit from TDN re-exports triggered by
+            # prevent extension reinit from TDXN re-exports triggered by
             # test-created operators making COMPs structurally dirty.
             # The prior Status is kept in COMP storage, not an instance
             # attribute: an extension reinit mid-run wipes the attribute and
@@ -7430,7 +8667,7 @@ class EnvoyExt:
         """Start a project save as a tracked job (main thread).
 
         The save itself runs a few frames later so this response reaches
-        the client BEFORE the main thread blocks on the TDN strip/restore
+        the client BEFORE the main thread blocks on the TDXN strip/restore
         and the extension reinit that project.save() triggers. Refuses
         while a test run is active (a mid-run save bakes the runner's
         forced Filecleanup='delete' / Status='Testing' into the exported
@@ -7490,17 +8727,20 @@ class EnvoyExt:
             fromOP=self.ownerComp, delayFrames=3)
         return {'job_id': job['id'], 'status': 'running',
                 'hint': 'project.save() runs in ~3 frames and blocks TD '
-                        'briefly (TDN strip/restore + release export); poll '
+                        'briefly (TDXN strip/restore + release export); poll '
                         'get_job_status(job_id=...). The save restarts the '
                         'server, so the NEXT call may fail once with a '
                         'connection error -- just retry it; the bridge '
                         'reconnects between calls.'}
 
-    _UPDATE_JOB_TIMEOUT_S = 900   # download + install ceiling
+    # Download + install ceiling. Must outlast the updater's OWN retry
+    # ladder (MAX_NET_ATTEMPTS x the check + download deadlines), or the job
+    # reports a failure while the updater is still legitimately retrying.
+    _UPDATE_JOB_TIMEOUT_S = 1800
     # Updatestatus texts that mean the update machinery is still working;
     # anything else while a job runs is terminal (success or refusal).
     _UPDATE_ACTIVE_PREFIXES = ('Checking for updates', 'Downloading',
-                               'Installing')
+                               'Installing', 'Retrying')
 
     def _activeUpdateJob(self):
         """The in-flight update_embody record, or None. Two-hour scan cap."""
@@ -7620,7 +8860,14 @@ class EnvoyExt:
         elapsed = time.time() - float(job.get('started', 0) or 0)
         working = (any(status.startswith(pfx)
                        for pfx in self._UPDATE_ACTIVE_PREFIXES)
-                   or status.endswith('available'))
+                   or status.endswith('available')
+                   # 'Disabled' is the auto-check's RESTING text, not a
+                   # verdict: its timer can rewrite the shared par while
+                   # a remote update is mid-download, and the job closed
+                   # as failed seven seconds before the swap it never saw
+                   # (TEC-B4A 2026-09-22). Keep polling; the version moving
+                   # is what finishes it.
+                   or status.startswith('Disabled'))
         terminal = None
         if version_now and before and version_now != before:
             terminal = ('done', '')
@@ -7660,6 +8907,15 @@ class EnvoyExt:
         path = _job_path(job_id)
         _os, _json, _time = os, json, time
         _project, _op = project, op
+        # Save warnings ride the record: the save's reinit makes _logs on
+        # the next call unreliable. Hold the log DEQUE, never the extension
+        # -- a reinit replaces the buffer (issue #109).
+        _warnings_of, _ring_of = _save_warnings, _save_log_ring
+        try:
+            log_before = _ring_of(_op.Embody.ext.Embody)
+            mark = log_before[-1]['id'] if log_before else 0
+        except Exception:
+            log_before, mark = None, 0
         try:
             _project.save()
             job['status'] = 'done'
@@ -7671,6 +8927,14 @@ class EnvoyExt:
         except Exception as e:
             job['status'] = 'error'
             job['error'] = 'project.save() failed: %s' % e
+        try:
+            log_after = _ring_of(_op.Embody.ext.Embody)
+        except Exception:
+            log_after = None
+        try:
+            job['warnings'] = _warnings_of(log_before, mark, log_after)
+        except Exception:
+            job['warnings'] = []
         job['finished'] = _time.time()
         if path:
             try:
@@ -7881,6 +9145,16 @@ class EnvoyExt:
             results.append(result)
             if 'error' in result:
                 break
+            # A sub-op destroyed or reloaded the COMP hosting Envoy (issue
+            # #110): the rest would run from a dead instance, maybe on a new
+            # Embody at the same paths.
+            if self._hostIsGone():
+                if i < len(operations) - 1:
+                    results.append({'error': 'Remaining sub-operations '
+                                             'skipped: the Embody COMP hosting '
+                                             'Envoy was destroyed or reloaded '
+                                             'by the one before (issue #110).'})
+                break
         return {
             'success': not any('error' in r for r in results),
             'results': results,
@@ -7889,9 +9163,10 @@ class EnvoyExt:
 
     # --- Operator Management ---
 
-    def _create_op(self, parent_path: str, op_type: str, name: str = None) -> dict:
+    def _create_op(self, parent_path: str, op_type: str, name: Optional[str] = None,
+                   language: Optional[str] = None) -> dict:
         """Create an operator -- see envoy_ops."""
-        return mod.envoy_ops.create_op(self, parent_path, op_type, name)
+        return mod.envoy_ops.create_op(self, parent_path, op_type, name, language)
 
     def _delete_op(self, op_path: str) -> dict:
         """Delete an operator -- see envoy_ops."""
@@ -7906,13 +9181,13 @@ class EnvoyExt:
     _SEQ_PAR_RE = re.compile(r'^([A-Za-z]+?)(\d+)([A-Za-z0-9]*)$')
 
     def _set_parameter(self, op_path: str, par_name: str, value=None,
-                      mode: str = None, expr: str = None,
-                      bind_expr: str = None) -> dict:
+                      mode: Optional[str] = None, expr: Optional[str] = None,
+                      bind_expr: Optional[str] = None) -> dict:
         """Set a parameter value, expression, bind expression, or mode -- see envoy_ops."""
         return mod.envoy_ops.set_parameter(self, op_path, par_name, value, mode, expr, bind_expr)
 
-    def _get_parameter(self, op_path: str, par_name: str = None,
-                      search: str = None, search_in: str = 'any',
+    def _get_parameter(self, op_path: str, par_name: Optional[str] = None,
+                      search: Optional[str] = None, search_in: str = 'any',
                       depth: int = 2, max_results: int = 50,
                       details: bool = False) -> dict:
         """Get a parameter value with full details"""
@@ -8095,11 +9370,11 @@ class EnvoyExt:
         return mod.envoy_ops.disconnect_op(self, op_path, input_index, comp)
 
     def _query_network(self, parent_path: str = "/", recursive: bool = False,
-                      op_type: str = None, include_utility: bool = False) -> dict:
+                      op_type: Optional[str] = None, include_utility: bool = False) -> dict:
         """List operators in a network -- see envoy_read."""
         return mod.envoy_read.query_network(self, parent_path, recursive, op_type, include_utility)
 
-    def _copy_op(self, source_path: str, dest_parent: str, new_name: str = None) -> dict:
+    def _copy_op(self, source_path: str, dest_parent: str, new_name: Optional[str] = None) -> dict:
         """Copy an operator -- see envoy_ops."""
         return mod.envoy_ops.copy_op(self, source_path, dest_parent, new_name)
 
@@ -8209,6 +9484,12 @@ class EnvoyExt:
         """Execute arbitrary Python code"""
         code_preview = code[:200] + ('...' if len(code) > 200 else '')
         self._log(f'execute_python: {code_preview}')
+        # Built first: the host-destroy lint resolves receivers against
+        # this SAME dict.
+        namespace = self._execNamespace()
+        refused = self._hostDestroyLint(code, namespace)
+        if refused is not None:
+            return refused
         # Before exec, so the warning lands even when the code itself fails.
         self._lintWorkerRun(code, 'execute_python')
         try:
@@ -8223,17 +9504,13 @@ class EnvoyExt:
             except Exception:
                 pre_paths = None
 
-            # Create a namespace with useful globals
-            namespace = {
-                'op': op,
-                'ops': ops,
-                'parent': parent,
-                'root': root,
-                'me': self.ownerComp,
-                'result': None
-            }
-
             exec(code, namespace)
+
+            # Backstop (issue #110): the code destroyed the COMP hosting Envoy
+            # through a form the lint cannot see. Skip every post-exec tail:
+            # _lintNewOps walks root and can move docks in a new Embody.
+            if self._hostIsGone():
+                return self._hostDestroyedResult(namespace.get('result'))
 
             # Return the 'result' variable if set
             result = namespace.get('result')
@@ -8243,6 +9520,14 @@ class EnvoyExt:
                 return {'success': True, 'result': str(result)}
             return {'success': True}
         except Exception as e:
+            if self._hostIsGone():
+                # Never roll back from a dead host (issue #110):
+                # _rollbackNewOps destroys every op not in pre_paths, a
+                # replacement Embody included.
+                return {'error': 'Execution failed after the Embody COMP '
+                                 'hosting Envoy was destroyed or reloaded '
+                                 '(issue #110); nothing was rolled back: %s'
+                                 % e}
             self._log(f'execute_python failed: {e}', 'ERROR')
             removed = self._rollbackNewOps(pre_paths)
             msg = f'Execution failed: {e}'
@@ -8287,6 +9572,195 @@ class EnvoyExt:
             pass
         return count
 
+    # --- Host-destroy guard (issue #110; see _HOST_DESTROY_CODE) ---
+
+    def _execNamespace(self) -> dict:
+        """execute_python's exec globals. The host-destroy lint resolves
+        receivers against this same dict (issue #110)."""
+        return {'op': op, 'ops': ops, 'parent': parent, 'root': root,
+                'me': self.ownerComp, 'result': None}
+
+    def _hostChain(self) -> list:
+        """Paths no Envoy request may destroy or reload: the Embody COMP,
+        each ancestor, '/', then this extension's own source DAT. The seam
+        tests patch to a sandbox stand-in host."""
+        chain = []
+        node = self.ownerComp
+        while node is not None and len(chain) < 64:
+            chain.append(node.path)
+            node = node.parent()
+        if '/' not in chain:
+            chain.append('/')
+        source = self.ownerComp.op('EnvoyExt')
+        if source is not None:
+            chain.append(source.path)
+        return chain
+
+    def _hostDestroyRefusal(self, operation: str,
+                            params: Optional[dict]) -> Optional[dict]:
+        """Refusal for a delete_op, a destroy-class exec_op_method, or a
+        reload/clone pulse via set_parameter whose target is on the host
+        chain; None to proceed. A batch is refused whole, before any sub-op
+        runs -- its execute_python sub-ops are linted here too (fail-open).
+        FAIL-CLOSED: a guarded call the check cannot judge is refused.
+        override=True is not consulted."""
+        shape = None
+        try:
+            if operation == 'batch_operations':
+                subs = params.get('operations') if isinstance(params, dict) else None
+                for sub in (subs if isinstance(subs, list) else ()):
+                    if isinstance(sub, dict) and sub.get('tool') != 'batch_operations':
+                        refused = self._hostDestroyRefusal(sub.get('tool'),
+                                                           sub.get('params'))
+                        sub_params = sub.get('params')
+                        if (refused is None and sub.get('tool') == 'execute_python'
+                                and isinstance(sub_params, dict)):
+                            refused = self._hostDestroyLint(
+                                sub_params.get('code'), self._execNamespace())
+                        if refused is not None:
+                            return refused
+                return None
+            shape = _host_destroy_shape(operation, params)
+            if shape is None:
+                return None
+            op_path, what = shape
+            node = self._resolve_op(op_path)
+            if node is None:
+                return None     # the handler reports the missing operator
+            target = node.path
+            chain = self._hostChain()
+            if target not in chain:
+                return None
+            relation = _host_relation(target, chain)
+            refused = _host_refusal(
+                _host_refusal_text(what, target, relation,
+                                   operation == 'delete_op'), target)
+        except Exception as e:
+            if shape is None and operation != 'batch_operations':
+                return None
+            refused = _host_refusal(
+                'HOST-DESTROY REFUSED (nothing changed): the host-destroy check '
+                'for %s could not reach a verdict (%s: %s), so it fails closed. '
+                'Retry; if it persists, check get_op_errors on the Embody COMP.'
+                % (operation, type(e).__name__, e),
+                shape[0] if shape else None)
+            self._log(refused['error'], 'ERROR')
+            return refused
+        self._log('HOST-DESTROY REFUSED: %s on %s, %s (issue #110)'
+                  % (what, target, relation), 'WARNING')
+        return refused
+
+    def _resolveLookupPath(self, node: Any, namespace: dict) -> Optional[str]:
+        """envoy_guard's resolver: eval ONE whitelisted lookup against
+        execute_python's own namespace, from THIS frame. TD resolves relative
+        op()/parent() against the innermost DAT frame, and the exec also runs
+        from EnvoyExt, so both see the same context. Never raises."""
+        try:
+            expr = ast.parse(ast.unparse(node), mode='eval')
+            found = eval(compile(expr, '<envoy_guard>', 'eval'), namespace)
+            if found is not None and found.valid:
+                return found.path
+        except Exception:
+            pass
+        return None
+
+    def _hostDestroyLint(self, code: str, namespace: dict) -> Optional[dict]:
+        """execute_python's pre-exec lint: a refusal, or None. FAIL-OPEN --
+        a missing envoy_guard DAT or any fault lints to nothing, and the
+        backstop in _execute_python still stands."""
+        # Token prefilter BEFORE the module lookup: token-free code (nearly
+        # every call) never touches mod.envoy_guard or logs a skip.
+        lowered = code.lower() if isinstance(code, str) else ''
+        if not any(token in lowered for token in _HOST_LINT_TOKENS):
+            return None
+        try:
+            guard = mod.envoy_guard
+            chain = self._hostChain()
+            findings = guard.host_destroy_findings(
+                code, lambda node: self._resolveLookupPath(node, namespace),
+                set(chain))
+            if not findings:
+                return None
+            first = findings[0]
+            relation = _host_relation(first['target'], chain)
+            refused = _host_refusal(
+                guard.python_refusal_text(first, relation), first['target'])
+        except Exception as e:
+            self._log(f'Host-destroy lint skipped (fail-open): '
+                      f'{type(e).__name__}: {e}', 'DEBUG')
+            return None
+        self._log('HOST-DESTROY REFUSED: execute_python line %s: %s, %s '
+                  '(issue #110)' % (first['line'], first['call'], relation),
+                  'WARNING')
+        return refused
+
+    def _hostIsGone(self) -> bool:
+        """True once the COMP hosting this extension was destroyed (a deleted
+        OP reads valid=False) or reloaded/reinitialized (a new EnvoyExt
+        instance replaced this one; its onDestroyTD already stopped
+        response_checker)."""
+        try:
+            return (not self.ownerComp.valid
+                    or self.ownerComp.ext.Envoy is not self)
+        except Exception as e:
+            self._log(f'Host check raised, treating the Embody COMP as gone: '
+                      f'{type(e).__name__}: {e}', 'WARNING')
+            return True
+
+    def _hostDestroyedResult(self, result: Any) -> dict:
+        """execute_python's answer when its code destroyed the host COMP, or
+        replaced this extension instance (a reload or an extension reinit,
+        which destroys nothing: worded apart so the agent is not misled)."""
+        try:
+            destroyed = not self.ownerComp.valid
+        except Exception:
+            destroyed = True
+        if destroyed:
+            out = {'success': True, 'host_destroyed': True,
+                   'warning': 'This call destroyed the Embody COMP that Envoy '
+                              'runs inside, so Envoy skipped its post-call '
+                              'checks and this server stops; Envoy restarts '
+                              'from a new Embody instance if one loads. Defer '
+                              'such work next time: run(code, delayFrames=30) '
+                              '(issue #110).'}
+        else:
+            out = {'success': True, 'host_reloaded': True,
+                   'warning': 'This call reloaded the Embody COMP or '
+                              "reinitialized Envoy's extension, so this Envoy "
+                              'instance skipped its post-call checks and '
+                              'stops; the new instance restarts Envoy '
+                              '(issue #110).'}
+        if result is not None:
+            try:
+                out['result'] = str(result)
+            except Exception:
+                pass
+        return out
+
+    def _answerAfterHostDestroyed(self, request_id: Any, result: Any) -> None:
+        """Hand one response straight to the worker after the host COMP died
+        -- check_responses, as response_checker would, since that thread
+        exits once shutdown_event is set -- then stop this server."""
+        try:
+            if not isinstance(result, dict):
+                result = {'error': 'The Embody COMP hosting Envoy was destroyed '
+                                   'during this call (issue #110).'}
+            self._attachRecoveryHints(result)
+            if isinstance(request_id, int) and request_id >= 0:
+                message = {'id': request_id, 'result': result}
+                deliver = getattr(self.response_queue, 'envoy_deliver', None)
+                if callable(deliver):
+                    deliver(message)
+                else:
+                    self.response_queue.put(message)
+        except Exception:
+            pass
+        finally:
+            try:
+                self.shutdown_event.set()
+            except Exception:
+                pass
+
     # === Introspection & Diagnostics (Main Thread Only) ===
 
     def _get_docs_roots(self) -> dict:
@@ -8313,7 +9787,7 @@ class EnvoyExt:
         return mod.envoy_read.get_op_errors(self, op_path, recurse)
 
     def _exec_op_method(self, op_path: str, method: str,
-                          args: list = None, kwargs: dict = None) -> dict:
+                          args: Optional[list] = None, kwargs: Optional[dict] = None) -> dict:
         """Call a method on a TD operator -- see envoy_read."""
         return mod.envoy_read.exec_op_method(self, op_path, method, args, kwargs)
 
@@ -8325,6 +9799,13 @@ class EnvoyExt:
         """Get detailed info about a specific TD Python class -- see envoy_read."""
         return mod.envoy_read.get_td_class_details(self, class_name)
 
+    def _describe_op_type(self, op_type: str, pattern: Optional[str] = None,
+                          page: Optional[str] = None,
+                          include_menus: bool = True) -> dict:
+        """Parameter catalog for an operator TYPE -- see envoy_read."""
+        return mod.envoy_read.describe_op_type(self, op_type, pattern, page,
+                                               include_menus)
+
     def _get_module_help(self, module_name: str) -> dict:
         """Get Python help text for a TD module or class -- see envoy_read."""
         return mod.envoy_read.get_module_help(self, module_name)
@@ -8335,20 +9816,20 @@ class EnvoyExt:
         """Get DAT content as text or table data -- see envoy_read."""
         return mod.envoy_read.get_dat_content(self, op_path, format)
 
-    def _get_chop_data(self, op_path: str, channels: str = None,
-                       samples: int = 0, compare_to: str = None) -> dict:
+    def _get_chop_data(self, op_path: str, channels: Optional[str] = None,
+                       samples: int = 0, compare_to: Optional[str] = None) -> dict:
         """Reduce a CHOP to per-channel stats -- see envoy_read."""
         return mod.envoy_read.get_chop_data(
             self, op_path, channels, samples, compare_to)
 
-    def _get_pop_data(self, op_path: str, attributes: str = None,
+    def _get_pop_data(self, op_path: str, attributes: Optional[str] = None,
                       samples: int = 0, max_points: int = 50000) -> dict:
         """Read POP attribute metadata (+ optional points) -- see envoy_read."""
         return mod.envoy_read.get_pop_data(
             self, op_path, attributes, samples, max_points)
 
-    def _set_dat_content(self, op_path: str, text: str = None,
-                        rows: list = None, clear: bool = False,
+    def _set_dat_content(self, op_path: str, text: Optional[str] = None,
+                        rows: Optional[list] = None, clear: bool = False,
                         confirm_wipe: bool = False) -> dict:
         """Set DAT content from text or table rows -- see envoy_ops."""
         result = mod.envoy_ops.set_dat_content(self, op_path, text, rows, clear, confirm_wipe)
@@ -8383,6 +9864,11 @@ class EnvoyExt:
 
     # === TOP Capture (Main Thread Only) ===
 
+    def _capture_op(self, op_path: str, format: str = 'jpeg',
+                    quality: float = 0.8, max_resolution: int = 640) -> dict:
+        """Capture any operator (TOP natively, else via OP Viewer TOP; deferred) -- see envoy_read."""
+        return mod.envoy_read.capture_op(self, op_path, format, quality, max_resolution)
+
     def _capture_top(self, op_path: str, format: str = 'jpeg',
                      quality: float = 0.8, max_resolution: int = 640,
                      inline: bool = False, sample_grid: int = 0) -> dict:
@@ -8395,13 +9881,19 @@ class EnvoyExt:
         """Get all flags for an operator -- see envoy_read."""
         return mod.envoy_read.get_op_flags(self, op_path)
 
-    def _set_op_flags(self, op_path: str, bypass: bool = None, lock: bool = None,
-                     display: bool = None, render: bool = None,
-                     viewer: bool = None, current: bool = None,
-                     expose: bool = None, allowCooking: bool = None,
-                     selected: bool = None) -> dict:
+    def _set_op_flags(self, op_path: str, bypass: Optional[bool] = None, lock: Optional[bool] = None,
+                     display: Optional[bool] = None, render: Optional[bool] = None,
+                     viewer: Optional[bool] = None, current: Optional[bool] = None,
+                     expose: Optional[bool] = None, allowCooking: Optional[bool] = None,
+                     selected: Optional[bool] = None, cloneImmune: Optional[bool] = None,
+                     componentCloneImmune: Optional[bool] = None,
+                     showCustomOnly: Optional[bool] = None,
+                     showDocked: Optional[bool] = None) -> dict:
         """Set flags on an operator -- see envoy_ops."""
-        return mod.envoy_ops.set_op_flags(self, op_path, bypass, lock, display, render, viewer, current, expose, allowCooking, selected)
+        return mod.envoy_ops.set_op_flags(
+            self, op_path, bypass, lock, display, render, viewer, current,
+            expose, allowCooking, selected, cloneImmune,
+            componentCloneImmune, showCustomOnly, showDocked)
 
     # === Node Positioning & Layout (Main Thread Only) ===
 
@@ -8425,9 +9917,9 @@ class EnvoyExt:
         """Get positions of all operators and annotations in a COMP -- see envoy_read."""
         return mod.envoy_read.get_network_layout(self, comp_path, include_annotations)
 
-    def _set_op_position(self, op_path: str, x: int = None, y: int = None,
-                        width: int = None, height: int = None,
-                        color: list = None, comment: str = None) -> dict:
+    def _set_op_position(self, op_path: str, x: Optional[int] = None, y: Optional[int] = None,
+                        width: Optional[int] = None, height: Optional[int] = None,
+                        color: Optional[list] = None, comment: Optional[str] = None) -> dict:
         """Set operator position and visual properties -- see envoy_ops."""
         return mod.envoy_ops.set_op_position(self, op_path, x, y, width, height, color, comment)
 
@@ -8449,10 +9941,10 @@ class EnvoyExt:
 
     def _create_annotation(self, parent_path: str, mode: str = "annotate",
                            text: str = "", title: str = "",
-                           x: int = None, y: int = None,
-                           width: int = None, height: int = None,
-                           color: list = None, opacity: float = None,
-                           name: str = None) -> dict:
+                           x: Optional[int] = None, y: Optional[int] = None,
+                           width: Optional[int] = None, height: Optional[int] = None,
+                           color: Optional[list] = None, opacity: Optional[float] = None,
+                           name: Optional[str] = None) -> dict:
         """Create an annotation in the network editor -- see envoy_ops."""
         return mod.envoy_ops.create_annotation(self, parent_path, mode, text, title, x, y, width, height, color, opacity, name)
 
@@ -8468,10 +9960,10 @@ class EnvoyExt:
         """Resolve an annotation path, including utility-flagged ones -- see envoy_read."""
         return mod.envoy_read.resolve_annotation(self, op_path)
 
-    def _set_annotation(self, op_path: str, text: str = None, title: str = None,
-                        color: list = None, opacity: float = None,
-                        width: int = None, height: int = None,
-                        x: int = None, y: int = None) -> dict:
+    def _set_annotation(self, op_path: str, text: Optional[str] = None, title: Optional[str] = None,
+                        color: Optional[list] = None, opacity: Optional[float] = None,
+                        width: Optional[int] = None, height: Optional[int] = None,
+                        x: Optional[int] = None, y: Optional[int] = None) -> dict:
         """Modify an existing annotation -- see envoy_ops."""
         return mod.envoy_ops.set_annotation(self, op_path, text, title, color, opacity, width, height, x, y)
 
@@ -8490,9 +9982,9 @@ class EnvoyExt:
         """Cook an operator -- see envoy_ops."""
         return mod.envoy_ops.cook_op(self, op_path, force, recurse)
 
-    def _find_children(self, op_path: str, name: str = None, type: str = None,
-                      depth: int = None, tags: list = None,
-                      text: str = None, comment: str = None,
+    def _find_children(self, op_path: str, name: Optional[str] = None, type: Optional[str] = None,
+                      depth: Optional[int] = None, tags: Optional[list] = None,
+                      text: Optional[str] = None, comment: Optional[str] = None,
                       include_utility: bool = False) -> dict:
         """Search for operators using COMP.findChildren -- see envoy_read."""
         return mod.envoy_read.find_children(self, op_path, name, type, depth, tags, text, comment, include_utility)
@@ -8505,9 +9997,16 @@ class EnvoyExt:
         """Get project-level performance via Perform CHOP -- see envoy_read."""
         return mod.envoy_read.get_project_performance(self, include_hotspots)
 
+    def _run_soak_test(self, duration_s=600, interval_s=1.0, fps_target=None,
+                       label=None, stop=False, idempotency_key=None) -> dict:
+        """Start or stop the low-overhead performance soak job -- see envoy_soak."""
+        return mod.envoy_soak.run_soak_test(self, duration_s, interval_s,
+                                            fps_target, label, stop,
+                                            idempotency_key)
+
     # === Embody Integration ===
 
-    def _externalize_op(self, op_path: str, tag_type: str = None) -> dict:
+    def _externalize_op(self, op_path: str, tag_type: Optional[str] = None) -> dict:
         """Tag an operator for Embody externalization and write it to disk -- see envoy_ops."""
         return mod.envoy_ops.externalize_op(self, op_path, tag_type)
 
@@ -8541,32 +10040,33 @@ class EnvoyExt:
     # === Extension Creation (Main Thread Only) ===
 
     def _create_extension(self, parent_path: str, class_name: str,
-                          name: str = None, code: str = None,
-                          promote: bool = True, ext_name: str = None,
-                          ext_index: int = None,
-                          existing_comp: bool = False) -> dict:
+                          name: Optional[str] = None, code: Optional[str] = None,
+                          promote: bool = True, ext_name: Optional[str] = None,
+                          ext_index: Optional[int] = None,
+                          existing_comp: bool = False,
+                          parent_shortcut: Optional[str] = None) -> dict:
         """Create a TD extension: COMP + text DAT + extension wiring -- see envoy_ops."""
-        return mod.envoy_ops.create_extension(self, parent_path, class_name, name, code, promote, ext_name, ext_index, existing_comp)
+        return mod.envoy_ops.create_extension(self, parent_path, class_name, name, code, promote, ext_name, ext_index, existing_comp, parent_shortcut)
 
-    # === TDN Network Format (Main Thread Only) ===
+    # === TDXN Network Format (Main Thread Only) ===
 
     def _export_network(self, root_path='/', include_dat_content=True,
                        output_file=None, max_depth=None, embed_all=False):
-        """Delegate to TDN extension for network export -- see envoy_read."""
+        """Delegate to TDXN extension for network export -- see envoy_read."""
         return mod.envoy_read.export_network(self, root_path, include_dat_content, output_file, max_depth, embed_all)
 
     def _import_network(self, target_path, tdn, clear_first=False):
-        """Delegate to TDN extension for network import -- see envoy_ops."""
+        """Delegate to TDXN extension for network import -- see envoy_ops."""
         return mod.envoy_ops.import_network(self, target_path, tdn, clear_first)
 
-    def _read_tdn(self, comp_path='/', include_dat_content=None,
+    def _read_tdxn(self, comp_path='/', include_dat_content=None,
                   max_depth=None, embed_all=False):
-        """Read a network subtree as a TDN dict (in-memory, no disk write) -- see envoy_read."""
-        return mod.envoy_read.read_tdn(self, comp_path, include_dat_content, max_depth, embed_all)
+        """Read a network subtree as a TDXN dict (in-memory, no disk write) -- see envoy_read."""
+        return mod.envoy_read.read_tdxn(self, comp_path, include_dat_content, max_depth, embed_all)
 
-    def _diff_tdn(self, target='', max_changed_ops=200, max_bytes=60000):
-        """Show what is UNSAVED in TDN-externalized COMPs vs on-disk .tdn -- see envoy_read."""
-        return mod.envoy_read.diff_tdn(self, target, max_changed_ops, max_bytes)
+    def _diff_tdxn(self, target='', max_changed_ops=200, max_bytes=60000):
+        """Show what is UNSAVED in TDXN-externalized COMPs vs on-disk .tdn -- see envoy_read."""
+        return mod.envoy_read.diff_tdxn(self, target, max_changed_ops, max_bytes)
 
 
 
@@ -8589,7 +10089,7 @@ class EnvoyExt:
     # deletes, connects, executes, imports, or externalizes is deliberately
     # omitted so it still prompts. Entries are the tool short-names; the
     # permission strings written are 'mcp__envoy__<name>'.
-    READ_ONLY_TOOLS = [
+    _READ_ONLY_TOOLS = [
         'get_td_status', 'get_td_info', 'get_td_classes', 'get_td_class_details',
         'get_op', 'get_op_errors', 'get_op_flags', 'get_op_position',
         'get_op_performance', 'get_project_performance', 'get_parameter',
@@ -8599,7 +10099,9 @@ class EnvoyExt:
         'get_logs', 'get_focus', 'get_job_status',
         'get_externalizations', 'get_externalization_status', 'get_sessions',
         'query_network', 'find_children', 'get_enclosed_ops',
-        'read_tdn', 'diff_tdn', 'capture_top',
+        'read_tdn', 'diff_tdn', 'read_tdxn', 'diff_tdxn',
+        'capture_top', 'capture_op',
+        'describe_op_type', 'run_soak_test',
     ]
 
     def _toolPermissionsPosture(self):
@@ -8673,12 +10175,12 @@ class EnvoyExt:
         return mod.envoy_setup.configure_gitignore(self, git_root)
 
     def _configureGitattributes(self, git_root):
-        """Ensure .gitattributes normalizes TD line endings + .tdn diffs -- see envoy_setup."""
+        """Ensure .gitattributes normalizes TD line endings -- see envoy_setup."""
         return mod.envoy_setup.configure_gitattributes(self, git_root)
 
-    def _configureTdnDiffDriver(self, target_dir, python_cmd):
-        """Deploy the .tdn git textconv script and register the diff driver -- see envoy_setup."""
-        return mod.envoy_setup.configure_tdn_diff_driver(self, target_dir, python_cmd)
+    def _retireTdxnDiffDriver(self, target_dir):
+        """Remove the git textconv diff driver older versions installed -- see envoy_setup."""
+        return mod.envoy_setup.retire_tdxn_diff_driver(self, target_dir)
 
     def _cleanupTempFiles(self):
         """Remove stale Envoy temp files from /tmp -- see envoy_setup."""

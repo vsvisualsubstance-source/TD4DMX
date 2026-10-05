@@ -107,8 +107,8 @@ def convoy_step(status, started=None):
     The node line comes from convoy_client.status_text (Connected /
     Registering... / Waiting for project save / Refused: <reason> /
     Error: <detail> / No Convoy host app / Host app stale) plus
-    ConvoyExt's own literals (Consent required, Error: convoy_client
-    module missing); the host-app line from convoy_client.
+    ConvoyExt's own literals (Consent required, Needs Envoy, Error:
+    convoy_client module missing); the host-app line from convoy_client.
     host_status_text (the five 'Installed -- ...' variants, Checking...,
     Installing..., Repairing runtime..., Needs repair, Install failed,
     Managed by another supervisor, installed-by-a-newer-Embody).
@@ -136,8 +136,8 @@ def convoy_step(status, started=None):
         # A host-side crash, an unreadable result, a policy refusal: all
         # actionable, none of them progress.
         return _entry(FAILED, detail=text)
-    if low.startswith(("not installed", "needs repair", "install failed",
-                       "installed -- no supervisor")):
+    if low.startswith(("not installed", "needs repair", "needs envoy",
+                       "install failed", "installed -- no supervisor")):
         # 'Installed -- no supervisor (use Repair Convoy App)' names a
         # button the user has to press. A defect with a remedy.
         return _entry(FAILED, detail=text)
@@ -425,7 +425,7 @@ def ago_text(seconds):
 
 
 def autosave_step(status, now_seconds=None, now_dt=None):
-    """TDN auto-save. 'Saved <time>' is the healthy resting state.
+    """TDXN auto-save. 'Saved <time>' is the healthy resting state.
 
     The saved TIME is converted to an AGE, because the age is the whole
     question -- how long ago did the work reach disk. A bare clock wraps
@@ -512,7 +512,7 @@ def version_step(version, update_status, autoupdate=None):
         return _labelled(_entry(STALLED, detail=text), label)
     if "failed" in low or low.startswith("error"):
         return _labelled(_entry(FAILED, detail=text), label)
-    if low.startswith(("checking", "download", "installing")):
+    if low.startswith(("checking", "download", "installing", "retrying")):
         return _labelled(_entry(RUNNING, detail=text), label)
     if "up to date" in low:
         return _labelled(_entry(DONE, detail="up to date"), label)

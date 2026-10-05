@@ -26,7 +26,7 @@ class ToolbarExt:
 
 	# -- Click dispatch ----------------------------------------------
 
-	def OnContainerClick(self, container):
+	def onContainerClick(self, container):
 		"""Called by panelexec_left/right on lselect offToOn."""
 		btn = self._findClickedButton(container)
 		if not btn:
@@ -47,22 +47,36 @@ class ToolbarExt:
 			handler()
 			return
 
+		# Fail LOUD on an unresolved action. This getattr also reaches TD's own
+		# OP API (openParameters is a builtin, not an extension method), so a
+		# miss means the name is wrong -- and a silent miss is a button that
+		# does nothing, which is how two dead rows survived unnoticed until the
+		# promoted-surface census found them (issue #94).
+		# Resolve on the COMP first (promoted tier-1 API and TD builtins such as
+		# openParameters), then on the extension -- WP4 demoted most handlers to
+		# tier-2 lowerCamel, which is reachable only through .ext (issue #94).
 		try:
-			method = getattr(self.ownerComp.parent.Embody, action, None)
-			if method and callable(method):
+			method = getattr(self.embody, action, None)
+			if not callable(method):
+				method = getattr(self.embody.ext.Embody, action, None)
+			if callable(method):
 				method()
+			else:
+				self.embody.Warn(
+					f'Toolbar action "{action}" resolves to nothing -- '
+					f'button "{name}" does nothing.')
 		except Exception as e:
-			debug(f'ToolbarExt error calling {action}: {e}')
+			self.embody.Error(f'Toolbar action "{action}" raised: {e}')
 
 	# -- Press / Release ---------------------------------------------
 
-	def OnContainerPress(self, container):
+	def onContainerPress(self, container):
 		"""Called by panelexec on lselect offToOn -- set pressed visual."""
 		btn = self._findClickedButton(container)
 		if btn:
 			self._setPressed(btn)
 
-	def OnContainerRelease(self, container):
+	def onContainerRelease(self, container):
 		"""Called by panelexec on lselect onToOff -- clear pressed visual."""
 		self._clearPressed()
 
@@ -84,7 +98,7 @@ class ToolbarExt:
 
 	# -- Rollover / Hover --------------------------------------------
 
-	def OnContainerRollover(self, container, state):
+	def onContainerRollover(self, container, state):
 		"""Called by panelexec on rollover/insideu valueChange."""
 		if state:
 			btn = self._findButtonByPosition(container)
@@ -199,7 +213,7 @@ class ToolbarExt:
 
 	# -- Filter handling ---------------------------------------------
 
-	def OnFilterChanged(self):
+	def onFilterChanged(self):
 		"""Called when filter text changes. Refresh the externalization list."""
 		self.ownerComp.parent.Embody.op('list/inject_parents').cook(force=True)
 		self.ownerComp.parent.Embody.op('list/list1').par.reset.pulse()
@@ -207,11 +221,15 @@ class ToolbarExt:
 	# -- Action handlers ---------------------------------------------
 
 	def _action_toggle_disable(self):
+		# Tier-2 wiring lives on the extension, not the COMP: TD promotes
+		# only capitalized members, so emb.updateHandler() raises (shipped
+		# broken in 6.2.0 -- wave 4e's sweep matched the literal
+		# parent.Embody.x( shape and missed this alias; issue #94 review).
 		emb = self.ownerComp.parent.Embody
 		if emb.par.Status.eval() == 'Enabled':
-			emb.DisableHandler()
+			emb.ext.Embody.disableHandler()
 		else:
-			emb.UpdateHandler()
+			emb.ext.Embody.updateHandler()
 
 	def _action_toggle_envoy(self):
 		emb = self.ownerComp.parent.Embody
@@ -223,24 +241,24 @@ class ToolbarExt:
 		current = emb.par.Performmode.eval()
 		emb.par.Performmode = not current
 
-	def _action_export_tdn(self):
-		self.ownerComp.parent.Embody.ext.TDN.ExportProjectTDNInteractive()
+	def _action_export_tdxn(self):
+		self.ownerComp.parent.Embody.ext.TDXN.exportProjectTDXNInteractive()
 
-	def _action_export_comp_tdn(self):
+	def _action_export_comp_tdxn(self):
 		comp = None
 		for pane in ui.panes:
 			if pane.type == PaneType.NETWORKEDITOR:
 				comp = pane.owner
 				break
 		if comp:
-			self.ownerComp.parent.Embody.ext.TDN.ExportNetworkAsync(
+			self.ownerComp.parent.Embody.ext.TDXN.ExportNetworkAsync(
 				root_path=comp.path, output_file='auto')
 
 	def _action_clear_filter(self):
 		f = self.ownerComp.op('container_right/filter')
 		if f:
 			f.par.text = ''
-			self.OnFilterChanged()
+			self.onFilterChanged()
 
 	# -- Helpers -----------------------------------------------------
 

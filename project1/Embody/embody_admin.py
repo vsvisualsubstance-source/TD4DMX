@@ -1,4 +1,4 @@
-"""EmbodyExt uninstall + settings persistence (module DAT).
+"""EmbodyExt uninstall + release .toe export + settings persistence (module DAT).
 
 Module DAT (mod.embody_admin) called by EmbodyExt on the MAIN THREAD only (the
 ext-diet WP7c + WP7d clusters C5 + C9). Holds:
@@ -9,9 +9,14 @@ ext-diet WP7c + WP7d clusters C5 + C9). Holds:
         strip_mcp_envoy) + the promoted Uninstall entry point. The uninstall
         marker constants (_UNINSTALL_MARKER_*) live at module scope -- their sole
         consumer is compute_uninstall_plan and nothing external reads them.
+  - C5b Release .toe export: the PURE planners (plan_release_*) and the
+        orchestrator (preview_release_toe / export_release_toe) behind
+        PreviewReleaseToe / ExportReleaseToe. Steps 4-6 leave this module
+        entirely -- they run from a generated run() script, because this
+        DAT lives inside the COMP they delete.
   - C9  Settings/config.json persistence: settings_path / find_settings_file /
         project_json_path / write_project_json / save_settings /
-        defer_save_settings / restore_settings / show_tdn_migration_nudge.
+        defer_save_settings / restore_settings / show_tdxn_migration_nudge.
         Plus the project.json 'convoy' key steward (Convoy Phase 2):
         mint_convoy_id / read_convoy_entry / read_convoy_id /
         read_convoy_binding_state / ensure_convoy_id / adopt_convoy_id,
@@ -35,18 +40,23 @@ DISPATCH CONTRACT: intra-cluster calls are module-local (no unit test
 monkeypatches any name in this cluster -- verified). Cross-module hops go through
 the facade via ext.*: _loadInstallManifest / _loadHashManifest (embody_git stubs
 on the facade), and the spine/retained methods _findProjectRoot / _rootForMode /
-_venvPaths / _uninstallClassifyMarker / _messageBox / _getTDNStrategyComps /
-_applyTdnModeGating. The class attr _PERSISTED_PARAMS stays on EmbodyExt (read by
+_venvPaths / _uninstallClassifyMarker / _messageBox / _getTDXNStrategyComps /
+_applyTdxnModeGating. The class attr _PERSISTED_PARAMS stays on EmbodyExt (read by
 parexec.py) and is reached via ext._PERSISTED_PARAMS. Instance state
 (_settings_save_pending, _restoring_settings) lives on the ext, unchanged.
 
 The run() deferral strings target the facade stubs (ext.Embody._saveSettings /
-._showTDNMigrationNudge / ext.Envoy.Start) so they resolve after the move.
+._showTDXNMigrationNudge / ext.Envoy.Start) so they resolve after the move.
 """
 
 from __future__ import annotations
 
+import datetime
 import json
+import math
+import os
+import posixpath
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -66,10 +76,48 @@ NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 # provably Embody-owned is classed 'review' (KEPT + flagged), never silently
 # deleted. See dev/embody/plan-init-deinit-wizard.md sec 5.
 
-_UNINSTALL_MARKER_FILES = ('AGENTS.md', 'CLAUDE.md', 'ENVOY.md', 'GEMINI.md')
-_UNINSTALL_MARKER_TREES = ('.claude/rules', '.claude/skills', '.cursor/rules',
-                           '.github/instructions', '.windsurf/rules')
-_UNINSTALL_MARKER_SINGLES = ('.github/copilot-instructions.md',)
+# Derived from the ai_clients registry, NOT hand-listed. These were the
+# last copies of the per-client tables the registry replaced, and they had
+# already gone stale: no .agents/rules, no .agents/skills, so every
+# Antigravity rule and skill orphaned on any install whose manifest was
+# missing -- which is exactly when the marker scan is the only thing left.
+# Module-level constants would need TD at import time, so they are
+# functions the planner calls.
+
+def _uninstall_marker_files():
+    return tuple(['AGENTS.md'] + [f for f in mod.ai_clients.cleanup_files()
+                                  if '/' not in f])
+
+
+def _uninstall_marker_trees():
+    return tuple(mod.ai_clients.cleanup_sweep_dirs())
+
+
+def _uninstall_marker_singles():
+    return tuple(f for f in mod.ai_clients.cleanup_files() if '/' in f)
+
+
+def _embody_driver_keys(root):
+    """The diff.tdxn / diff.tdn git config keys that still belong to Embody's
+    retired textconv driver: a --local textconv value naming our .embody/
+    script,
+    plus its cachetextconv sibling. A user's own driver is never listed."""
+    keys = []
+    for name, script in (('tdxn', 'tdxn_textconv.py'),
+                         ('tdn', 'tdn_textconv.py')):
+        try:
+            r = subprocess.run(
+                ['git', 'config', '--local', '--get', f'diff.{name}.textconv'],
+                cwd=str(root), capture_output=True, text=True, timeout=5,
+                encoding='utf-8', errors='replace', stdin=subprocess.DEVNULL,
+                creationflags=NO_WINDOW)
+        except Exception:
+            continue
+        if r.returncode == 0 and ('/.embody/' + script) in (
+                (r.stdout or '').replace('\\', '/')):
+            keys += [f'diff.{name}.textconv', f'diff.{name}.cachetextconv']
+    return keys
+
 
 
 def compute_uninstall_plan(ext, target_dir=None):
@@ -125,6 +173,11 @@ def compute_uninstall_plan(ext, target_dir=None):
         cls = ext._uninstallClassifyMarker(p, root, hashes)
         if cls == 'delete':
             _add('delete', p, kind='file', why='Embody-generated, unmodified')
+        elif cls == 'merged':
+            # The user's own file with Embody's block spliced in: take the
+            # block, never the file.
+            _add_strip(p, 'md_section', mod.embody_git.AGENTS_BEGIN,
+                       'remove only the Embody section; your file is kept')
         elif cls == 'review':
             _add('review', p, why='you edited this generated file -- kept')
 
@@ -133,18 +186,21 @@ def compute_uninstall_plan(ext, target_dir=None):
             m.get('git_config'), m.get('venv'))):
         plan['sources'].append('manifest')
 
+    mcp_specs = {s['path']: s for s in mod.ai_clients.project_mcp_specs()}
+
+    def _strip_reason(spec):
+        if spec['style'] == 'opencode':
+            return ('remove Embody server + instructions entry; '
+                    'delete file only if nothing else remains')
+        return 'remove Embody server; delete file only if none remain'
+
     for stored in m.get('files_created', []):
         p = _abs(stored)
-        if p.name == '.mcp.json':
+        spec = mcp_specs.get(_rel(p))
+        if spec is not None:
             if p.exists():
-                _add_strip(p, 'json_key', 'mcpServers.envoy',
-                           'remove Embody server; delete file only if none remain')
-            continue
-        if p.name == 'opencode.json':
-            if p.exists():
-                _add_strip(p, 'json_key', 'mcp.envoy',
-                           'remove Embody server + instructions entry; '
-                           'delete file only if nothing else remains')
+                _add_strip(p, 'mcp_config', f'{spec["key"]}.envoy',
+                           _strip_reason(spec))
             continue
         if not p.exists():
             plan['missing'].append(stored); continue
@@ -173,7 +229,14 @@ def compute_uninstall_plan(ext, target_dir=None):
         _add_strip(p, e.get('kind', 'block'), e.get('marker', ''),
                    "strip only Embody's block/key -- your file is kept")
 
-    plan['unset'] = list(m.get('git_config', []))
+    # diff.tdxn / diff.tdn keys come from the live repo, not the manifest:
+    # only while they still point at Embody's retired driver script --
+    # never a user's own driver or a key the retirement already removed,
+    # and a legacy diff.tdn key counts even when the manifest lists only
+    # diff.tdxn (issue #106).
+    plan['unset'] = [k for k in m.get('git_config', [])
+                     if not k.startswith(('diff.tdxn.', 'diff.tdn.'))]
+    plan['unset'] += _embody_driver_keys(root)
 
     v = m.get('venv')
     if v:
@@ -202,39 +265,60 @@ def compute_uninstall_plan(ext, target_dir=None):
 
     # ---- marker-scan FALLBACK (pre-manifest installs / anything missed) ----
     before = sum(len(plan[b]) for b in ('delete', 'review', 'strip')) + len(plan['unset'])
-    for name in _UNINSTALL_MARKER_FILES:
+    for name in _uninstall_marker_files():
         p = root / name
         if p.is_file():
             _classify_into(p)
-    for sub in _UNINSTALL_MARKER_TREES:
+    for sub in _uninstall_marker_trees():
         d = root / sub
         if d.is_dir():
             for p in d.rglob('*'):
                 if p.is_file():
                     _classify_into(p)
-    for single in _UNINSTALL_MARKER_SINGLES:
+    for single in _uninstall_marker_singles():
         p = root / single
         if p.is_file():
             _classify_into(p)
-    mcp = root / '.mcp.json'
-    if mcp.is_file() and str(mcp.resolve()) not in seen:
+    # Every client's own MCP config, from the registry -- .mcp.json is only
+    # Claude Code's, and a project configured for Cursor/VS Code/Gemini/
+    # Codex/Antigravity has an envoy entry in files this scan used to miss.
+    for spec in mcp_specs.values():
+        cfg_path = root / spec['path']
+        if not cfg_path.is_file() or str(cfg_path.resolve()) in seen:
+            continue
         try:
-            if 'envoy' in json.loads(
-                    mcp.read_text(encoding='utf-8')).get('mcpServers', {}):
-                _add_strip(mcp, 'json_key', 'mcpServers.envoy',
-                           'remove Embody server; delete file only if none remain')
+            text = cfg_path.read_text(encoding='utf-8')
+            if spec['style'] == 'toml':
+                present = f'[{spec["key"]}.envoy]' in text
+            else:
+                present = 'envoy' in (
+                    json.loads(text).get(spec['key']) or {})
+            if present:
+                _add_strip(cfg_path, 'mcp_config', f'{spec["key"]}.envoy',
+                           _strip_reason(spec))
         except Exception:
             pass
-    oc = root / 'opencode.json'
-    if oc.is_file() and str(oc.resolve()) not in seen:
-        try:
-            if 'envoy' in json.loads(
-                    oc.read_text(encoding='utf-8')).get('mcp', {}):
-                _add_strip(oc, 'json_key', 'mcp.envoy',
-                           'remove Embody server + instructions entry; '
-                           'delete file only if nothing else remains')
-        except Exception:
-            pass
+    # Directories Embody created to hold generated files. Planned as
+    # 'emptydir' so they appear in the preview the user confirms -- the
+    # executor uses a bare rmdir, which FAILS on a non-empty directory, so
+    # anything of the user's still inside keeps the directory alive.
+    # Deepest-first, from the registry.
+    for sub in mod.ai_clients.cleanup_dirs():
+        dp = root / sub
+        if not dp.is_dir():
+            continue
+        # A skills tree holds one directory PER SKILL, and a skill can nest
+        # references/; all of it has to go before the parent can rmdir, so
+        # a leaf dir Embody fills is walked deepest-first. A parent like
+        # '.claude' plans only its direct children, never the user's tree.
+        kids = dp.rglob('*') if '/' in sub else dp.iterdir()
+        for child in sorted((c for c in kids if c.is_dir()),
+                            key=lambda c: (-len(c.parts), c.name)):
+            _add('delete', child, kind='emptydir',
+                 why='Embody-generated skill folder -- removed if empty')
+        _add('delete', dp, kind='emptydir',
+             why='created by Embody -- removed only if empty afterwards')
+
     for gname, marker in (('.gitignore', '# Embody / Envoy'),
                           ('.gitattributes', 'Embody / Envoy')):
         gp = root / gname
@@ -245,20 +329,10 @@ def compute_uninstall_plan(ext, target_dir=None):
                                "strip only Embody's block -- your file is kept")
             except Exception:
                 pass
-    # git config (read-only query) for pre-manifest installs
+    # git config (read-only query) for pre-manifest installs: the retired
+    # driver's keys, both spellings (tdn -> tdxn in 6.2.35).
     if not plan['unset']:
-        for key in ('diff.tdn.textconv', 'diff.tdn.cachetextconv'):
-            try:
-                r = subprocess.run(['git', 'config', '--get', key],
-                                   cwd=str(root), capture_output=True,
-                                   text=True, timeout=5,
-                                   encoding='utf-8', errors='replace',
-                                   stdin=subprocess.DEVNULL,
-                                   creationflags=NO_WINDOW)
-                if r.returncode == 0 and (r.stdout or '').strip():
-                    plan['unset'].append(key)
-            except Exception:
-                pass
+        plan['unset'] = _embody_driver_keys(root)
     # venv not captured by the manifest -> flag for review (can't prove
     # Embody created it without the record, so never auto-delete it). Prefer
     # the authoritative venv location (under project.folder) -- which can sit
@@ -367,22 +441,99 @@ def strip_marked_block(ext, text, marker):
     return '\n'.join(out)
 
 
-def strip_mcp_envoy(ext, path):
-    """Remove only Embody's entries from a .mcp.json OR opencode.json.
+def strip_md_section(ext, text):
+    """Remove Embody's delimited block from a user-authored markdown file.
 
-    Shape-aware: .mcp.json keeps servers under 'mcpServers'; opencode.json
-    keeps them under 'mcp' and additionally carries Embody's generated
-    '.claude/rules/*.md' instructions entry (see envoy_setup.
-    write_opencode_config). Never writes one shape's keys into the other's
-    file. Delete the file only if stripping leaves nothing but boilerplate
-    ('$schema') -- the user's servers/keys are always preserved."""
+    The counterpart of embody_git.merge_agents_section: everything the
+    user wrote survives, only the BEGIN..END span goes. Returns the text
+    unchanged when no block is present.
+    """
+    git = mod.embody_git
+    if git.AGENTS_BEGIN not in text and git.AGENTS_END not in text:
+        return text
+    # Same tolerant scanner the writer uses: a duplicated or half-deleted
+    # block must not leave one behind, and an orphan delimiter must not
+    # take the user's prose with it.
+    out = git.strip_all_blocks(text)
+    if not out.strip():
+        return ''
+    return out.rstrip('\n') + '\n'
+
+
+def mcp_spec_for(path):
+    """The registry MCP spec this path is an instance of, if any.
+
+    Matched on the whole relative path, never the basename: Cursor's
+    .cursor/mcp.json and VS Code's .vscode/mcp.json share a filename but
+    key their servers differently ('mcpServers' vs 'servers'), so a
+    basename match would strip the wrong key and silently leave the entry
+    behind. Deepest match wins.
+    """
+    posix = Path(path).as_posix()
+    best = None
+    for spec in mod.ai_clients.project_mcp_specs():
+        rel = spec['path']
+        if posix == rel or posix.endswith('/' + rel):
+            if best is None or rel.count('/') > best['path'].count('/'):
+                best = spec
+    return best
+
+
+def strip_toml_envoy(ext, path, key):
+    """Remove only the [<key>.envoy] table from a TOML config (Codex).
+
+    Surgical for the same reason the writer is: the rest of the user's
+    config.toml must survive untouched, not be reformatted by a
+    round-trip. Deletes the file only if nothing else remains.
+    """
+    header = f'[{key}.envoy]'
     try:
-        cfg = json.loads(path.read_text(encoding='utf-8'))
-    except (json.JSONDecodeError, OSError):
+        lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+    except OSError:
+        return
+    start = next((i for i, l in enumerate(lines) if l.strip() == header), None)
+    if start is None:
+        return
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        if lines[i].lstrip().startswith('['):
+            end = i
+            break
+    remaining = ''.join(lines[:start] + lines[end:])
+    if remaining.strip():
+        path.write_text(remaining, encoding='utf-8', newline='\n')
+    else:
+        path.unlink()
+
+
+def strip_mcp_envoy(ext, path):
+    """Remove only Embody's entries from a client's MCP config.
+
+    Shape comes from the ai_clients registry: each client keys its server
+    map differently (.mcp.json and Cursor use 'mcpServers', VS Code uses
+    'servers', opencode.json uses 'mcp', Codex uses a TOML table), and one
+    shape's keys must never be written into another's file. opencode.json
+    additionally carries Embody's generated '.claude/rules/*.md'
+    instructions entry (see envoy_setup.write_opencode_config). Delete the
+    file only if stripping leaves nothing but boilerplate ('$schema') --
+    the user's servers and keys are always preserved.
+    """
+    spec = mcp_spec_for(path)
+    if spec is not None and spec['style'] == 'toml':
+        strip_toml_envoy(ext, path, spec['key'])
+        return
+    try:
+        # utf-8-sig for the same reason the writer uses it: a BOM would
+        # otherwise leave the Envoy entry in the file forever.
+        cfg = json.loads(path.read_text(encoding='utf-8-sig'))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
         return
     is_opencode = path.name == 'opencode.json' or (
         'mcp' in cfg and 'mcpServers' not in cfg)
-    key = 'mcp' if is_opencode else 'mcpServers'
+    if spec is not None:
+        key = spec['key']
+    else:
+        key = 'mcp' if is_opencode else 'mcpServers'
     servers = cfg.get(key, {})
     servers.pop('envoy', None)
     if is_opencode:
@@ -400,7 +551,8 @@ def strip_mcp_envoy(ext, path):
         # have edited it -- then the file survives below and keeps it).
     if servers:
         cfg[key] = servers
-        path.write_text(json.dumps(cfg, indent=2) + '\n', encoding='utf-8')
+        path.write_text(json.dumps(cfg, indent=2) + '\n',
+                        encoding='utf-8', newline='\n')
         return
     cfg.pop(key, None)
     leftover = [k for k in cfg if k not in ('$schema',)]
@@ -408,7 +560,8 @@ def strip_mcp_envoy(ext, path):
         # Only Embody's fresh-file permission block remains -> ours.
         leftover = []
     if leftover:
-        path.write_text(json.dumps(cfg, indent=2) + '\n', encoding='utf-8')
+        path.write_text(json.dumps(cfg, indent=2) + '\n',
+                        encoding='utf-8', newline='\n')
     else:
         path.unlink()  # the file held only Embody's config -> remove it
 
@@ -429,7 +582,17 @@ def execute_uninstall_plan(ext, plan, include_review=False):
     def _remove(entry):
         p = _abs(entry['path'])
         try:
-            if entry.get('kind') == 'dir':
+            if entry.get('kind') == 'emptydir':
+                # Bare rmdir on purpose: it raises on a non-empty
+                # directory, so a directory still holding the user's own
+                # files is never removed.
+                if p.is_dir():
+                    try:
+                        p.rmdir()
+                        summary['deleted'] += 1
+                    except OSError:
+                        pass          # not empty -> the user's, leave it
+            elif entry.get('kind') == 'dir':
                 if p.is_dir():
                     remove_tree_within(ext, p, root)
                     summary['deleted'] += 1
@@ -440,24 +603,54 @@ def execute_uninstall_plan(ext, plan, include_review=False):
             ext.Log(f'Uninstall: could not remove {p}: {e}', 'WARNING')
 
     for entry in plan['delete']:
-        _remove(entry)
+        if entry.get('kind') != 'emptydir':
+            _remove(entry)
 
     for a in plan['strip']:
         p = _abs(a['path'])
         if not p.exists():
             continue
         try:
-            if a['kind'] == 'json_key':
+            # 'toml_table' is Codex's config.toml: it MUST route to the
+            # shape-aware stripper like the JSON kinds. Falling through to
+            # strip_marked_block (a '#'-header line scanner built for
+            # .gitignore) silently left the envoy entry in place forever --
+            # the file was planned for stripping and then not stripped.
+            if a['kind'] in ('mcp_config', 'json_key', 'toml_table'):
                 strip_mcp_envoy(ext, p)
+            elif a['kind'] == 'md_section':
+                # A user-authored AGENTS.md we merged into: take back only
+                # our delimited block, never the file.
+                # Same newline discipline as the writer: the reverser
+                # must not hand back a CRLF-converted file.
+                original = p.read_text(encoding='utf-8')
+                stripped = strip_md_section(ext, original)
+                if not stripped.strip():
+                    # Nothing but Embody's block was ever in it. The root-move
+                    # sweep unlinks in this case; leaving a 0-byte file here
+                    # would be a different answer to the same question.
+                    p.unlink()
+                    summary['deleted'] += 1
+                elif stripped != original:
+                    p.write_text(stripped, encoding='utf-8',
+                                 newline='\n')
             else:
                 p.write_text(
                     strip_marked_block(
                         ext, p.read_text(encoding='utf-8'), a['marker']),
-                    encoding='utf-8')
+                    encoding='utf-8', newline='\n')
             summary['stripped'] += 1
         except OSError as e:
             summary['errors'] += 1
             ext.Log(f'Uninstall: could not strip {p}: {e}', 'WARNING')
+
+    # Directories last of all: a bare rmdir needs the contents gone, and
+    # the strip pass above is what removes the final file in .cursor/,
+    # .vscode/, .gemini/, .codex/ and .agents/. Plan order is
+    # deepest-first, so children are attempted before their parents.
+    for entry in plan['delete']:
+        if entry.get('kind') == 'emptydir':
+            _remove(entry)
 
     for key in plan['unset']:
         try:
@@ -543,7 +736,7 @@ def uninstall_handler(ext, target_dir=None):
             'kept.')
     if n_unset:
         lines.append(
-            f'- UN-SET {n_unset} git config key(s) (the .tdn diff driver).')
+            f'- UN-SET {n_unset} git config key(s) (the retired .tdxn diff driver).')
     if n_review:
         lines.append(
             f'- KEEP {n_review} item(s) you may have edited (flagged, left '
@@ -570,6 +763,1535 @@ def uninstall_handler(ext, target_dir=None):
         'to finish removing it from this .toe.',
         buttons=['OK'])
     return summary
+
+
+# ==========================================================================
+# RELEASE .toe EXPORT (C5b)
+# ==========================================================================
+# ExportPortableTox for the WHOLE project, one-way: tracked files inlined,
+# Embody's in-network footprint scrubbed, the Embody COMP + tracking table
+# destroyed, optional privacy, save, quit. Dedicated instance; the dev
+# .toe and its save series are refused, and from step 0 nothing Embody
+# does reaches the project folder (_release_quiet_session). PURE planners
+# (plan_release_*), ONE orchestrator; steps 4-6 run from a generated run()
+# script because this module is a DAT inside the COMP they delete.
+
+RELEASE_TOE_HOOK = 'pre_release_toe'
+# The startup restores land at frames 45-90 (execute.py onStart); a project
+# opened seconds ago still holds stripped shells. 120 is those 90 plus margin.
+# CAVEAT, stated rather than buried: absTime.frame counts frames since the
+# APPLICATION started, not since this project opened, so in an instance that
+# already had another project open it passes trivially. That is fine for the
+# only supported use (a dedicated instance launched on the project) and it is
+# why this is the belt, not the braces -- the per-COMP children census is the
+# direct evidence the restores actually ran.
+RELEASE_READY_FRAME = 120
+# Frames between the last live mutation and the destroy/save tail. Clearing
+# file/syncfile on a tracked extension DAT reinitializes that extension, so
+# the calling frame must be fully unwound before Embody is destroyed.
+RELEASE_FINISH_DELAY_FRAMES = 10
+_RELEASE_CLONE_TAG = 'clone'
+
+
+def release_product_path(embody_path: str) -> str:
+    """The COMP a release hook belongs to: Embody's TOP-LEVEL ancestor.
+
+    Not ext.my.parent() -- Embody is installed inside the product it
+    externalizes (moonshine: /moonshine/lib/Embody, table sibling
+    /moonshine/lib/externalizations), so the parent is a library shelf,
+    not the thing being released. Root itself when Embody is a direct
+    child of '/'.
+    """
+    parts = [p for p in str(embody_path or '').split('/') if p]
+    return '/' + parts[0] if len(parts) > 1 else '/'
+
+
+def plan_release_readiness(*, tdxn_comps, frame, op_errors, perform_mode,
+                           project_saved, save_path, project_toe='',
+                           project_folder='', save_dir_exists=None,
+                           save_path_exists=False, hook_touched=(),
+                           startup_done=False, ignore_op_errors=False,
+                           min_frame=RELEASE_READY_FRAME) -> dict:
+    """Every reason to refuse, computed from plain data. PURE.
+
+    tdxn_comps: [{'path', 'present', 'children', 'file_ops'}] -- the
+    table's TDXN rows against the live network plus the operator count in
+    each row's .tdxn. A childless COMP is a stripped shell (the frame
+    45-90 restores have not run; exporting ships it hollow) only when its
+    file has operators; empty on disk too it is simply empty; unreadable
+    file -> refused, nothing vouches for it. save_path is RESOLVED
+    (release_resolve_save_path); save_dir_exists / save_path_exists are
+    the caller's os.path checks; hook_touched: COMPs the hook destroyed or
+    emptied on purpose (neither 'missing' nor shells); ignore_op_errors
+    moves the error refusal to 'warnings'; startup_done waives only the
+    frame check.
+    """
+    refusals, warnings = [], []
+    if perform_mode:
+        refusals.append('Perform Mode is active')
+    if not project_saved:
+        refusals.append('project has never been saved -- tracked paths are '
+                        'relative to project.folder')
+    path = str(save_path or '').strip()
+    toe_name = posixpath.basename(str(project_toe or '').replace('\\', '/'))
+    # Kept apart so a caller can ask what is true REGARDLESS of
+    # destination: the pulse handler prompts before its file dialog,
+    # and 'a save path is required' must not read as a blocker when
+    # no path has been picked yet.
+    path_refusals = []
+    if not path:
+        path_refusals.append('a save path is required')
+    elif not path.lower().endswith('.toe'):
+        path_refusals.append(f'save path must end in .toe: {path}')
+    elif project_toe and _release_same_path(path, project_toe):
+        path_refusals.append(f'save path is the running project itself: {path}')
+    elif _release_same_series(path, project_toe, project_folder):
+        path_refusals.append(
+            f"save path is in the running project's own folder and save "
+            f'series ({posixpath.basename(path)} beside {toe_name}) -- '
+            f'TouchDesigner and Embody would take it for the newest save of '
+            f'this project; write the release outside the project folder or '
+            f'under another base name')
+    elif save_dir_exists is False:
+        path_refusals.append(
+            f'save folder does not exist: {posixpath.dirname(path)}')
+    elif save_path_exists:
+        path_refusals.append(
+            f'save path already exists: {path} -- TouchDesigner would ask '
+            f'to overwrite it in a session with nothing left to answer; '
+            f'delete it or pick another name')
+    refusals.extend(path_refusals)
+    touched = set(hook_touched or ())
+    missing = sorted(c['path'] for c in tdxn_comps
+                     if not c.get('present') and c['path'] not in touched)
+    shells, unverifiable = [], []
+    for c in tdxn_comps:
+        if (not c.get('present') or c.get('children')
+                or c['path'] in touched):
+            continue
+        file_ops = c.get('file_ops')
+        if file_ops is None:
+            unverifiable.append(c['path'])
+        elif int(file_ops) > 0:
+            shells.append(c['path'])
+        # file_ops == 0: empty on disk as well -- legitimately empty.
+    shells.sort()
+    unverifiable.sort()
+    if missing:
+        refusals.append(
+            f'{len(missing)} tracked COMP(s) are not in the network: '
+            + ', '.join(missing))
+    if shells:
+        refusals.append(
+            f'{len(shells)} tracked COMP(s) are stripped shells (empty in '
+            f'the network, populated in their .tdxn -- the startup restore '
+            f'has not run): ' + ', '.join(shells))
+    if unverifiable:
+        refusals.append(
+            f'{len(unverifiable)} tracked COMP(s) are empty and their .tdxn '
+            f'could not be read to confirm that is intentional: '
+            + ', '.join(unverifiable))
+    if not startup_done and int(frame) <= int(min_frame):
+        refusals.append(
+            f'frame {int(frame)} is inside the startup window (<= '
+            f'{int(min_frame)}) -- the restores land at frames 45-90')
+    if op_errors:
+        line = (f'the project has {len(op_errors)} operator error(s): '
+                + '; '.join(list(op_errors)[:5]))
+        (warnings if ignore_op_errors else refusals).append(line)
+    return {'ready': not refusals, 'refusals': refusals, 'warnings': warnings,
+            'path_refusals': path_refusals,
+            'missing': missing, 'shells': shells,
+            'unverifiable': unverifiable, 'frame': int(frame),
+            'save_path': path}
+
+
+def _release_same_path(a, b) -> bool:
+    """Case- and separator-insensitive path comparison (Windows dev box,
+    posix CI). Never resolves -- these are compared, not opened."""
+    def _norm(v):
+        return str(v or '').replace('\\', '/').rstrip('/').lower()
+    return bool(_norm(a)) and _norm(a) == _norm(b)
+
+
+def release_resolve_save_path(save_path, project_folder) -> str:
+    """Absolute, forward-slash form of a save path. PURE.
+
+    A relative path is taken against project.folder: TD runs with that
+    folder as its cwd, and every tracked path is relative to it. Resolved
+    ONCE, up front, so the gate, the hook's args[0] and the finish script
+    all name the same file -- a bare 'MyShow.42.toe' used to slip past the
+    running-project refusal and overwrite the dev .toe.
+    """
+    path = str(save_path or '').strip().replace('\\', '/')
+    if not path:
+        return ''
+    folder = str(project_folder or '').replace('\\', '/').rstrip('/')
+    is_abs = path.startswith('/') or (len(path) > 1 and path[1] == ':')
+    if not is_abs and folder:
+        path = folder + '/' + path
+    return posixpath.normpath(path)
+
+
+def _release_series_base(name) -> str:
+    """'MyShow.42.toe' -> 'myshow': the increment series TD's save and
+    EmbodyExt._resolveProjectToe group a project's files by."""
+    stem = name[:-4] if name.lower().endswith('.toe') else name
+    return re.sub(r'\.\d+$', '', stem).lower()
+
+
+def _release_same_series(save_path, project_toe, project_folder) -> bool:
+    """True when the save would land in the project folder under the
+    running project's own series -- MyShow.toe beside MyShow.42.toe.
+    Neither TD's incremental save nor _resolveProjectToe can tell that
+    file from the project's next save."""
+    if not (save_path and project_toe and project_folder):
+        return False
+    path = str(save_path).replace('\\', '/')
+    folder = str(project_folder).replace('\\', '/').rstrip('/')
+    if posixpath.dirname(path).lower() != folder.lower():
+        return False
+    toe = posixpath.basename(str(project_toe).replace('\\', '/'))
+    return (_release_series_base(posixpath.basename(path))
+            == _release_series_base(toe))
+
+
+def release_storage_keys(skip_keys, control_keys) -> list:
+    """The storage keys the scrub may take off ANY operator. PURE.
+
+    Embody's own breadcrumbs by prefix (_tdn_*, _pending_tdn_*,
+    _pending_tox_*) plus the Embed-toggle control keys it stores on
+    tracked COMPs. The rest of TDXNExt.SKIP_STORAGE_KEYS ('hover',
+    'test_results', 'git_status', ...) are Embody-UI runtime names a
+    user's own component could carry too; they live on Embody's ops,
+    which are destroyed, and are never scrubbed.
+    """
+    owned = {k for k in (skip_keys or ())
+             if k.startswith(('_tdn', '_pending_tdn', '_pending_tox'))}
+    return sorted(owned | set(control_keys or ()))
+
+
+def plan_release_disarm(tdxn_mode, strip_on_save, filecleanup='keep') -> list:
+    """The parameter writes that stand Embody's disk writers down. PURE.
+
+    Tdxnmode off: onProjectPreSave short-circuits (execute.py:296-301) and
+    checkpoint() refuses -- no .tdxn export, no strip, no tsv restamp for
+    the rest of the session. Tdxnstriponsave off: belt and braces for the
+    strip (execute.py:395-399). Filecleanup keep: the continuity sweep's
+    cascade can never unlink a source file, even if suppression lapses.
+    """
+    writes = []
+    # Filecleanup FIRST: if a later write fails and the session is left
+    # standing, 'delete' must already be gone.
+    if str(filecleanup or 'keep') != 'keep':
+        writes.append(('Filecleanup', 'keep'))
+    if str(tdxn_mode or '') != 'off':
+        writes.append(('Tdxnmode', 'off'))
+    if strip_on_save:
+        writes.append(('Tdxnstriponsave', False))
+    return writes
+
+
+def plan_release_presave_hooks(execute_dats, embody_path) -> list:
+    """Execute DATs that would still fire onProjectPreSave at the release
+    save. PURE.
+
+    Anything inside the Embody COMP is omitted: step 4 destroys it before
+    the save, hook and all. What is left belongs to the product, and a
+    product pre-save hook running against a project whose Embody is gone
+    is exactly the half-initialized state this export exists to avoid --
+    so the caller refuses rather than silently disabling someone's DAT.
+    Fix it in the pre_release_toe hook (destroy it, or turn its
+    projectpresave off), which runs before this check.
+    """
+    prefix = str(embody_path or '').rstrip('/') + '/'
+    out = []
+    for d in execute_dats:
+        path = d.get('path', '')
+        if path == embody_path or path.startswith(prefix):
+            continue
+        if d.get('projectpresave') and d.get('active', True):
+            out.append(path)
+    return sorted(out)
+
+
+def plan_release_inline(tracked, *, embody_path, table_path,
+                        hook_path=None, extra_tables=()) -> dict:
+    """Which tracked operators lose their file bindings, and which do not.
+    PURE. tracked: [{'path', 'family', 'file', 'syncfile', 'externaltox',
+    'enableexternaltox'}] -- the live state of every table row.
+
+    Skipped, all load-bearing: the tracking table(s) -- a table DAT keeps
+    its TEXT when its file is cleared, i.e. the whole source manifest
+    (destroyed in step 4 instead); the pre_release_toe hook (destroyed in
+    step 2, it holds the recipe); everything inside the Embody COMP
+    (destroyed whole, and clearing EmbodyExt.py's binding reinits THIS
+    extension mid-call).
+    """
+    prefix = str(embody_path or '').rstrip('/') + '/'
+    tables = {t for t in [table_path, *(extra_tables or ())] if t}
+    plan = {'dats': [], 'comps': [], 'skipped': []}
+
+    def _skip(path, why):
+        plan['skipped'].append({'path': path, 'why': why})
+
+    for rec in tracked:
+        path = rec.get('path', '')
+        if path == embody_path or path.startswith(prefix):
+            _skip(path, 'inside the Embody COMP (destroyed in step 4)')
+            continue
+        if path in tables:
+            _skip(path, 'the externalizations table (destroyed in step 4 -- '
+                        'inlining it would ship the file manifest)')
+            continue
+        if hook_path and path == hook_path:
+            _skip(path, 'the release hook (destroyed in step 2)')
+            continue
+        if rec.get('family') == 'DAT':
+            if rec.get('file') or rec.get('syncfile'):
+                plan['dats'].append(path)
+            else:
+                _skip(path, 'no file binding')
+        elif rec.get('family') == 'COMP':
+            if rec.get('externaltox') or rec.get('enableexternaltox'):
+                plan['comps'].append(path)
+            else:
+                _skip(path, 'no external .tox binding')
+        else:
+            _skip(path, f'unsupported family {rec.get("family")!r}')
+    plan['dats'].sort()
+    plan['comps'].sort()
+    return plan
+
+
+def plan_release_reference_sweep(refs, inlined=()) -> dict:
+    """Bindings still standing after the inline pass. PURE.
+
+    refs: [{'path', 'par', 'value'}]; inlined: paths the inline plan
+    clears, skipped so a preview shows what WOULD remain. Absolute values
+    are called out separately -- a relative one is merely a dangling
+    reference in the artifact, an absolute one leaks the build machine's
+    filesystem. /sys/ paths are TouchDesigner's own and are neither.
+    """
+    skip = set(inlined or ())
+    remaining, absolute = [], []
+    for ref in refs:
+        value = str(ref.get('value') or '')
+        if not value or ref.get('path', '') in skip:
+            continue
+        entry = {'path': ref.get('path', ''), 'par': ref.get('par', ''),
+                 'value': value}
+        remaining.append(entry)
+        if value.startswith('/sys/'):
+            continue
+        if value.startswith('/') or (len(value) > 1 and value[1] == ':'):
+            absolute.append(entry)
+    return {'remaining': remaining, 'absolute': absolute}
+
+
+def release_tag_removals(tags, embody_tags, exclude_tags) -> list:
+    """Embody tags to strip off one operator. PURE.
+
+    Covers BOTH spellings of the boundary and exclude tags (the caller
+    unions the configured values with the legacy ones -- EmbodyExt._tdxnTags
+    / ._tdxnExcludeTags), the 'clone' marker Embody adds itself
+    (EmbodyExt.py:8968), and the per-parameter QUALIFIERS the exclude tag
+    takes: 'tdxn_exclude:play' is one tag, not two, and a plain membership
+    test never sees it.
+    """
+    drop = set()
+    for tag in tags:
+        if tag in embody_tags or tag in exclude_tags:
+            drop.add(tag)
+        elif tag == _RELEASE_CLONE_TAG:
+            drop.add(tag)
+        elif ':' in tag and tag.split(':', 1)[0] in exclude_tags:
+            drop.add(tag)
+    return sorted(drop)
+
+
+def plan_release_scrub(ops, *, embody_tags, exclude_tags, storage_keys,
+                       tracked_paths=(), embody_path='', table_path='',
+                       extra_tables=()) -> dict:
+    """Embody's IN-NETWORK footprint, per operator. PURE.
+
+    No manifest exists for it (_INSTALL_MANIFEST is files on disk), so it
+    is derived: tags (release_tag_removals), node colours (EmbodyExt.
+    Disable's rule: every tagged op, plus tracked ops whose tag was lost)
+    and storage_keys (release_storage_keys: Embody-owned names only, off
+    any op). The Embody COMP, its subtree and the table(s) are left alone,
+    destroyed whole in step 4.
+    """
+    tracked = set(tracked_paths or ())
+    embody_path = str(embody_path or '')
+    prefix = embody_path.rstrip('/') + '/'
+    tables = {t for t in [table_path, *(extra_tables or ())] if t}
+    tag_plan, storage_plan, colours = [], [], set()
+    keys = set(storage_keys or ())
+    for rec in ops:
+        path = rec.get('path', '')
+        if embody_path and (path == embody_path or path.startswith(prefix)):
+            continue
+        if path in tables:
+            continue
+        removals = release_tag_removals(
+            rec.get('tags') or (), embody_tags, exclude_tags)
+        if removals:
+            tag_plan.append({'path': path, 'remove': removals})
+            colours.add(path)
+        if path in tracked:
+            colours.add(path)
+        hit = sorted(keys.intersection(rec.get('storage_keys') or ()))
+        if hit:
+            storage_plan.append({'path': path, 'keys': hit})
+    tag_plan.sort(key=lambda e: e['path'])
+    storage_plan.sort(key=lambda e: e['path'])
+    return {'tags': tag_plan, 'storage': storage_plan,
+            'colours': sorted(colours)}
+
+
+def plan_release_footprint(embody_path, table_path, extra_tables=()) -> list:
+    """What step 4 destroys, in order. PURE.
+
+    The Embody COMP FIRST, its tracking table second: the table is
+    deliberately an undocked sibling so it survives the COMP's deletion
+    (that is what makes an accidental delete recoverable), which is
+    exactly why the release has to name it separately. A table INSIDE the
+    COMP goes with it and is dropped rather than destroyed twice.
+    extra_tables: sibling 'externalizations' tables the par no longer
+    links (createExternalizationsTable re-adopts one by name) -- their
+    text is the manifest all the same.
+    """
+    embody_path = str(embody_path or '')
+    prefix = embody_path.rstrip('/') + '/'
+    plan = [{'path': embody_path, 'what': 'Embody COMP'}]
+    for path, what in [(table_path, 'externalizations table')] + [
+            (t, 'externalizations table (unlinked sibling)')
+            for t in (extra_tables or ())]:
+        path = str(path or '')
+        if (not path or path == embody_path or path.startswith(prefix)
+                or any(e['path'] == path for e in plan)):
+            continue
+        plan.append({'path': path, 'what': what})
+    return plan
+
+
+def plan_release_privacy(privacy_key, is_pro) -> dict:
+    """Project privacy, and the licence that gates it. PURE.
+
+    project.addPrivacy needs Pro (docs.derivative.ca/Project_Class) and
+    only ever applies to a .toe that has none. Refusing here rather than
+    at the call site matters: by then Embody is deleted and there is
+    nothing left to report with.
+    """
+    key = str(privacy_key or '')
+    if not key:
+        return {'apply': False, 'key': '', 'refusal': ''}
+    if not is_pro:
+        return {'apply': False, 'key': key,
+                'refusal': 'project privacy needs a Pro licence '
+                           '(licenses.isPro is False) -- run the release on '
+                           'a Pro machine or export without a privacy key'}
+    return {'apply': True, 'key': key, 'refusal': ''}
+
+
+def plan_release_toe(state, *, save_path, privacy_key=None,
+                     hook_name=RELEASE_TOE_HOOK, ignore_op_errors=False,
+                     hook_touched=(), hook_ran=False) -> dict:
+    """Compose the whole plan from collected state. PURE -- `state` is not
+    mutated, nothing is applied, and this is what the dry run returns.
+
+    `state` is what _release_collect reads out of TouchDesigner; see it for
+    the shape of each key.
+    """
+    embody_path = state.get('embody_path', '')
+    table_path = state.get('table_path', '')
+    hook_path = state.get('hook_path') or None
+    extra_tables = tuple(state.get('orphan_tables') or ())
+    resolved = release_resolve_save_path(save_path,
+                                         state.get('project_folder', ''))
+    readiness = plan_release_readiness(
+        tdxn_comps=state.get('tdxn_comps') or (),
+        frame=state.get('frame', 0),
+        op_errors=state.get('op_errors') or (),
+        perform_mode=state.get('perform_mode', False),
+        project_saved=state.get('project_saved', False),
+        save_path=resolved,
+        project_toe=state.get('project_toe', ''),
+        project_folder=state.get('project_folder', ''),
+        save_dir_exists=state.get('save_dir_exists'),
+        save_path_exists=bool(state.get('save_path_exists')),
+        hook_touched=hook_touched,
+        startup_done=state.get('startup_done', False),
+        ignore_op_errors=ignore_op_errors)
+    privacy = plan_release_privacy(privacy_key, state.get('is_pro', False))
+    if privacy['refusal']:
+        readiness['refusals'] = list(readiness['refusals']) + [
+            privacy['refusal']]
+        readiness['ready'] = False
+    presave = plan_release_presave_hooks(state.get('execute_dats') or (),
+                                         embody_path)
+    if presave and not hook_path and not hook_ran:
+        # Nothing between the gate and the save could disarm them. After
+        # the hook ran (and was destroyed) the caller refuses on its own.
+        readiness['refusals'] = list(readiness['refusals']) + [
+            f'{len(presave)} Execute DAT(s) still fire onProjectPreSave and '
+            f'there is no {hook_name} hook to disarm them: '
+            + ', '.join(presave)]
+        readiness['ready'] = False
+    inline = plan_release_inline(
+        state.get('tracked') or (), embody_path=embody_path,
+        table_path=table_path, hook_path=hook_path,
+        extra_tables=extra_tables)
+    return {
+        'save_path': resolved,
+        'embody_path': embody_path,
+        'table_path': table_path,
+        'product_path': (state.get('product_path')
+                         or release_product_path(embody_path)),
+        'hook_name': hook_name,
+        'hook_path': hook_path or '',
+        'readiness': readiness,
+        'disarm': plan_release_disarm(state.get('tdxn_mode', ''),
+                                      state.get('strip_on_save', False),
+                                      state.get('filecleanup', 'keep')),
+        'presave_hooks': presave,
+        'inline': inline,
+        'references': plan_release_reference_sweep(
+            state.get('refs') or (),
+            inlined=set(inline['dats']) | set(inline['comps'])),
+        'scrub': plan_release_scrub(
+            state.get('ops') or (),
+            embody_tags=state.get('embody_tags') or (),
+            exclude_tags=state.get('exclude_tags') or (),
+            storage_keys=state.get('storage_keys') or (),
+            tracked_paths=state.get('tracked_paths') or (),
+            embody_path=embody_path, table_path=table_path,
+            extra_tables=extra_tables),
+        'footprint': plan_release_footprint(embody_path, table_path,
+                                            extra_tables),
+        'privacy': privacy,
+    }
+
+
+def release_finish_script(footprint, save_path, privacy_key='',
+                          quit_after=True) -> str:
+    """Steps 4-6 as a run() script. PURE (a string in, a string out).
+
+    It runs with NO Embody: this module, the extension and the log all
+    live in the COMP its first act destroys, so it interpolates literals,
+    reaches only TD globals, and reports through print(). It is a script
+    rather than a Text DAT at '/' because an operator holding the release
+    recipe would have to be destroyed before the save to avoid shipping --
+    a run() string cannot be saved into a .toe at all.
+
+    Fail-CLOSED: a target that survives, a refused addPrivacy or a failed
+    save all stop before the next step and leave the session standing for
+    inspection. Nothing is ever written half-locked.
+    """
+    lines = [
+        '# Embody ExportReleaseToe -- generated, runs after the Embody COMP is gone',
+        '_targets = %r' % ([e['path'] for e in footprint],),
+        '_path = %r' % (str(save_path),),
+        '_key = %r' % (str(privacy_key or ''),),
+        '_quit = %r' % (bool(quit_after),),
+        'for _p in _targets:',
+        '    _o = op(_p)',
+        '    if _o is not None:',
+        '        _o.destroy()',
+        '_left = [_p for _p in _targets if op(_p) is not None]',
+        'if _left:',
+        "    print('Embody > ExportReleaseToe ABORTED: still present: %s' % _left)",
+        'elif _key and not project.addPrivacy(_key):',
+        "    print('Embody > ExportReleaseToe ABORTED: addPrivacy refused "
+        "(Pro licence? already private?) -- nothing was saved')",
+        'elif not project.save(_path):',
+        "    print('Embody > ExportReleaseToe ABORTED: project.save failed: %s' % _path)",
+        'else:',
+        "    print('Embody > ExportReleaseToe: saved %s' % _path)",
+        '    if _quit:',
+        '        project.quit(force=True)',
+    ]
+    return '\n'.join(lines)
+
+
+# ---- orchestrator (reads TD, calls the planners, applies the plan) --------
+
+def _release_collect(ext, hook_name=RELEASE_TOE_HOOK, save_path=None) -> dict:
+    """Read everything the planners need out of TouchDesigner, as plain
+    data. The ONLY function here that touches the live network to decide
+    anything -- keeping it in one place is what makes the plan testable.
+
+    startup_done is always False: 6.2.41 has no restores-done flag (init()
+    stores _init_complete at onStart, long BEFORE the frame-45..90
+    restores, so reading it would defeat the gate). The frame ceiling plus
+    the per-COMP children census is the evidence instead.
+    """
+    embody = ext.my
+    embody_path = embody.path
+    table = ext.Externalizations
+    table_path = table.path if table else ''
+    product = op(release_product_path(embody_path))
+    if product is None:
+        product = ext.root
+
+    tdxn_comps = []
+    for comp_path, rel in ext._getTDXNStrategyComps():
+        comp = op(comp_path)
+        tdxn_comps.append({
+            'path': comp_path,
+            'present': comp is not None,
+            'children': (len(comp.findChildren(depth=1, includeUtility=True))
+                         if comp is not None else 0),
+            'file_ops': _release_tdxn_file_ops(ext, rel)})
+
+    tracked, tracked_paths = [], []
+    if table:
+        for i in range(1, table.numRows):
+            path = ext._cellVal(i, 'path', table=table)
+            # resolveOpIncludingUtility, not op(): a legacy row AT an
+            # annotate is invisible to a bare lookup (EmbodyExt:9830).
+            oper = ext.resolveOpIncludingUtility(path) if path else None
+            if oper is None:
+                continue
+            tracked_paths.append(path)
+            tracked.append({
+                'path': path,
+                'family': oper.family,
+                'file': _release_par(oper, 'file'),
+                'syncfile': bool(_release_par(oper, 'syncfile')),
+                'externaltox': _release_par(oper, 'externaltox'),
+                'enableexternaltox': bool(
+                    _release_par(oper, 'enableexternaltox'))})
+
+    ops = _release_ops_census(ext)
+
+    # A sibling table the Externalizations par no longer links: Embody
+    # re-adopts one by name (createExternalizationsTable), and its text
+    # is the manifest all the same.
+    orphan_tables = []
+    try:
+        for sib in embody.parent().findChildren(depth=1,
+                                                name='externalizations'):
+            if sib.family == 'DAT' and sib.path != table_path:
+                orphan_tables.append(sib.path)
+    except Exception:
+        pass
+
+    hook = ext._findReleaseHook(product, hook_name)
+    folder = str(project.folder or '')
+    dir_exists, path_exists = _release_save_path_state(save_path, folder)
+    return {
+        'embody_path': embody_path,
+        'table_path': table_path,
+        'product_path': product.path,
+        'hook_path': hook.path if hook is not None else '',
+        'tdxn_comps': tdxn_comps,
+        'tracked': tracked,
+        'tracked_paths': tracked_paths,
+        'ops': ops,
+        'orphan_tables': orphan_tables,
+        'refs': _release_remaining_refs(ext),
+        'execute_dats': _release_execute_dats(ext),
+        'op_errors': _release_op_errors(ext),
+        'frame': _release_frame(),
+        'startup_done': False,
+        'perform_mode': bool(ext._performMode),
+        'project_saved': bool(ext._projectSavedOnDisk()),
+        'project_toe': ext._resolveProjectToe() or '',
+        'project_folder': folder,
+        'save_dir_exists': dir_exists,
+        'save_path_exists': path_exists,
+        'tdxn_mode': ext._tdxnMode(),
+        'strip_on_save': bool(_release_par(embody, 'Tdxnstriponsave',
+                                           False)),
+        'filecleanup': str(_release_par(embody, 'Filecleanup', 'keep')
+                           or 'keep'),
+        'embody_tags': sorted(set(ext.getTags()) | set(ext._tdxnTags())),
+        'exclude_tags': sorted(ext._tdxnExcludeTags()),
+        'storage_keys': release_storage_keys(
+            ext._storageSkipKeys(),
+            getattr(ext, '_STORAGE_CONTROL_KEYS', ())),
+        'is_pro': _release_is_pro(),
+    }
+
+
+def _release_ops_census(ext) -> list:
+    """Tags and storage keys of every operator, root included."""
+    return [{'path': oper.path, 'tags': list(oper.tags),
+             'storage_keys': list(oper.storage.keys())}
+            for oper in [ext.root] + ext.root.findChildren(includeUtility=True)]
+
+
+def _release_tdxn_file_ops(ext, rel_path):
+    """Operator count in a tracked COMP's .tdxn on disk, None when it cannot
+    be read. What tells a stripped shell (empty live, populated on disk)
+    from a COMP that is simply empty."""
+    try:
+        doc = ext.my.ext.TDXN._read_existing_tdxn(
+            str(ext.buildAbsolutePath(rel_path)))
+    except Exception:
+        return None
+    if not isinstance(doc, dict):
+        return None
+    ops = doc.get('operators')
+    return len(ops) if isinstance(ops, (list, dict)) else 0
+
+
+def _release_save_path_state(save_path, project_folder):
+    """(folder exists, file exists) for the resolved save path; (None,
+    False) without a path so 'a save path is required' stays the only
+    word."""
+    resolved = release_resolve_save_path(save_path, project_folder)
+    if not resolved:
+        return None, False
+    return (os.path.isdir(posixpath.dirname(resolved)),
+            os.path.exists(resolved))
+
+
+def _release_par(oper, name, default=''):
+    """Evaluate a parameter that may not exist on this operator family."""
+    par = getattr(oper.par, name, None)
+    if par is None:
+        return default
+    try:
+        return par.eval()
+    except Exception:
+        return default
+
+
+def _release_execute_dats(ext) -> list:
+    """Every Execute DAT in the project with its pre-save arming.
+
+    Only the plain Execute DAT carries projectpresave -- the parameter /
+    dat / chop / panel exec families do not -- so the type filter is the
+    whole population, not an optimization.
+    """
+    return [{'path': d.path,
+             'projectpresave': bool(_release_par(d, 'projectpresave')),
+             'active': bool(_release_par(d, 'active', default=1))}
+            for d in ext.root.findChildren(type=DAT)
+            if getattr(d, 'type', '') == 'execute'
+            and not d.path.startswith(('/local/', '/sys/', '/ui/'))]
+
+
+def _release_frame():
+    """Frames since the APPLICATION started -- see RELEASE_READY_FRAME."""
+    try:
+        return int(absTime.frame)
+    except Exception:
+        return 0
+
+
+def _release_is_pro():
+    try:
+        return bool(licenses.isPro)
+    except Exception:
+        return False
+
+
+def _release_op_errors(ext) -> list:
+    """Project-wide operator + script errors, the shape
+    EmbodyExt._verifyReconstructedComp reads them in (:12420-12445).
+    Capped: the gate needs to know THAT the project is broken. Embody's own
+    subtree (destroyed) and /local (never saved) are not the project's."""
+    errors = []
+    embody_path = ext.my.path
+    prefix = embody_path + '/'
+    try:
+        for child in ext.root.findChildren():
+            path = child.path
+            if (path == embody_path or path.startswith(prefix)
+                    or path in ('/local', '/sys', '/ui')
+                    or path.startswith(('/local/', '/sys/', '/ui/'))):
+                continue
+            for text in (child.scriptErrors(), child.errors()):
+                if text:
+                    errors.append(f'{child.path}: {text.strip()}')
+            if len(errors) >= 50:
+                break
+    except Exception as e:
+        ext.Log(f'Release gate: operator error scan failed: {e}', 'WARNING')
+    return errors
+
+
+def preview_release_toe(ext, save_path=None, privacy_key=None,
+                        hook_name=RELEASE_TOE_HOOK,
+                        ignore_op_errors=False) -> dict:
+    """Log + return a NON-DESTRUCTIVE preview of a full ExportReleaseToe.
+    Nothing is run, nothing is disarmed, nothing is destroyed."""
+    plan = plan_release_toe(_release_collect(ext, hook_name, save_path),
+                            save_path=save_path, privacy_key=privacy_key,
+                            hook_name=hook_name,
+                            ignore_op_errors=ignore_op_errors)
+    ready = plan['readiness']
+    # With no path this is a PRE-FLIGHT: report only what is true regardless
+    # of destination. Listing 'a save path is required' as a refusal when the
+    # caller deliberately asked without one reads as a failure and buries the
+    # blocker that matters (field note 2026-09-12).
+    path_refusals = list(ready.get('path_refusals', ()))
+    pre_flight = not str(plan['save_path'] or '').strip()
+    shown = ([r for r in ready['refusals'] if r not in path_refusals]
+             if pre_flight else list(ready['refusals']))
+    lines = ['Release .toe pre-flight -> no path chosen yet' if pre_flight
+             else f'Release .toe preview -> {plan["save_path"]}']
+    if shown:
+        lines.append(f'  {"BLOCKED" if pre_flight else "REFUSED"} '
+                     f'({len(shown)}):')
+        lines.extend(f'    x {r}' for r in shown)
+    elif pre_flight:
+        lines.append('  ready -- nothing blocks the export except choosing '
+                     'a save path')
+    lines.extend(f'  WARNING: {w}' for w in ready['warnings'])
+    lines.append(f'  hook: {plan["hook_path"] or "none"} (looked for '
+                 f'{plan["hook_name"]} under {plan["product_path"]}) -- the '
+                 f'export re-plans everything below AFTER it runs')
+    lines.append(f'  inline: {len(plan["inline"]["dats"])} DAT(s), '
+                 f'{len(plan["inline"]["comps"])} COMP(s), '
+                 f'{len(plan["inline"]["skipped"])} skipped')
+    lines.append(f'  scrub: {len(plan["scrub"]["tags"])} tagged, '
+                 f'{len(plan["scrub"]["colours"])} coloured, '
+                 f'{len(plan["scrub"]["storage"])} with storage')
+    lines.append('  destroy: '
+                 + ', '.join(f'{e["path"]} ({e["what"]})'
+                             for e in plan['footprint']))
+    if plan['presave_hooks']:
+        lines.append('  BLOCKING pre-save hooks: '
+                     + ', '.join(plan['presave_hooks']))
+    refs = plan['references']
+    lines.append(f'  references left after inlining: '
+                 f'{len(refs["remaining"])} ({len(refs["absolute"])} '
+                 f'absolute)')
+    absolute = {(e['path'], e['par']) for e in refs['absolute']}
+    lines.extend(f'    ! {e["path"]}.{e["par"]} = {e["value"]}'
+                 for e in refs['absolute'][:10])
+    lines.extend(f'    - {e["path"]}.{e["par"]} = {e["value"]}'
+                 for e in [r for r in refs['remaining']
+                           if (r['path'], r['par']) not in absolute][:10])
+    lines.append('  privacy: '
+                 + ('yes' if plan['privacy']['apply'] else 'no'))
+    ext.Log('\n'.join(lines), 'INFO')
+    return plan
+
+
+def export_release_toe(ext, save_path, privacy_key=None,
+                       hook_name=RELEASE_TOE_HOOK, quit_after=True,
+                       confirm=False, ignore_op_errors=False) -> dict:
+    """Export the project as a locked, self-contained release .toe.
+
+    DESTRUCTIVE and one-way -- requires confirm=True (review
+    PreviewReleaseToe() first). Quiets the session, inlines every tracked
+    externalization, runs the pre_release_toe hook, re-plans, scrubs
+    Embody's in-network footprint, then hands steps 4-6 (destroy Embody +
+    the table, privacy, save, quit) to a generated run() script because
+    this module lives inside the COMP those steps delete. The live session
+    does not survive; the dev .toe on disk is never written.
+    """
+    if not confirm:
+        ext.Log('ExportReleaseToe is destructive and one-way. Review '
+                'PreviewReleaseToe() first, then call '
+                'ExportReleaseToe(save_path, confirm=True). Nothing was '
+                'changed.', 'WARNING')
+        return {'ran': False, 'reason': 'confirm required'}
+
+    state = _release_collect(ext, hook_name, save_path)
+    plan = plan_release_toe(state, save_path=save_path,
+                            privacy_key=privacy_key, hook_name=hook_name,
+                            ignore_op_errors=ignore_op_errors)
+    if not plan['readiness']['ready']:
+        for reason in plan['readiness']['refusals']:
+            ext.Log(f'ExportReleaseToe refused: {reason}', 'ERROR')
+        return {'ran': False, 'reason': 'not ready',
+                'refusals': plan['readiness']['refusals'], 'plan': plan}
+    for line in plan['readiness']['warnings']:
+        ext.Log(f'ExportReleaseToe: {line}', 'WARNING')
+
+    # Step 0: nothing Embody does from here on may reach the project
+    # folder or block on a modal.
+    failed = _release_quiet_session(ext, plan['disarm'])
+    if failed:
+        ext.Log(f'ExportReleaseToe aborted: could not quiet the session '
+                f'({failed}) -- nothing was inlined or destroyed', 'ERROR')
+        return {'ran': False, 'reason': f'could not quiet the session: {failed}'}
+
+    # Step 1: inline every tracked externalization (EmbodyExt.Disable's
+    # strip half, :3606-3631 -- with no restore, because nothing returns).
+    # BEFORE the hook: a synced DAT the hook stamps would otherwise write
+    # straight through to the source file on disk.
+    inlined = _apply_release_inline(ext, plan['inline'])
+    if inlined['errors']:
+        ext.Log(f'ExportReleaseToe aborted: {inlined["errors"]} tracked '
+                f'operator(s) kept their file binding (see the warnings '
+                f'above) -- nothing was destroyed', 'ERROR')
+        return {'ran': False, 'reason': 'inline failed', 'inlined': inlined}
+
+    # Step 2: the author's hook, then destroy it -- it holds the recipe.
+    populated_before = {c['path'] for c in state['tdxn_comps']
+                        if c.get('present') and c.get('children')}
+    toe_before = _release_project_toe_state(ext)
+    product = op(plan['product_path'])
+    if plan['hook_path'] and product is not None:
+        version = str(ext.my.par.Version.eval())
+        # (found, ok) -- found is already known from the plan.
+        if not ext._runReleaseHook(
+                product, hook_name, (plan['save_path'], version))[1]:
+            ext.Log(f'ExportReleaseToe aborted: {hook_name} hook failed -- '
+                    f'the hook DAT is KEPT for inspection', 'ERROR')
+            return {'ran': False, 'reason': 'hook failed'}
+        if not getattr(ext.my, 'valid', True):
+            # The hook took Embody with it: no logger, no table, no tail.
+            return {'ran': False, 'reason': 'hook destroyed Embody'}
+        hook = op(plan['hook_path'])
+        if hook is not None:
+            hook.destroy()
+            ext.Log(f'ExportReleaseToe: destroyed {plan["hook_path"]}',
+                    'INFO')
+        if _release_project_toe_state(ext) != toe_before:
+            ext.Log(f'ExportReleaseToe aborted: the {hook_name} hook saved '
+                    f'the project -- the export never saves your project; '
+                    f'take the project.save() out of the hook', 'ERROR')
+            return {'ran': False, 'reason': 'hook saved the project'}
+    else:
+        ext.Log(f'ExportReleaseToe: no {hook_name} hook under '
+                f'{plan["product_path"]}', 'INFO')
+
+    # RE-PLAN against the post-hook network (ExportPortableTox runs
+    # pre_release before collection for the same reason). The gate is
+    # re-run too: a hook that breaks the project stops the release. A
+    # tracked COMP the hook destroyed or emptied keeps its row and is
+    # neither 'missing' nor a shell.
+    hook_ran = bool(plan['hook_path'])
+    state = _release_collect(ext, hook_name, save_path)
+    touched = sorted(populated_before - {
+        c['path'] for c in state['tdxn_comps']
+        if c.get('present') and c.get('children')})
+    plan = plan_release_toe(state, save_path=save_path,
+                            privacy_key=privacy_key, hook_name=hook_name,
+                            ignore_op_errors=ignore_op_errors,
+                            hook_touched=touched, hook_ran=hook_ran)
+    if not plan['readiness']['ready']:
+        for reason in plan['readiness']['refusals']:
+            ext.Log(f'ExportReleaseToe aborted after the {hook_name} hook: '
+                    f'{reason}', 'ERROR')
+        return {'ran': False, 'reason': 'not ready after the hook',
+                'refusals': plan['readiness']['refusals'], 'plan': plan}
+    for line in plan['readiness']['warnings']:
+        ext.Log(f'ExportReleaseToe (after the hook): {line}', 'WARNING')
+    # The hook is the place to deal with a product's own pre-save hook, so
+    # this check reads the post-hook network and blocks rather than
+    # switching someone else's DAT off.
+    if plan['presave_hooks']:
+        return _release_refuse_presave(ext, plan['presave_hooks'], hook_name)
+
+    sweep = plan_release_reference_sweep(_release_remaining_refs(ext))
+    if sweep['remaining']:
+        ext.Log(f'ExportReleaseToe: {len(sweep["remaining"])} file/'
+                f'externaltox binding(s) Embody never tracked remain: '
+                + ', '.join(f'{e["path"]}.{e["par"]}'
+                            for e in sweep['remaining'][:10]), 'INFO')
+    for entry in sweep['absolute']:
+        ext.Log(f'ExportReleaseToe: absolute path still bound -- '
+                f'{entry["path"]}.{entry["par"]} = {entry["value"]}',
+                'WARNING')
+
+    # Step 3: scrub the in-network footprint. Censused AGAIN here: clearing
+    # a tracked extension's source binding can reinit that extension, and
+    # what its __init__ stored or tagged is invisible to the gate's plan.
+    scrub_plan = plan_release_scrub(
+        _release_ops_census(ext),
+        embody_tags=state['embody_tags'],
+        exclude_tags=state['exclude_tags'],
+        storage_keys=state['storage_keys'],
+        tracked_paths=state['tracked_paths'],
+        embody_path=plan['embody_path'], table_path=plan['table_path'],
+        extra_tables=state.get('orphan_tables') or ())
+    scrubbed = _apply_release_scrub(ext, scrub_plan)
+    if scrubbed['errors']:
+        ext.Log(f'ExportReleaseToe aborted: {scrubbed["errors"]} operator(s) '
+                f'kept an Embody tag, colour or storage key (see the '
+                f'warnings above) -- nothing was destroyed', 'ERROR')
+        return {'ran': False, 'reason': 'scrub failed', 'inlined': inlined,
+                'scrubbed': scrubbed}
+    # Embot and the colour pulses are retired at every save by Embody's
+    # pre-save hook, which dies with the COMP: retire them here or they ship.
+    _release_retire_viz(ext)
+
+    # Steps 4-6, deferred so this frame unwinds first: clearing file/
+    # syncfile above reinitializes every extension whose source DAT it
+    # touched, and the COMP destroyed next is the one running this code.
+    script = release_finish_script(plan['footprint'], plan['save_path'],
+                                   plan['privacy']['key']
+                                   if plan['privacy']['apply'] else '',
+                                   quit_after)
+    ext.Log(f'ExportReleaseToe: inlined {inlined}, scrubbed {scrubbed}; '
+            f'destroying Embody and saving {plan["save_path"]} in '
+            f'{RELEASE_FINISH_DELAY_FRAMES} frames', 'SUCCESS')
+    run(script, delayFrames=RELEASE_FINISH_DELAY_FRAMES)
+    return {'ran': True, 'save_path': plan['save_path'],
+            'warnings': plan['readiness']['warnings'],
+            'touched_by_hook': touched,
+            'inlined': inlined, 'scrubbed': scrubbed,
+            'remaining_refs': sweep['remaining'],
+            'absolute_refs': sweep['absolute'],
+            'footprint': plan['footprint'],
+            'privacy': plan['privacy']['apply'],
+            'quit_after': bool(quit_after), 'plan': plan}
+
+
+# A modal PUMPS TouchDesigner's frame loop, so the pending parexec pulse is
+# re-delivered while the first dialog is still up and the handler re-enters --
+# one click, two stacked dialogs (measured 2026-09-12: two _messageBox calls
+# 7 frames apart from a single pulse). Module-level, reset by a DAT reload,
+# which is the right default.
+_RELEASE_HANDLER_ACTIVE = False
+
+
+def _release_hook_ref(path, product_path) -> str:
+    """How the generated hook should name `path`. Relative to the product
+    COMP wherever it can be -- the hook runs with parent() == that COMP, so
+    a relative reference survives the product being renamed or renested."""
+    path = str(path or '')
+    product = str(product_path or '').rstrip('/')
+    if product and path.startswith(product + '/'):
+        return "p.op('%s')" % path[len(product) + 1:]
+    # Outside the product COMP: nothing relative can reach it. A release
+    # recipe is project-specific, so an absolute path is legitimate here --
+    # flagged so the author sees it rather than inherits it silently.
+    return "op('%s')  # outside %s -- check this path" % (path, product or '/')
+
+
+def build_release_toe_hook_script(plan, version='', today='') -> str:
+    """The pre_release_toe script Embody generates for a project. PURE.
+
+    Written from THIS project's gate results: every Execute DAT the export
+    refuses on becomes a real disarm line, and every absolute binding that
+    would ship becomes a comment to deal with. Everything else is a
+    commented stub -- the hook is the author's release recipe, and guessing
+    at its content would be worse than leaving it blank.
+    """
+    product = plan.get('product_path') or ''
+    presave = list(plan.get('presave_hooks') or ())
+    absolute = list((plan.get('references') or {}).get('absolute') or ())
+    stamp = (' on ' + today) if today else ''
+    out = [
+        '# %s -- release recipe for this project.' % (
+            plan.get('hook_name') or RELEASE_TOE_HOOK),
+        '# Generated by Embody %s%s. Edit freely; it is yours now.' % (
+            version or '', stamp),
+        '#',
+        '# ExportReleaseToe runs this on the real network AFTER every tracked',
+        '# file binding has been cleared and BEFORE anything is scrubbed, then',
+        '# destroys this DAT so it never ships. args[0] is the resolved save',
+        '# path, args[1] is Embody version. Inside here `me` is this DAT and',
+        '# parent() is the product COMP.',
+        '#',
+        '# A raise ABORTS the export and keeps this DAT for inspection -- that',
+        '# is the supported way to guard a release.',
+        '# Do NOT save, refresh or externalize from here.',
+        '',
+        'save_path, embody_version = args[0], args[1]',
+        'p = parent()',
+        '',
+    ]
+    out += ['# --- Required: disarm pre-save hooks ' + '-' * 36]
+    if presave:
+        out += [
+            '# These Execute DATs still have projectpresave on. They would fire',
+            '# during the release save against a project that no longer has an',
+            '# Embody, so the export REFUSES until they are disarmed. Turning',
+            '# the flag off here affects only the doomed export session.',
+        ]
+        out += ['%s.par.projectpresave = False' % _release_hook_ref(d, product)
+                for d in presave]
+    else:
+        out += [
+            '# None right now -- no Execute DAT outside Embody has',
+            '# projectpresave on. If you add one later, disarm it here.',
+        ]
+    out += ['']
+    out += ['# --- Review: absolute paths that would ship ' + '-' * 29]
+    if absolute:
+        out += [
+            '# These bindings survive the inline pass and point at THIS',
+            '# machine. They will be broken on a customer machine. Repoint them',
+            '# at project-relative files, or embed the assets, here or before',
+            '# you export. Embody cannot guess the right target, so this is a',
+            '# checklist, not generated code.',
+        ]
+        out += ['#   %s.%s = %s' % (e.get('path'), e.get('par'), e.get('value'))
+                for e in absolute[:20]]
+        if len(absolute) > 20:
+            out += ['#   ... and %d more (see the preview in the log)'
+                    % (len(absolute) - 20)]
+    else:
+        out += ['# None found -- no absolute file binding survives inlining.']
+    out += ['']
+    out += [
+        '# --- Optional: your release recipe ' + '-' * 38,
+        '# Uncomment what applies. This is the ONE place where changes cannot',
+        '# write through to your source files on disk.',
+        '#',
+        '# Ship straight into Perform Mode:',
+        "# project.performOnStart = True",
+        "# project.performWindowPath = '/perform'",
+        '#',
+        '# Stamp a version the running product can show:',
+        "# p.op('network/release_info')[1, 'version'] = '1.0.0'",
+        '#',
+        '# Refuse to ship a build that is still in demo mode:',
+        "# if p.par.Demomode.eval():",
+        "#     raise Exception('demo mode is still on')",
+        '',
+    ]
+    return '\n'.join(out) + '\n'
+
+
+def create_release_toe_hook(ext, hook_name=RELEASE_TOE_HOOK) -> dict:
+    """Generate the pre_release_toe hook DAT for this project.
+
+    The 'prep it' half of the release flow: the gate can only say WHY it
+    refuses, and every fix it names belongs in a hook the author does not
+    have yet. This writes that hook, pre-filled from the same plan the
+    preview logs -- real disarm lines for the Execute DATs that block the
+    export, a checklist of the absolute paths that would ship, and
+    commented stubs for the rest.
+
+    NEVER overwrites an existing hook: it holds the author's release
+    recipe. Returns {'created': bool, ...}.
+    """
+    plan = plan_release_toe(_release_collect(ext, hook_name, None),
+                            save_path=None, hook_name=hook_name)
+    product = op(plan['product_path']) if plan['product_path'] else None
+    if product is None:
+        ext.Log(f'Create {hook_name}: product COMP '
+                f'{plan["product_path"]!r} not found -- nothing was created.',
+                'ERROR')
+        return {'created': False, 'reason': 'no product comp'}
+    existing = ext._findReleaseHook(product, hook_name)
+    if existing is not None:
+        ext.Log(f'Create {hook_name}: {existing.path} already exists -- it '
+                f'holds your release recipe and is never overwritten. Edit '
+                f'it, or delete it first to regenerate.', 'WARNING')
+        return {'created': False, 'reason': 'already exists',
+                'path': existing.path}
+
+    version = ''
+    try:
+        version = str(ext.my.par.Version.eval())
+    except Exception:
+        pass
+    script = build_release_toe_hook_script(
+        plan, version=version,
+        today=datetime.date.today().isoformat())
+
+    dat = product.create(textDAT, hook_name)
+    dat.text = script
+    # Never (0, 0), never on top of a sibling: park it to the right of
+    # whatever the product COMP already holds (network-layout.md).
+    others = [c for c in product.children if c is not dat]
+    if others:
+        right = max(c.nodeX + c.nodeWidth for c in others)
+        dat.nodeX = int(math.ceil((right + 200) / 200.0) * 200)
+        dat.nodeY = max(c.nodeY for c in others)
+    else:
+        dat.nodeX, dat.nodeY = 200, 200
+
+    ext.Log(f'Created {dat.path}: {len(plan["presave_hooks"])} pre-save hook(s) '
+            f'disarmed, {len(plan["references"]["absolute"])} absolute path(s) '
+            f'listed to review. Read it before you export -- it is your '
+            f'release recipe now.', 'SUCCESS')
+    return {'created': True, 'path': dat.path,
+            'presave_hooks': list(plan['presave_hooks']),
+            'absolute_refs': len(plan['references']['absolute'])}
+
+
+def _release_plan_summary(plan) -> list:
+    """The three counts and the hook, for either confirm dialog."""
+    return [
+        'INLINE %d DAT(s) and %d COMP(s) -- every tracked file binding '
+        'cleared, content kept.' % (len(plan['inline']['dats']),
+                                    len(plan['inline']['comps'])),
+        'SCRUB %d tagged, %d coloured, %d with storage.' % (
+            len(plan['scrub']['tags']), len(plan['scrub']['colours']),
+            len(plan['scrub']['storage'])),
+        'DESTROY ' + (', '.join(e['path'] for e in plan['footprint'])
+                      or '(nothing)') + '.',
+        'HOOK ' + (plan['hook_path'] or 'none found (%s under %s)' % (
+            plan['hook_name'], plan['product_path'])),
+    ]
+
+
+def export_release_toe_handler(ext, save_path=None) -> dict:
+    """Export Release .toe pulse handler. Three stages, in this order:
+
+    1. EXPLAIN, before any file dialog -- what the artifact will be, what
+       this session loses, and whether the project is exportable at all.
+       A blocker here dead-ends without making anyone name a file first.
+    2. CHOOSE the path (ui.chooseFile).
+    3. CONFIRM against that path -- the destination-specific verdict, and
+       the last stop before TouchDesigner quits.
+
+    Cancel at stage 1 or 3 IS the dry run -- the plan is logged and nothing
+    is touched -- which is why there is no separate Preview parameter.
+    privacy_key and ignore_op_errors stay Python-only: a passphrase must not
+    persist into the .toe and .embody/config.json, and ignoring cook errors
+    is a dormant-template escape hatch, not a button.
+
+    save_path skips stage 2 (and only stage 2) -- the seam tests drive,
+    because ui.chooseFile is a native modal no test can answer.
+    """
+    global _RELEASE_HANDLER_ACTIVE
+    if _RELEASE_HANDLER_ACTIVE:
+        # Re-entered from inside our own dialog (see _RELEASE_HANDLER_ACTIVE).
+        return {'ran': False, 'reason': 'already running'}
+    _RELEASE_HANDLER_ACTIVE = True
+    try:
+        return _export_release_toe_handler(ext, save_path)
+    finally:
+        _RELEASE_HANDLER_ACTIVE = False
+
+
+def _export_release_toe_handler(ext, save_path=None) -> dict:
+    """The handler body. Guarded by export_release_toe_handler."""
+    # ui.chooseFile is a NATIVE modal -- nothing can auto-answer it, so a
+    # save or test run would freeze TD where ext._messageBox would have
+    # returned its -1 default. Refuse before the dialog, not after. An
+    # explicit save_path opens no dialog, so it is not gated.
+    if save_path is None and (
+            ext._testRunnerActive()
+            or ext.my.fetch('_suppress_dialogs', False, search=False)):
+        ext.Log('Export Release .toe: refused -- a save or test run is in '
+                'flight and a file dialog cannot be answered. Call '
+                'ExportReleaseToe(save_path, confirm=True) instead.',
+                'WARNING')
+        return {'ran': False, 'reason': 'dialogs suppressed'}
+
+    # --- Stage 1: what is true regardless of destination ----------------
+    # A pathless preview answers "is this project exportable, and what will
+    # the artifact be" without anyone choosing a file first. Its own path
+    # refusals are not blockers yet -- that is what path_refusals is for.
+    pre = preview_release_toe(ext, save_path=save_path)
+    gate = pre['readiness']
+    blockers = [r for r in gate['refusals']
+                if r not in gate.get('path_refusals', ())]
+    if blockers:
+        # Every fix the gate names belongs in a pre_release_toe hook. Offer to
+        # write one rather than leaving the user to find that out from a doc.
+        offer_hook = bool(pre['presave_hooks']) and not pre['hook_path']
+        if offer_hook:
+            tail = ('\n\nNothing was changed, and no file was written.\n\n'
+                    'Embody can write a %s hook for you, pre-filled to disarm '
+                    'the pre-save hook(s) above and listing anything else this '
+                    'project needs before it ships. It is an ordinary Text DAT '
+                    'afterwards -- yours to edit, and never overwritten.'
+                    % pre['hook_name'])
+        else:
+            tail = ('\n\nNothing was changed, and no file was written. Fix '
+                    'what is listed above and pulse again; the full preview '
+                    'is in the log.')
+        choice = ext._messageBox(
+            'Embody -- Export Release .toe',
+            'This project cannot be exported as a release .toe yet:\n\n'
+            + '\n'.join('- ' + r for r in blockers) + tail,
+            buttons=(['Cancel', 'Create the hook for me']
+                     if offer_hook else ['OK']))
+        out = {'ran': False, 'reason': 'not ready', 'stage': 'pre',
+               'refusals': blockers, 'plan': pre}
+        if offer_hook and choice == 1:
+            out['hook'] = create_release_toe_hook(ext,
+                                                  hook_name=pre['hook_name'])
+            if out['hook'].get('created'):
+                ext._messageBox(
+                    'Embody -- Export Release .toe',
+                    'Created %s.\n\nRead it, edit it, then pulse Export '
+                    'Release Toe again. Nothing has been exported.'
+                    % out['hook']['path'],
+                    buttons=['OK'])
+        return out
+
+    if save_path is None:
+        lines = ['Export this project as a release .toe?', '',
+                 'What gets written:', '',
+                 'A single self-contained .toe at a location you pick next. '
+                 'Every externalized file is inlined back into the operator '
+                 'that owns it, so the artifact needs none of your .tox / '
+                 '.tdxn / .py files on disk. Embody itself is removed.', '']
+        lines += _release_plan_summary(pre)
+        lines += ['',
+                  'Saved WITHOUT Project Privacy -- the networks open '
+                  'normally. For a locked build, call '
+                  'op.Embody.ExportReleaseToe(save_path, privacy_key=..., '
+                  'confirm=True) from Python instead.',
+                  '',
+                  'THIS SESSION DOES NOT SURVIVE. Embody and the '
+                  'externalizations table are deleted, the file is saved, '
+                  'and TouchDesigner quits. There is no undo and no restore '
+                  'phase -- run this in a dedicated TouchDesigner instance, '
+                  'never the one you are editing in.',
+                  '',
+                  'Your own project .toe on disk is never written.',
+                  '',
+                  'You will confirm once more after choosing the location.']
+        if ext._messageBox('Embody -- Export Release .toe', '\n'.join(lines),
+                           buttons=['Cancel', 'Choose Location...']) != 1:
+            ext.Log('Export Release .toe cancelled before the file dialog -- '
+                    'nothing was changed.', 'INFO')
+            return {'ran': False, 'reason': 'cancelled', 'stage': 'pre',
+                    'plan': pre}
+
+    # --- Stage 2: where -------------------------------------------------
+    chosen = save_path or ui.chooseFile(load=False, fileTypes=['toe'],
+                                        title='Export Release .toe')
+    if not chosen:
+        ext.Log('Export Release .toe: cancelled at the file dialog -- '
+                'nothing was changed.', 'INFO')
+        return {'ran': False, 'reason': 'cancelled', 'stage': 'choose'}
+    # A Save dialog filtered to .toe still hands back a bare name; the gate
+    # refuses anything that is not a .toe, so add it rather than bounce.
+    if not str(chosen).lower().endswith('.toe'):
+        chosen = str(chosen) + '.toe'
+
+    # --- Stage 3: the destination-specific verdict ----------------------
+    plan = preview_release_toe(ext, save_path=chosen)
+    ready = plan['readiness']
+    resolved = plan['save_path'] or chosen
+    if not ready['ready']:
+        ext._messageBox(
+            'Embody -- Export Release .toe',
+            'Not ready to export to that location:\n\n'
+            + '\n'.join('- ' + r for r in ready['refusals'])
+            + '\n\nNothing was changed. The full preview -- what would be '
+              'inlined, scrubbed and destroyed -- is in the log.',
+            buttons=['OK'])
+        return {'ran': False, 'reason': 'not ready', 'stage': 'confirm',
+                'refusals': list(ready['refusals']), 'plan': plan}
+
+    refs = plan['references']
+    lines = ['Write the release .toe now?', '', 'To: ' + resolved, '',
+             'This session does NOT survive. Embody and the externalizations '
+             'table are deleted, the file is saved, and TouchDesigner quits. '
+             'There is no undo.', '']
+    lines += _release_plan_summary(plan)
+    if refs['absolute']:
+        lines.append('')
+        lines.append('WARNING: %d absolute path(s) stay bound after '
+                     'inlining -- they leak this build machine filesystem '
+                     'into the artifact: %s' % (
+                         len(refs['absolute']),
+                         ', '.join('%s.%s' % (e['path'], e['par'])
+                                   for e in refs['absolute'][:5])))
+    for warning in ready['warnings']:
+        lines.append('')
+        lines.append('WARNING: ' + warning)
+    lines += ['', 'Cancel leaves everything exactly as it is; the preview '
+                  'above has already been logged as a dry run.']
+
+    choice = ext._messageBox('Embody -- Export Release .toe',
+                             '\n'.join(lines),
+                             buttons=['Cancel', 'Export and Quit'])
+    if choice != 1:
+        ext.Log('Export Release .toe cancelled -- nothing was changed. The '
+                'logged preview stands as the dry run.', 'INFO')
+        return {'ran': False, 'reason': 'cancelled', 'stage': 'confirm',
+                'plan': plan}
+    # No completion dialog: on success the deferred tail quits TD, and a
+    # modal would block the quit it is reporting.
+    return export_release_toe(ext, resolved, hook_name=plan['hook_name'],
+                              confirm=True)
+
+
+def _release_refuse_presave(ext, blocking, hook_name) -> dict:
+    ext.Log('ExportReleaseToe aborted: these execute DATs still fire '
+            'onProjectPreSave and would run against a project with no '
+            'Embody -- destroy them or turn projectpresave off in the '
+            f'{hook_name} hook: ' + ', '.join(blocking), 'ERROR')
+    return {'ran': False, 'reason': 'pre-save hooks armed',
+            'presave_hooks': list(blocking)}
+
+
+def _release_project_toe_state(ext):
+    """(path, mtime) of the project's newest .toe on disk -- the receipt
+    that tells whether a hook saved the project."""
+    try:
+        path = ext._resolveProjectToe() or ''
+        return (path, os.path.getmtime(path) if path else None)
+    except Exception:
+        return ('', None)
+
+
+def _release_quiet_session(ext, writes):
+    """Step 0: nothing Embody does for the rest of this session may reach
+    the project folder or block on a modal. _suppress_dialogs: every
+    _messageBox returns its default and checkOpsForContinuity skips the
+    file-cleanup cascade (post-inline, every tracked op reads 'replaced').
+    _init_complete unstored + _restoring_settings: the save-window guards
+    parexec.onValueChange reads when it RUNS -- TD delivers it deferred,
+    and parexec.par.active=False only postpones it (measured 2026-09-08).
+    Status Disabled: Update() returns at once (a hook, a peer, Ctrl+S or
+    Ctrl+Shift+U would otherwise re-arm every TOX binding). Embody's
+    execute DAT inactive: no pre/post-save hooks. A chunked TDXN export
+    in flight is cancelled (as the pre-save path does): its batches run
+    on their own frames and honour no mode. Table syncfile off: no tsv
+    sync. Then the disarm writes. Fail-CLOSED: returns what failed (the
+    caller aborts), or None."""
+    try:
+        ext.my.store('_suppress_dialogs', True)
+        ext.my.unstore('_init_complete')
+        ext._restoring_settings = True
+    except Exception as e:
+        return f'suppress: {e}'
+    try:
+        cancel = getattr(ext.my.ext.TDXN, 'cancelExport', None)
+        if cancel is not None:
+            cancel()
+    except Exception as e:
+        return f'cancel TDXN export: {e}'
+    try:
+        ext.my.par.Status = 'Disabled'
+        execute = ext.my.op('execute')
+        if execute is not None:
+            execute.par.active = False
+    except Exception as e:
+        return f'Update/save hooks: {e}'
+    table = ext.Externalizations
+    if table is not None:
+        try:
+            table.par.syncfile = False
+        except Exception as e:
+            return f'table syncfile: {e}'
+    return _apply_release_disarm(ext, writes)
+
+
+def _apply_release_disarm(ext, writes):
+    """Write the disarm plan, every write attempted even after a failure
+    (Filecleanup comes first for the same reason). Only after
+    _release_quiet_session: with parexec live, Tdxnmode -> off raises the
+    Disable-TDXN modal (_onTdxnModeChanged) and, the pars being
+    _PERSISTED_PARAMS, rewrites .embody/config.json -- shared with the
+    editing instance on the same project folder. Returns the first
+    failing par name, or None."""
+    failed = None
+    for name, value in writes:
+        try:
+            setattr(ext.my.par, name, value)
+            ext.Log(f'ExportReleaseToe: {name} -> {value!r}', 'INFO')
+        except Exception as e:
+            ext.Log(f'ExportReleaseToe: could not set {name}: {e}', 'ERROR')
+            failed = failed or name
+    return failed
+
+
+def _release_retire_viz(ext) -> None:
+    """Retire Embot + colour pulses (EnvoyExt viz), as the save path does."""
+    envoy = getattr(ext.my.ext, 'Envoy', None)
+    if envoy is None:
+        return
+    try:
+        envoy._vizCleanup()
+        purged = envoy._purgeVizArtifacts()
+        if purged:
+            ext.Log(f'ExportReleaseToe: purged {purged} orphaned Embot '
+                    f'part(s)', 'WARNING')
+    except Exception as e:
+        ext.Log(f'ExportReleaseToe: viz cleanup failed: {e}', 'WARNING')
+
+
+def _apply_release_inline(ext, inline_plan) -> dict:
+    """Clear the file bindings the inline plan names. No restore phase --
+    this session ends at the save. syncfile first, as EmbodyExt.Disable
+    does: a synced DAT never sees its file par change while still armed."""
+    done = {'dats': 0, 'comps': 0, 'errors': 0}
+    for path in inline_plan['dats']:
+        oper = ext.resolveOpIncludingUtility(path)
+        if oper is None:
+            continue
+        try:
+            sync = getattr(oper.par, 'syncfile', None)
+            if sync is not None:
+                oper.par.syncfile = False
+            oper.par.file.readOnly = False
+            oper.par.file = ''
+            done['dats'] += 1
+        except Exception as e:
+            done['errors'] += 1
+            ext.Log(f'ExportReleaseToe: could not inline {path}: {e}',
+                    'WARNING')
+    for path in inline_plan['comps']:
+        oper = ext.resolveOpIncludingUtility(path)
+        if oper is None:
+            continue
+        try:
+            oper.par.externaltox.readOnly = False
+            oper.par.externaltox = ''
+            oper.par.enableexternaltox = False
+            done['comps'] += 1
+        except Exception as e:
+            done['errors'] += 1
+            ext.Log(f'ExportReleaseToe: could not inline {path}: {e}',
+                    'WARNING')
+    return done
+
+
+def _release_remaining_refs(ext) -> list:
+    """Every file / externaltox binding standing outside the Embody COMP
+    and its table -- both destroyed, neither shipped."""
+    embody_path = ext.my.path
+    prefix = embody_path + '/'
+    table = ext.Externalizations
+    table_path = table.path if table else ''
+    refs = []
+    for oper in ext.root.findChildren(includeUtility=True):
+        path = oper.path
+        if path == embody_path or path.startswith(prefix) or path == table_path:
+            continue
+        for name in ('file', 'externaltox'):
+            value = _release_par(oper, name)
+            if value:
+                refs.append({'path': oper.path, 'par': name,
+                             'value': str(value)})
+    return refs
+
+
+def _apply_release_scrub(ext, scrub_plan) -> dict:
+    """Remove Embody's tags, colours and storage breadcrumbs."""
+    done = {'tags': 0, 'colours': 0, 'storage': 0, 'errors': 0}
+    for entry in scrub_plan['tags']:
+        oper = ext.resolveOpIncludingUtility(entry['path'])
+        if oper is None:
+            continue
+        try:
+            for tag in entry['remove']:
+                if tag in oper.tags:
+                    oper.tags.remove(tag)
+            done['tags'] += 1
+        except Exception as e:
+            done['errors'] += 1
+            ext.Log(f'ExportReleaseToe: could not untag {entry["path"]}: {e}',
+                    'WARNING')
+    for path in scrub_plan['colours']:
+        oper = ext.resolveOpIncludingUtility(path)
+        if oper is None:
+            continue
+        try:
+            ext.resetOpColor(oper)
+            done['colours'] += 1
+        except Exception as e:
+            done['errors'] += 1
+            ext.Log(f'ExportReleaseToe: could not recolour {path}: {e}',
+                    'WARNING')
+    for entry in scrub_plan['storage']:
+        oper = ext.resolveOpIncludingUtility(entry['path'])
+        if oper is None:
+            continue
+        try:
+            for key in entry['keys']:
+                oper.unstore(key)
+            done['storage'] += 1
+        except Exception as e:
+            done['errors'] += 1
+            ext.Log(f'ExportReleaseToe: could not unstore on '
+                    f'{entry["path"]}: {e}', 'WARNING')
+    return done
 
 
 # ==========================================================================
@@ -1053,7 +2775,9 @@ def ensure_convoy_id(ext, convoy_id=None,
                 merged[CONVOY_KEY] = entry
                 _write_json_atomic(path, merged)
     except Exception as e:
-        ext.Log(f'Failed to record the convoy id in project.json: {e}',
+        # Name the full target: a WinError 3 alone reports only the deepest
+        # missing ancestor ('D:\'), which hid the real path in the field.
+        ext.Log(f'Failed to record the convoy id in {path}: {e}',
                 'WARNING')
         return ''
     ext.Log(
@@ -1169,9 +2893,123 @@ def rebind_convoy_to_candidate(ext, expected_id) -> str:
     return expected
 
 
+# --------------------------------------------------------------------------
+# The 'envoy' key in .embody/project.json
+# --------------------------------------------------------------------------
+# Envoyenable otherwise lives ONLY in .embody/config.json, which is
+# gitignored. init() scrubs the toggle off on every open and relies on
+# restore_settings to put it back -- a matched pair that breaks across a
+# handoff, because only half of it travels. The receiving session then finds
+# no .mcp.json and concludes the project has no path into TD (field report
+# 2026-09-19). Shape:
+#
+#     "envoy": {"enabled": true}
+#
+# Declares a PROJECT property ("this project is set up for Envoy"), not one
+# machine's toggle: only ever written true, so a collaborator who turns Envoy
+# off locally neither churns the tracked file nor revokes the declaration for
+# everyone else. Their off lives in config.json and wins on their machine --
+# the declaration is consulted ONLY when a machine has no config.json at all.
+ENVOY_KEY = 'envoy'
+
+
+def read_envoy_enabled(ext) -> bool:
+    """True when the committed project metadata declares Envoy in use.
+
+    Read-only and TOTAL, mirroring read_convoy_entry: an unreadable file, a
+    missing key, or a wrong-shaped value all read as "not declared".
+
+    Strict about the value: it must be a real JSON `true`, not a truthy
+    string. Anything looser disagrees with record_envoy_enabled's own
+    `is True` idempotency check, so a hand-typed `"enabled": "true"` would
+    read as declared while the writer still considered it unwritten.
+    """
+    data, readable = _load_project_json(ext, 'reading the Envoy declaration')
+    if not readable or not data:
+        return False
+    entry = data.get(ENVOY_KEY)
+    return entry.get('enabled') is True if isinstance(entry, dict) else False
+
+
+def record_envoy_enabled(ext) -> None:
+    """Declare Envoy in the COMMITTED project.json so a clone can adopt it.
+
+    KEY-LEVEL OWNERSHIP exactly as ensure_convoy_id: owns 'envoy' and
+    nothing else, never overwrites an unreadable file, creates a missing one
+    with an EXCLUSIVE create. No-ops once the declaration stands, so its
+    frequent caller (save_settings) costs one read and produces no diff.
+    """
+    data, readable = _load_project_json(ext, 'recording the Envoy declaration')
+    if not readable:
+        return
+    entry = data.get(ENVOY_KEY)
+    if isinstance(entry, dict) and entry.get('enabled') is True:
+        return
+    data[ENVOY_KEY] = {'enabled': True}
+    path = project_json_path(ext)
+    try:
+        if path.is_file():
+            _write_json_atomic(path, data)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with open(path, 'x', encoding='utf-8', newline='\n') as f:
+                    f.write(json.dumps(data, indent=2) + '\n')
+            except FileExistsError:
+                return   # co-writer landed it; the next save records the key
+        ext.Log('Declared Envoy in .embody/project.json -- commit it so a '
+                'clone starts Envoy without being hand-enabled', 'DEBUG')
+    except Exception as e:
+        ext.Log(f'Could not record the Envoy declaration: {e}', 'WARNING')
+
+
+def adopt_committed_envoy(ext, kick_envoy: bool) -> bool:
+    """Turn Envoy on from the committed declaration. Returns True if it did.
+
+    Called ONLY when this machine has no config.json to read. A machine that
+    HAS one holds an opinion -- including a deliberate off -- and that
+    opinion always wins, so this never fights a local opt-out.
+    """
+    if ext.my.par.Envoyenable.eval() or not read_envoy_enabled(ext):
+        return False
+    ext._restoring_settings = True
+    try:
+        ext.my.par.Envoyenable = True
+    finally:
+        ext._restoring_settings = False
+    ext.Log('Envoy enabled from committed project metadata -- first open of '
+            'this clone (.embody/config.json does not travel)', 'INFO')
+    if kick_envoy:
+        run(f"op('{ext.my}').ext.Envoy.Start()", delayFrames=3)
+    return True
+
+
+def envoy_consent_decision(ext) -> str:
+    """What verify()'s fresh-install branch should do about Envoy.
+
+    'honour' -- Envoy is already on, so someone turned it on deliberately
+    since load: init() scrubbed the baked value to False at frame 0
+    (execute.py), so a True at verify time cannot be the .tox's opinion.
+    The enable's own onValueChange was swallowed by parexec's _init_complete
+    guard, so nothing has started the server; verify() must.
+    'prompt'  -- genuinely fresh, and we may ask.
+    'quiet'   -- fresh, but a dialog is suppressed or already queued.
+
+    Pure so it can be tested off-TD; verify() itself needs a live session.
+    """
+    if ext.my.par.Envoyenable.eval():
+        return 'honour'
+    if ext._suppressDialogs() or getattr(ext, '_pending_envoy_prompt', False):
+        return 'quiet'
+    return 'prompt'
+
+
 def save_settings(ext) -> None:
     """Persist whitelisted parameter values to .embody/config.json."""
     ext._settings_save_pending = False
+    # Mirror the one bit a clone cannot otherwise learn (see ENVOY_KEY).
+    if ext.my.par.Envoyenable.eval():
+        record_envoy_enabled(ext)
     params = {}
     # Sort names so JSON output is stable across TD sessions. _PERSISTED_PARAMS
     # is a frozenset, and Python's hash randomization gives each process a
@@ -1189,6 +3027,7 @@ def save_settings(ext) -> None:
                 entry['bindExpr'] = par.bindExpr
         params[name] = entry
     data = {'version': 1, 'params': params}
+    path = None
     try:
         import json, os
         path = settings_path(ext)
@@ -1212,7 +3051,8 @@ def save_settings(ext) -> None:
                 else:
                     raise
     except Exception as e:
-        ext.Log(f'Failed to save settings: {e}', 'WARNING')
+        ext.Log(f'Failed to save settings to {path or "config.json"}: {e}',
+                'WARNING')
 
 
 def defer_save_settings(ext) -> None:
@@ -1220,6 +3060,59 @@ def defer_save_settings(ext) -> None:
     if not getattr(ext, '_settings_save_pending', False):
         ext._settings_save_pending = True
         run(f"op('{ext.my}').ext.Embody._saveSettings()", delayFrames=1)
+
+
+def normalize_legacy_par_keys(params: dict, renames: dict) -> dict:
+    """Map TDN-era config.json keys onto their current TDXN names.
+
+    config.json is keyed by PARAMETER NAME, so renaming a parameter
+    without this drops that setting back to its default on every existing
+    install -- silently, because a missing key is indistinguishable from
+    "never set". Pure and side-effect free so it can be tested against a
+    real legacy config; `renames` is EmbodyExt._TDXN_PAR_RENAMES, keyed by
+    ParGroup BASE name, so RGBA components (Tdntagcolorr) are matched by
+    stripping their trailing component letter.
+
+    Keys with no mapping pass through untouched -- notably 'Tdnenable',
+    the pre-6.1 key the mode-migration nudge still reads.
+    """
+    if not renames:
+        return params
+    out = {}
+    for key, entry in params.items():
+        base, suffix = key, ''
+        if (key not in renames
+                and key[-1:] in ('r', 'g', 'b', 'a')
+                and key[:-1] in renames):
+            base, suffix = key[:-1], key[-1]
+        out[renames.get(base, base) + suffix] = entry
+    return out
+
+
+# A stored value that is merely the OLD SHIPPED DEFAULT was never a user
+# choice, so carrying it forward pins every existing install on the retired
+# spelling forever. A value the user actually customized is left alone.
+_LEGACY_PAR_DEFAULTS = {
+    'Tdxntag': ('tdn', 'tdxn'),
+    'Tdxnexcludetag': ('tdn_exclude', 'tdxn_exclude'),
+}
+
+
+def normalize_legacy_par_values(params: dict) -> dict:
+    """Upgrade stored values that are only the retired shipped default.
+
+    Pure and side-effect free (testable against a real legacy config).
+    Only a constant-mode entry is touched -- an expression or bind is the
+    user's own, whatever it evaluates to.
+    """
+    out = {}
+    for key, entry in params.items():
+        pair = _LEGACY_PAR_DEFAULTS.get(key)
+        if (pair and isinstance(entry, dict) and not entry.get('mode')
+                and entry.get('val') == pair[0]):
+            entry = dict(entry, val=pair[1])
+        out[key] = entry
+    return out
 
 
 def restore_settings(ext, kick_envoy: bool = False) -> bool:
@@ -1252,6 +3145,10 @@ def restore_settings(ext, kick_envoy: bool = False) -> bool:
                 ext.my.store('_init_complete', True)
                 return False
         else:
+            # No local settings at all -- the fresh-clone case. The sender's
+            # committed declaration is the only surviving evidence that this
+            # project uses Envoy.
+            adopt_committed_envoy(ext, kick_envoy)
             ext.my.store('_init_complete', True)
             return False
     try:
@@ -1265,6 +3162,12 @@ def restore_settings(ext, kick_envoy: bool = False) -> bool:
         ext.my.store('_init_complete', True)
         return False
     params = data['params']
+    # config.json is keyed by PARAMETER NAME, so the TDXN -> TDXN rename
+    # would silently drop each of these settings back to its default on
+    # every existing install (see normalize_legacy_par_keys).
+    params = normalize_legacy_par_keys(
+        params, getattr(ext, '_TDXN_PAR_RENAMES', None) or {})
+    params = normalize_legacy_par_values(params)
     restored = 0
     ext._restoring_settings = True
     try:
@@ -1290,20 +3193,20 @@ def restore_settings(ext, kick_envoy: bool = False) -> bool:
     # so deferred onValueChange callbacks from init() are still suppressed.
     ext.my.store('_init_complete', True)
     ext.Log(f'Restored {restored} settings from config.json', 'INFO')
-    # TDN mode migration detection: an upgrading user will have
-    # 'Tdnenable' in their persisted params but not 'Tdnmode'. Defer
+    # TDXN mode migration detection: an upgrading user will have
+    # 'Tdnenable' in their persisted params but not 'Tdxnmode'. Defer
     # the nudge dialog so init can complete cleanly first.
     # Guarded by a schedule-time flag so a second _restoreSettings in
     # the same session (e.g. onCreate then onStart) can't queue a
     # second dialog before the first one fires.
     already_scheduled = ext.my.fetch(
         '_tdn_migration_scheduled', False, search=False)
-    if ('Tdnenable' in params and 'Tdnmode' not in params
+    if ('Tdnenable' in params and 'Tdxnmode' not in params
             and not already_scheduled):
-        prev_tdn_enable = bool(params.get('Tdnenable', {}).get('val', True))
-        ext.my.store('_tdn_migration_prev_enable', prev_tdn_enable)
+        prev_tdxn_enable = bool(params.get('Tdnenable', {}).get('val', True))
+        ext.my.store('_tdn_migration_prev_enable', prev_tdxn_enable)
         ext.my.store('_tdn_migration_scheduled', True)
-        run(f"op('{ext.my}').ext.Embody._showTDNMigrationNudge()",
+        run(f"op('{ext.my}').ext.Embody._showTDXNMigrationNudge()",
             delayFrames=60)
     # If Envoyenable was restored to True, kick Start() -- parexec was
     # suppressed during restore so onValueChange never fired.
@@ -1314,11 +3217,11 @@ def restore_settings(ext, kick_envoy: bool = False) -> bool:
     return restored > 0
 
 
-def show_tdn_migration_nudge(ext) -> None:
+def show_tdxn_migration_nudge(ext) -> None:
     """One-time dialog after upgrading from the binary Tdnenable toggle.
 
     Fires when a user opens a project previously saved with the old
-    Tdnenable toggle and no Tdnmode selection yet. Offers a choice
+    Tdnenable toggle and no Tdxnmode selection yet. Offers a choice
     between restoring Full bidirectional sync (their prior behavior)
     or adopting the new Export-on-Save default (recommended).
 
@@ -1332,45 +3235,45 @@ def show_tdn_migration_nudge(ext) -> None:
                                search=False)
     ext.my.unstore('_tdn_migration_prev_enable')
 
-    tdn_comps = []
+    tdxn_comps = []
     try:
-        tdn_comps = ext._getTDNStrategyComps()
+        tdxn_comps = ext._getTDXNStrategyComps()
     except Exception:
         pass
 
-    if not tdn_comps:
-        # No TDN COMPs tracked -- silently accept the new default.
+    if not tdxn_comps:
+        # No TDXN COMPs tracked -- silently accept the new default.
         ext.my.store('_tdn_mode_migration_shown', True)
         return
 
     prev_label = ('Full (bidirectional)' if prev_enable
-                  else 'Off (TDN disabled)')
+                  else 'Off (TDXN disabled)')
     msg = (
-        f'TDN default changed in this release.\n\n'
+        f'TDXN default changed in this release.\n\n'
         f'Your project was previously saved with the legacy Tdnenable '
         f'toggle ({prev_label}). The new system has three modes:\n\n'
-        f'  \u2022 Off -- no TDN runtime\n'
+        f'  \u2022 Off -- no TDXN runtime\n'
         f'  \u2022 Export-on-Save -- recommended; .toe is truth, '
         f'.tdn files are rewritten on save\n'
         f'  \u2022 Roundtrip (Experimental) -- bidirectional '
         f'strip/restore on save and reconstruction on open (previous '
         f'behavior)\n\n'
-        f'Currently set to Export-on-Save. Your {len(tdn_comps)} '
-        f'tracked TDN COMP(s) will stop round-tripping on save.\n\n'
+        f'Currently set to Export-on-Save. Your {len(tdxn_comps)} '
+        f'tracked TDXN COMP(s) will stop round-tripping on save.\n\n'
         f'Keep the new default, or restore Full?'
     )
     choice = ext._messageBox(
-        'Embody - TDN Mode Changed',
+        'Embody - TDXN Mode Changed',
         msg,
         buttons=['Keep Export-on-Save (recommended)',
                  'Restore Full (previous behavior)'])
     if choice == 1:
         try:
-            ext.my.par.Tdnmode = 'full'
-            ext._applyTdnModeGating()
-            ext.Log('TDN mode restored to Full per user choice', 'INFO')
+            ext.my.par.Tdxnmode = 'full'
+            ext._applyTdxnModeGating()
+            ext.Log('TDXN mode restored to Full per user choice', 'INFO')
         except Exception as e:
             ext.Log(f'Could not restore Full mode: {e}', 'WARNING')
     else:
-        ext.Log('TDN mode kept at Export-on-Save (new default)', 'INFO')
+        ext.Log('TDXN mode kept at Export-on-Save (new default)', 'INFO')
     ext.my.store('_tdn_mode_migration_shown', True)

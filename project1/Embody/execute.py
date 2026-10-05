@@ -22,6 +22,10 @@ def init():
 	# fire, parexec processes init()'s Envoyenable=False and calls Stop(),
 	# disabling Envoy on every startup.  _restoreSettings stores
 	# _init_complete when it finishes (or immediately if it returns early).
+	# LOAD-BEARING for EmbodyExt.verify(): because this runs at frame 0 and
+	# verify() at frame 30, a True there can only be a deliberate enable made
+	# since load, which verify() honours instead of scrubbing. Replacing this
+	# write with a storage boot guard would silently invert that meaning.
 	parent.Embody.par.Envoyenable = False
 	parent.Embody.par.Envoystatus = 'Disabled'
 	parent.Embody.par.Performmode = False
@@ -73,36 +77,41 @@ def onStart():
 	# left Autosavestatus at its resting value, and on a project that is
 	# not being edited that is what it stays -- so the row whose whole job
 	# is answering "is my work safe?" would say nothing all session.
-	parent.Embody.ext.Embody.SeedAutosaveStatus()
+	parent.Embody.ext.Embody.seedAutosaveStatus()
 	# Restore settings from .embody/config.json -- recovers user config after
 	# crash, force-quit, or any unsaved session. On normal open where
 	# .toe was saved, values match and this is a no-op.
 	run(f"op('{parent.Embody}').ext.Embody._restoreSettings(kick_envoy=True)", delayFrames=5)
 	# Ensure op-type defaults + palette catalog are loaded (loads from
 	# .embody/catalog_<build>.json if present, otherwise async scan).
-	# Must run before ReconstructTDNComps (frame 60) for best results,
+	# Must run before ReconstructTDXNComps (frame 60) for best results,
 	# but the embedded tableDAT covers exports during the scan window.
-	# Skip entirely in Off mode -- catalogs exist for TDN export compaction
-	# and palette-clone detection; both are dormant when Tdnmode=off.
+	# Skip entirely in Off mode -- catalogs exist for TDXN export compaction
+	# and palette-clone detection; both are dormant when Tdxnmode=off.
 	run(
 		f"op('{parent.Embody}').ext.CatalogManager.EnsureCatalogs() "
-		f"if op('{parent.Embody}').ext.Embody._tdnMode() != 'off' else None",
+		f"if op('{parent.Embody}').ext.Embody._tdxnMode() != 'off' else None",
 		delayFrames=10)
 	# On project open, silently extract CLAUDE.md if Envoy is
 	# enabled but the file is missing (handles upgrades from older versions)
 	run(f"op('{parent.Embody}').ext.Embody._upgradeEnvoy()", delayFrames=30)
 	# Restore missing TOX-strategy COMPs from .tox files on disk
-	run(f"op('{parent.Embody}').RestoreTOXComps()", delayFrames=45)
+	run(f"op('{parent.Embody}').ext.Embody.restoreTOXComps()", delayFrames=45)
 	# Restore missing standalone DATs from externalized files on disk
-	run(f"op('{parent.Embody}').RestoreDATs()", delayFrames=50)
-	# Reconstruct TDN-strategy COMPs from .tdn files
-	run(f"op('{parent.Embody}').ReconstructTDNComps()", delayFrames=60)
+	run(f"op('{parent.Embody}').ext.Embody.restoreDATs()", delayFrames=50)
+	# Reconstruct TDXN-strategy COMPs from .tdn files
+	run(f"op('{parent.Embody}').ext.Embody.reconstructTDXNComps()", delayFrames=60)
+	# A project can open with a table link that resolves to nothing: one
+	# provisioned offline by embody_bootstrap (no onCreate ever fired), or
+	# one whose network was renamed. ensure* reconnects a sibling or builds
+	# a fresh table and is a no-op when the link is fine. (2026-09-05)
+	run(f"op('{parent.Embody}').ext.Embody.ensureExternalizationsTable()", delayFrames=20)
 	# Reconcile metadata for operators that exist but lost tags/colors/file params
-	run(f"op('{parent.Embody}').ext.Embody.ReconcileMetadata()", delayFrames=75)
-	# Offer to restore TDN-tagged empty shells whose table row was lost
+	run(f"op('{parent.Embody}').ext.Embody.reconcileMetadata()", delayFrames=75)
+	# Offer to restore TDXN-tagged empty shells whose table row was lost
 	# (tsv truncation/crash) but whose .tdn survives on disk. Additive +
 	# consent-gated; after ReconcileMetadata so tags are re-applied first.
-	run(f"op('{parent.Embody}').ext.Embody.RecoverOrphanShells()", delayFrames=90)
+	run(f"op('{parent.Embody}').ext.Embody.recoverOrphanShells()", delayFrames=90)
 	# Pin current TD build into .embody/project.json so the Envoy bridge can
 	# pick a matching install on fresh clones (committed; survives git clone).
 	run(f"op('{parent.Embody}').ext.Embody._writeProjectJson()", delayFrames=80)
@@ -119,17 +128,19 @@ def onStart():
 def onCreate():
 	init()
 	# Same seed as onStart -- see there.
-	parent.Embody.ext.Embody.SeedAutosaveStatus()
-	# Auto-create (or reconnect) the externalizations table before Verify()
-	run(f"op('{parent.Embody}').ext.Embody.CreateExternalizationsTable()", delayFrames=15)
+	parent.Embody.ext.Embody.seedAutosaveStatus()
+	# Auto-create (or reconnect) the externalizations table before Verify().
+	# ensure* is the non-destructive path: reconnect or build fresh, never
+	# clear an existing table (createExternalizationsTable resets).
+	run(f"op('{parent.Embody}').ext.Embody.ensureExternalizationsTable()", delayFrames=15)
 	# Verify handles update-scenario detection and Envoy opt-in
-	run(f"op('{parent.Embody}').Verify()", delayFrames=30)
+	run(f"op('{parent.Embody}').ext.Embody.verify()", delayFrames=30)
 	# Ensure catalogs load on fresh-project drops too, not just onStart.
 	# Delayed past Verify() so the setup dialog isn't fighting the scan.
 	# Skip in Off mode -- see onStart() for rationale.
 	run(
 		f"op('{parent.Embody}').ext.CatalogManager.EnsureCatalogs() "
-		f"if op('{parent.Embody}').ext.Embody._tdnMode() != 'off' else None",
+		f"if op('{parent.Embody}').ext.Embody._tdxnMode() != 'off' else None",
 		delayFrames=45)
 	# The Autoupdate-gated check on the FRESH-INSTALL path too. It was
 	# scheduled only from onStart (project open) -- but on a first install
@@ -150,7 +161,7 @@ def onExit():
 	# Best-effort by contract (one attempt, 1s timeout, every outcome a
 	# value) and BLOCKING, because no run() callback will ever fire again
 	# on a TD that is closing. Costs nothing at all when Convoy was never
-	# enabled -- Unregister() returns before touching the filesystem when
+	# enabled -- unregister() returns before touching the filesystem when
 	# this process holds no node id.
 	#
 	# NOT suppressed for an in-flight Convoy-relayed job, deliberately.
@@ -165,7 +176,7 @@ def onExit():
 	try:
 		convoy = parent.Embody.op('convoy')
 		if convoy:
-			convoy.ext.ConvoyExt.Unregister(blocking=True, reason='TD exit')
+			convoy.ext.ConvoyExt.unregister(blocking=True, reason='TD exit')
 	except Exception:
 		# A shutting-down TD must never be blocked or broken by this.
 		pass
@@ -251,7 +262,15 @@ def onProjectPreSave():
 			parent.Embody.ext.Embody.Log('Perform Mode -- skipping pre-save externalization', 'INFO')
 			return
 
-		_runPreSaveExternalization()
+		try:
+			_runPreSaveExternalization()
+		finally:
+			# The save's unanswered palette prompts as ONE WARNING, after
+			# every export ran (issue #109 review).
+			try:
+				parent.Embody.ext.TDXN.flushPaletteUnanswered()
+			except Exception:
+				pass
 	except Exception as e:
 		try:
 			parent.Embody.ext.Embody.Log(
@@ -263,32 +282,65 @@ def onProjectPreSave():
 
 
 def _runPreSaveExternalization():
+	# An async export still in flight would race the strip: its worker's
+	# os.replace and stale-cleanup land after Phase 1 exported, tracked and
+	# fingerprinted the same file, and its success hook then tracks a COMP
+	# the strip has just emptied (TDXN review 2026-08-30). The save
+	# re-exports everything anyway, so cancel it.
+	try:
+		tdxn = parent.Embody.ext.TDXN
+		# Per-save report state: each save's job record names its own
+		# unanswered palette clones and dropped companions (issue #109).
+		for name in ('_palette_unanswered_warned', '_palette_unanswered_pending',
+					 '_companion_drop_logged'):
+			bucket = getattr(tdxn, name, None)
+			if bucket is not None:
+				bucket.clear()
+		state = getattr(tdxn, '_export_state', None)
+		if state and not state.get('done'):
+			parent.Embody.ext.Embody.Log(
+				'Cancelling an in-flight async TDXN export: the save '
+				'exports every tracked COMP itself', 'WARNING')
+			tdxn.cancelExport()
+	except Exception as e:
+		parent.Embody.ext.Embody.Log(
+			f'Could not cancel the async export before save: {e}', 'WARNING')
+
 	# Suppress the delayed Refresh pulse - the continuity check must NOT
 	# fire during the strip/restore window or it will delete files for
-	# temporarily-missing operators inside TDN COMPs.
+	# temporarily-missing operators inside TDXN COMPs.
 	parent.Embody.ext.Embody.Update(suppress_refresh=True)
 
-	# Master TDN mode: when Off, skip the entire TDN pre-save pipeline
+	# Master TDXN mode: when Off, skip the entire TDXN pre-save pipeline
 	# (export, strip, restore). .tdn files on disk stay untouched.
-	mode = parent.Embody.ext.Embody._tdnMode()
+	mode = parent.Embody.ext.Embody._tdxnMode()
 	if mode == 'off':
 		parent.Embody.ext.Embody.Log(
-			'TDN mode=off -- skipping pre-save TDN strip/export', 'INFO')
+			'TDXN mode=off -- skipping pre-save TDXN strip/export', 'INFO')
 		return
 
-	# TDN content safety -- detect unprotected DATs and storage before strip/restore
-	parent.Embody.ext.Embody._checkTDNContentSafety()
+	# TDXN content report: storage a .tdxn cannot hold, DATs no copy keeps.
+	# Its own boundary -- a bug here must never skip Phase 1 or the strip,
+	# which would leave every .tdxn stale (issue #109).
+	try:
+		parent.Embody.ext.Embody._checkTDXNContentSafety()
+	except Exception as e:
+		try:
+			parent.Embody.ext.Embody.Log(
+				f'TDXN content check failed (export continues): {e}', 'ERROR')
+		except Exception:
+			print(f'Embody > TDXN content check failed (export continues): {e}')
 
-	tdn_comps = parent.Embody.ext.Embody._getTDNStrategyComps()
-	if not tdn_comps:
+	tdxn_comps = parent.Embody.ext.Embody._getTDXNStrategyComps()
+	if not tdxn_comps:
 		return
 
 	# Phase 1: Export current in-memory state to .tdn files, but only
 	# if the content actually changed. Skipping unchanged COMPs avoids
 	# noisy git diffs from volatile header fields (build, generator,
-	# exported_at, td_build).
+	# td_build).
 	exported = []
-	for comp_path, rel_tdn_path in tdn_comps:
+	for comp_path, rel_tdxn_path in tdxn_comps:
 		comp = op(comp_path)
 		if not comp:
 			continue
@@ -297,10 +349,10 @@ def _runPreSaveExternalization():
 		if not has_children:
 			continue
 		try:
-			abs_path = str(parent.Embody.ext.Embody.buildAbsolutePath(rel_tdn_path))
+			abs_path = str(parent.Embody.ext.Embody.buildAbsolutePath(rel_tdxn_path))
 
 			# Export to dict only (no file write yet)
-			result = parent.Embody.ext.TDN.ExportNetwork(
+			result = parent.Embody.ext.TDXN.ExportNetwork(
 				root_path=comp_path, output_file=None)
 			if not result.get('success'):
 				parent.Embody.ext.Embody.Log(
@@ -308,48 +360,60 @@ def _runPreSaveExternalization():
 					f'{result.get("error")}', 'ERROR')
 				continue
 
-			new_tdn = result['tdn']
+			new_tdxn = result['tdn']
 
 			# Compare against existing file - skip write if content unchanged
-			existing_tdn = parent.Embody.ext.TDN._read_existing_tdn(abs_path)
-			if existing_tdn and parent.Embody.ext.TDN._tdn_content_equal(
-					new_tdn, existing_tdn):
-				exported.append((comp_path, rel_tdn_path))
+			existing_tdxn = parent.Embody.ext.TDXN._read_existing_tdxn(abs_path)
+			if existing_tdxn and parent.Embody.ext.TDXN._tdxn_content_equal(
+					new_tdxn, existing_tdxn):
+				exported.append((comp_path, rel_tdxn_path))
 				continue
 
 			# Content changed (or first export) - write to disk
 			scan_folder = str(project.folder)
-			before_tdn = parent.Embody.ext.TDN._collectExistingTDNFiles(
+			before_tdxn = parent.Embody.ext.TDXN._collectExistingTDXNFiles(
 				scan_folder, comp_path)
 			# Only files Embody tracks are deletion candidates -- never
 			# reclaim a stray the user placed themselves.
-			before_tdn = parent.Embody.ext.TDN._restrictToTrackedTDN(
-				before_tdn)
-			content = parent.Embody.ext.TDN._compact_json_dumps(new_tdn)
-			write_result = parent.Embody.ext.TDN._safe_write_tdn(
-				abs_path, content, scan_folder)
+			before_tdxn = parent.Embody.ext.TDXN._restrictToTrackedTDXN(
+				before_tdxn)
+			content = parent.Embody.ext.TDXN._compact_json_dumps(new_tdxn)
+			# Same value as scan_folder, separate name on purpose:
+			# scan_folder is the stale-cleanup DELETE boundary, backup_root
+			# is where rotation mirrors copies. See the note in
+			# TDXNExt.ExportNetwork.
+			backup_root = str(project.folder)
+			write_result = parent.Embody.ext.TDXN._safe_write_tdxn(
+				abs_path, content, backup_root)
 			if not write_result.get('success'):
 				parent.Embody.ext.Embody.Log(
 					f'Pre-save write failed for {comp_path}: '
 					f'{write_result.get("error")}', 'ERROR')
 				continue
+			# Rotation failed but the write landed -- that file has no
+			# recovery copy. Main thread here (TD's save handler).
+			if write_result.get('backup_error'):
+				parent.Embody.ext.Embody.Log(
+					f'Backup rotation FAILED for {abs_path} '
+					f'({write_result["backup_error"]}) -- the write '
+					f'succeeded but had no recovery copy', 'WARNING')
 
 			# Stale file cleanup
 			protected = [abs_path]
-			other_protected = parent.Embody.ext.Embody._getAllTrackedTDNFiles(
+			other_protected = parent.Embody.ext.Embody._getAllTrackedTDXNFiles(
 				exclude_path=comp_path)
 			if other_protected:
 				protected.extend(other_protected)
-			parent.Embody.ext.TDN._cleanupStaleTDNFiles(
-				before_tdn, protected, scan_folder)
+			parent.Embody.ext.TDXN._cleanupStaleTDXNFiles(
+				before_tdxn, protected, scan_folder)
 
 			# Track export and update fingerprint
-			parent.Embody.ext.TDN._trackTDNExport(
+			parent.Embody.ext.TDXN._trackTDXNExport(
 				comp_path, abs_path,
-				build_num=new_tdn.get('build'),
+				build_num=new_tdxn.get('build'),
 				touch_build=f'{app.version}.{app.build}')
-			parent.Embody.ext.Embody._storeTDNFingerprint(comp)
-			exported.append((comp_path, rel_tdn_path))
+			parent.Embody.ext.Embody._storeTDXNFingerprint(comp)
+			exported.append((comp_path, rel_tdxn_path))
 		except Exception as e:
 			parent.Embody.ext.Embody.Log(
 				f'Pre-save export error for {comp_path}: {e}', 'ERROR')
@@ -357,24 +421,24 @@ def _runPreSaveExternalization():
 	# Phase 2: Strip children from exported COMPs so the .toe stays small.
 	# Only strip COMPs whose export succeeded - stripping without a valid
 	# .tdn on disk would permanently destroy the children.
-	# Gated on Tdnmode: Export mode skips strip entirely (.toe is truth).
-	# Full mode runs strip when Tdnstriponsave is on.
+	# Gated on Tdxnmode: Export mode skips strip entirely (.toe is truth).
+	# Full mode runs strip when Tdxnstriponsave is on.
 	if mode != 'full':
 		parent.Embody.ext.Embody.Log(
-			'TDN mode=export -- skipping Phase 2 strip', 'DEBUG')
+			'TDXN mode=export -- skipping Phase 2 strip', 'DEBUG')
 		return
-	if not parent.Embody.par.Tdnstriponsave.eval():
+	if not parent.Embody.par.Tdxnstriponsave.eval():
 		return
 
-	# Save pane owner paths that fall inside TDN COMPs before stripping.
+	# Save pane owner paths that fall inside TDXN COMPs before stripping.
 	# After restore, we re-navigate orphaned panes back to the rebuilt COMP.
-	tdn_paths = [cp for cp, _ in exported]
+	tdxn_paths = [cp for cp, _ in exported]
 	pane_restore = {}
 	try:
 		for pane in ui.panes:
 			if hasattr(pane, 'owner') and pane.owner:
 				owner_path = pane.owner.path
-				for tp in tdn_paths:
+				for tp in tdxn_paths:
 					if owner_path == tp or owner_path.startswith(tp + '/'):
 						pane_restore[pane.id] = owner_path
 						break
@@ -383,7 +447,7 @@ def _runPreSaveExternalization():
 	if pane_restore:
 		parent.Embody.store('_tdn_pane_restore', pane_restore)
 
-	# Sort deepest-first so nested TDN COMPs (e.g. /META/geo1) are
+	# Sort deepest-first so nested TDXN COMPs (e.g. /META/geo1) are
 	# stripped before their parent (/META) destroys them. Without this,
 	# the parent's StripCompChildren destroys the nested COMP before it
 	# can be tracked in stripped_info, so post-save never restores it.
@@ -400,14 +464,14 @@ def _runPreSaveExternalization():
 	# untouched in the live session because strip never ran on them).
 	# Without this pre-stage, a mid-strip crash destroyed children with no
 	# recovery list, leaving the live session broken until manual
-	# ReconstructTDNComps() or reopen (the .tdn files on disk are still the
+	# ReconstructTDXNComps() or reopen (the .tdn files on disk are still the
 	# source of truth, so saved data is never lost -- but session integrity is).
 	if exported_by_depth:
 		parent.Embody.store('_tdn_stripped_paths', list(exported_by_depth))
-	for comp_path, rel_tdn_path in exported_by_depth:
+	for comp_path, rel_tdxn_path in exported_by_depth:
 		comp = op(comp_path)
 		if comp:
-			parent.Embody.ext.Embody.StripCompChildren(comp)
+			parent.Embody.ext.Embody.stripCompChildren(comp)
 	return
 
 def onProjectPostSave():
@@ -446,7 +510,7 @@ def onProjectPostSave():
 			return p.count('/')
 		stripped = sorted(stripped, key=_depth_key)
 		for entry in stripped:
-			# Unpack stored (comp_path, rel_tdn_path) tuples.
+			# Unpack stored (comp_path, rel_tdxn_path) tuples.
 			# Fall back to legacy format (plain string) for safety.
 			if isinstance(entry, (list, tuple)) and len(entry) == 2:
 				comp_path, rel_path = entry
@@ -459,21 +523,21 @@ def onProjectPostSave():
 			try:
 				if not rel_path:
 					parent.Embody.ext.Embody.Log(
-						f'Post-save restore: no TDN file path for {comp_path}', 'WARNING')
+						f'Post-save restore: no TDXN file path for {comp_path}', 'WARNING')
 					continue
 				abs_path = parent.Embody.ext.Embody.buildAbsolutePath(rel_path)
 				if not abs_path.is_file():
 					parent.Embody.ext.Embody.Log(
 						f'Post-save restore: .tdn file missing: {rel_path}', 'WARNING')
 					continue
-				tdn_doc = parent.Embody.ext.TDN.tdn_load(
+				tdxn_doc = parent.Embody.ext.TDXN.tdxn_load(
 					abs_path.read_text(encoding='utf-8'))
-				# restore_tdn_shells=False: this restore loop imports every
-				# stripped TDN COMP itself -- Phase 8.6 would double-import
+				# restore_tdxn_shells=False: this restore loop imports every
+				# stripped TDXN COMP itself -- Phase 8.6 would double-import
 				# nested comps on every Ctrl+S.
-				parent.Embody.ext.TDN.ImportNetwork(
-					target_path=comp_path, tdn=tdn_doc, clear_first=True,
-					restore_file_links=True, restore_tdn_shells=False)
+				parent.Embody.ext.TDXN.ImportNetwork(
+					target_path=comp_path, tdn=tdxn_doc, clear_first=True,
+					restore_file_links=True, restore_tdxn_shells=False)
 			except Exception as e:
 				# print() as backup - Log may fail if extensions are reinitializing
 				print(f'Embody > Post-save restore failed for {comp_path}: {e}')
@@ -484,16 +548,23 @@ def onProjectPostSave():
 					pass
 				# Attempt rollback from backup .tdn
 				try:
-					backup_path = parent.Embody.ext.TDN._get_backup_path_instance(
+					# Finder, not the raw path builder: falls back to .bak2
+					# and to the legacy .tdn_backup/ dir, so an upgraded
+					# project keeps its recovery net.
+					backup_path = parent.Embody.ext.TDXN._find_existing_backup_instance(
 						str(abs_path))
-					if backup_path.is_file():
-						backup_tdn = parent.Embody.ext.TDN.tdn_load(
+					if backup_path is not None:
+						backup_tdxn = parent.Embody.ext.TDXN.tdxn_load(
 							backup_path.read_text(encoding='utf-8'))
-						parent.Embody.ext.TDN.ImportNetwork(
-							target_path=comp_path, tdn=backup_tdn,
+						parent.Embody.ext.TDXN.ImportNetwork(
+							target_path=comp_path, tdn=backup_tdxn,
 							clear_first=True, restore_file_links=True,
-							restore_tdn_shells=False)
-						print(f'Embody > Rolled back {comp_path} from backup')
+							restore_tdxn_shells=False)
+						# Name the file: the fallback chain can land on an
+						# older generation, and a silent revert to a stale
+						# network is its own data loss.
+						print(f'Embody > Rolled back {comp_path} from '
+							  f'{backup_path}')
 				except Exception as rb_e:
 					print(f'Embody > Rollback also failed for {comp_path}: {rb_e}')
 	# Restore pane owners that were orphaned during strip
@@ -562,7 +633,7 @@ def onProjectPostSave():
 	run(f"op('{parent.Embody}').par.Refresh.pulse()", delayFrames=1)
 
 	# Restart Envoy only if the save strip actually ran (Full mode with
-	# tracked TDN COMPs). The strip triggers an extension reinit that
+	# tracked TDXN COMPs). The strip triggers an extension reinit that
 	# signals Envoy's shutdown event -- the server thread exits and must
 	# be restarted. In Off/Export modes nothing is stripped, no reinit
 	# fires, and Envoy stays healthy -- don't tear down the MCP server

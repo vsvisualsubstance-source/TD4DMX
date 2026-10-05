@@ -6,105 +6,153 @@ description: "MUST READ before creating or designing custom parameters on any CO
 
 # Parameter Design
 
+## Ownership and Lifecycle
+
+**Code owns the schema; the user owns the value.** A parameter's name, style, page, range, default and help text are yours to declare and re-assert. Its VALUE is the user's, and nothing you write may quietly discard it.
+
+Extensions reinitialize on every source-file save, so **every creation path must be get-or-create**, never create-blindly:
+
+```python
+def ensureCustomPage(comp, name):
+    for page in comp.customPages:
+        if page.name == name:
+            return page
+    return comp.appendCustomPage(name)
+
+def ensureCustomPar(comp, page, name, style, **attrs):
+    """Get-or-create one custom par: the Par, or the ParGroup for a tuplet."""
+    # Probe the WHOLE COMP by tupletName. Names are a flat per-COMP namespace,
+    # and a multi-value style (RGB, XYZ) is stored as <name>r/<name>g/<name>b,
+    # so a probe by .name never finds it and append*() (replace=True) would
+    # re-create it on every reinit.
+    found = [p for p in comp.customPars if p.tupletName == name]
+    if not found:
+        getattr(page, 'append' + style)(name)
+        found = [p for p in comp.customPars if p.tupletName == name]
+    elif found[0].style not in STYLE_FAMILY.get(style, (style,)):
+        raise ValueError('par %s is %s, declared %s -- refusing to replace it'
+                         % (name, found[0].style, style))
+    for p in found:                          # symmetric: schema attrs re-applied
+        for key, value in attrs.items():     # on every reinit; the user's state
+            if key not in ('val', 'expr', 'bindExpr', 'mode', 'export'):
+                setattr(p, key, value)       # is never touched -- and a typo RAISES
+    return found[0] if len(found) == 1 else found[0].parGroup
+
+# TD reports a tuplet's style by family: RGB reads 'RGBA', XY/XYZ read 'XYZW'.
+STYLE_FAMILY = {'RGB': ('RGB', 'RGBA'), 'XY': ('XY', 'XYZW'), 'XYZ': ('XYZ', 'XYZW')}
+```
+
+Four rules that make it safe:
+
+- **Probe the whole COMP, not the page.** Custom parameter names are a flat per-COMP namespace, and `append*()` defaults to `replace=True`: a page-scoped probe will happily destroy a same-named par living on another page.
+- **Re-read after appending, by `tupletName`.** `append*()` returns a **ParGroup**, and a multi-value style is stored as component pars (`Tintr`/`Tintg`/`Tintb`) whose `tupletName` is the name you declared; `comp.par['Tint']` is `None`. Embody ships this exact helper as `op.Embody.op('embody_pardef').module.ensureCustomPar`.
+- **Never `destroy()` on style drift.** `Par.destroy()` takes the user's value, expressions and exports with it. Report the mismatch and refuse; removal is a separate, deliberate act.
+- **Apply declared attributes symmetrically.** If you set `min` when creating, set it when the par already exists too, or a schema change never reaches existing installs.
+
+## Parameter Callbacks
+
+**One dispatcher, not one promoted method per parameter.** A parexec DAT that grows an `elif par.name == ...` chain drags a public-tier method onto the COMP for every branch (the three tiers in `td-python.md`). Name the handler for its parameter and let the DAT find it:
+
+```python
+# the WHOLE onValueChange in the parexec DAT
+def onValueChange(par, prev):
+    ext = parent.MyComp.ext.MyExt
+    handler = getattr(ext, '_on%sValueChange' % par.name, None)
+    if handler is None:
+        return
+    try:
+        handler(par, prev)
+    except Exception as e:
+        parent.MyComp.Error('%s handler failed: %s' % (par.name, e))
+```
+
+```python
+# on the extension: tier 3, invisible on the COMP
+def _onSpeedValueChange(self, par, prev):
+    self.ownerComp.op('./timer1').par.speed = par.eval()
+
+def _onResetPulse(self, par):
+    self.rebuild()
+```
+
+- Audit once at init that every `_on*` handler matches a real parameter: a renamed par turns its handler into dead code that fails no test; the audit turns that into a warning.
+- Never swallow the exception silently: a handler that raises into nothing is indistinguishable from a parameter that does nothing.
+- Pulse handlers take `(par)`; value handlers take `(par, prev)`. The Parameter Execute DAT ships with `builtin` ON as well as `custom`: turn `builtin` off for a custom-parameter dispatcher (`/operator-gotchas`).
+
+## Parameter, Storage, or Dependency?
+
+Custom parameters are one of three ways to hold state on a COMP, and the choice is about lifetime, not taste:
+
+| The state is | Use | Lives on | Survives an extension reinit | Survives a tox reload / TDXN rebuild |
+|---|---|---|---|---|
+| User-facing, persisted, part of the COMP's interface | custom parameter | the COMP | yes | yes |
+| Durable bookkeeping the user should not see | `storage` (write through `store()`) | the COMP | yes | no (wiped) |
+| A derived value that must recook whatever reads it | `tdu.Dependency` | the extension instance | no (rebuild in `__init__`) | no |
+
+Publish once and let readers pull; never push a value into each consumer. `comp.storage[k] = v`, in-place mutation of a stored container, and a plain `self.attr` all update the value and notify nobody; `store()` and `dep.val = x` notify. `fetch()` without a default RAISES, `fetch()` searches UP the parents, `unstore()` is glob-matched, and a bind expression to a Dependency is two-way. The measured tables, the storage pickling rules and the Dependency traps are in `references/state-lifetimes.md` in this skill's folder (`get_guidance(topic='parameter-design/state-lifetimes')`).
+
 ## Help Text
 
-Every custom parameter MUST have `help` text set via `par.help = "..."`. Help text appears as a tooltip when users hover the parameter name in the dialog. Describe what the parameter controls and what its values mean.
+Every custom parameter MUST have `help` text set via `par.help = "..."`. It appears as the tooltip when users hover the parameter name. Describe what the parameter controls and what its values mean.
 
 - Good: `"Maximum number of rows displayed in the manager list. Set to 0 for unlimited."`
-- Bad: `"Max rows"` (just restates the label)
+- Bad: `"Max rows"` (restates the label)
 - Unacceptable: no help text at all
 
-In TDN files, include `"help": "..."` in the parameter definition. Embody exports and imports help text automatically.
+In TDXN files, `"help": "..."` rides in the parameter definition; Embody exports and imports it.
 
-## Section Breaks
+## Section Breaks, Ordering, Pages
 
-Use `par.startSection = True` on the first parameter of each logical group. This draws a horizontal separator line above the parameter, visually grouping related controls.
+- `par.startSection = True` on the first parameter of each logical group draws a separator above it (`"startSection": true` in TDXN).
+- Parameters appear in the order appended: primary controls first, secondary and advanced after, read-only status last. Reorder with `par.order` (floats such as `11.5` insert between neighbours).
+- Group into pages by function with `comp.appendCustomPage('PageName')` (creation order). Common pattern: Main or Settings, Tags, UI, About (read-only version, build, author).
 
-In TDN: `"startSection": true` in the parameter definition.
+## Naming and Styles
 
-## Parameter Ordering
-
-Parameters appear in the order they are appended. Keep related parameters together and maintain a logical flow within each page:
-
-1. Primary controls first (what users interact with most)
-2. Secondary/advanced settings after
-3. Read-only status/info parameters last
-
-If reordering after creation, use `par.order` (accepts float values like `11.5` to insert between existing positions).
-
-## Page Organization
-
-Group parameters into pages by function. Use `comp.appendCustomPage('PageName')` -- pages appear in creation order.
-
-Common patterns:
-
-| Page | Purpose |
-|------|---------|
-| Main / Settings | Primary configuration |
-| Tags | Externalization tags, strategies |
-| UI | Visual and display options |
-| About | Version, build, author (read-only) |
-
-## Naming
-
-- First letter MUST be uppercase, rest lowercase letters and numbers only
-- No underscores, spaces, or special characters
-- Examples: `Speed`, `Maxrows`, `Autosave`, `Envoyenable`
-
-## Style Selection
+Names start with one uppercase letter, then lowercase letters and digits only (`Speed`, `Maxrows`, `Autosave`, `Envoyenable`); no underscores, spaces or special characters.
 
 | Use case | Style | Notes |
-|----------|-------|-------|
+|---|---|---|
 | On/off toggle | `Toggle` | Values are `0`/`1` |
 | Fire-once action | `Pulse` | No persistent value |
 | Enumerated choices | `Menu` | Set `menuNames` and `menuLabels` separately |
-| Editable dropdown | `StrMenu` | Free-text input with suggestions |
-| Numeric value | `Float` or `Int` | Set range properties (see below) |
+| Editable dropdown | `StrMenu` | Free text with suggestions |
+| Numeric value | `Float` or `Int` | Set the range properties below |
 | Text input | `Str` | Free-form string |
-| File/folder path | `File` / `Folder` | Opens system dialog |
+| File or folder path | `File` / `Folder` | Opens a system dialog |
 | Operator reference | `OP`, `COMP`, `TOP`, `CHOP`, `SOP`, `DAT`, `MAT` | Filtered by family |
 | Section header | `Header` | Visual label only, no value |
 
-## Numeric Ranges
+## Numeric Ranges, Read-Only, Defaults
 
-For `Float` and `Int` parameters, configure the range:
+`min`/`max` are the limits, `clampMin`/`clampMax` decide whether they are enforced, `normMin`/`normMax` are what the slider covers visually:
 
-| Property | Purpose |
-|----------|---------|
-| `min` / `max` | Minimum and maximum values |
-| `clampMin` / `clampMax` | Whether to enforce min/max as hard limits (`True`) or allow values outside (`False`) |
-| `normMin` / `normMax` | Slider range in the UI (what the slider covers visually) |
-
-Example:
 ```python
 p = page.appendFloat('Speed', label='Speed')[0]
 p.default = 1.0
-p.min = 0.0
-p.max = 10.0
-p.clampMin = True
-p.clampMax = False    # Allow values above 10 via manual entry
-p.normMin = 0.0
-p.normMax = 5.0       # Slider covers 0-5, but values up to 10+ accepted
+p.min = 0.0; p.max = 10.0
+p.clampMin = True; p.clampMax = False    # values above 10 allowed by typing
+p.normMin = 0.0; p.normMax = 5.0         # slider covers 0-5
 p.help = "Playback speed multiplier. 1.0 = normal speed."
 ```
 
-## Read-Only Parameters
+- `par.readOnly = True` for status and informational parameters (version, build, connection state).
+- Always set `par.default`: it enables Revert to Default and keeps TDXN round-trips consistent. **`.default` never sets the value**: after `appendFloat` + `p.default = 5.0` the par still evaluates 0.0, and a later `min`/`clampMin` clamps it to the min, not the default (verified 2025.33230, issue #94). Set `p.val = p.default` on the CREATE branch of get-or-create only, so a user's value is never overwritten.
+- All `page.append*()` methods return a **ParGroup**: index with `[0]` for the Par.
 
-Use `par.readOnly = True` for status and informational parameters that users should see but not edit (version, build number, connection status).
+## Sequence Parameters
 
-## Defaults
+Resizable blocks (glslTOP uniforms, constantCHOP channels, mathmixPOP combines, custom sequences). Function Store's note on issue #94, "building sequence pars takes a bit more thinking than it should", is fair: three things are easy to get wrong.
 
-Always set `par.default = value`. This enables "Revert to Default" in the TD parameter dialog and ensures TDN round-trips produce consistent results.
-
-## Creating Custom Parameters
-
-All `page.append*()` methods return a **ParGroup** (tuple-like), not a single `Par`. Index with `[0]` to get the `Par` object:
+- **Reach the sequence, not the parameter.** `comp.seq.<name>` from the operator, or `par.sequence` from any block parameter. The individual parameters are named `<seq><index><par>` (`uniname0`, `uniname1`); never build those names by hand when the sequence object is there.
+- **`numBlocks` is the get-or-create.** Assigning it grows or shrinks in one step and is idempotent, which is what an extension that reinitializes on every save needs. `insertBlock(i)` / `destroyBlock(i)` only when position matters.
 
 ```python
-page = comp.appendCustomPage('Settings')
-pg = page.appendFloat('Speed', label='Speed')  # Returns ParGroup
-p = pg[0]                                        # Get the Par
-p.default = 1.0
-p.help = "Playback speed multiplier."
-p.startSection = True
+seq = comp.seq.uni
+seq.numBlocks = max(seq.numBlocks, len(uniforms))   # grow, never shrink blindly
+for i, u in enumerate(uniforms):
+    seq[i].par.uniname = u.name                     # block i, by index
 ```
+
+- **Shrinking destroys values.** `destroyBlock` or lowering `numBlocks` takes the block's values, expressions and exports with it, exactly like `Par.destroy()`. Code owns the block COUNT only where the count is genuinely derived; if the user can add blocks, grow to fit and leave the excess alone.
+- In Embody's TDXN, sequences are stored by BASE name (`sequences:` keyed by sequence name, blocks holding only non-default values under `uniname`, not `uniname0`); the default block count is probed from a throwaway instance, and blocks are created in import Phase 2.5 before Phase 3 sets parameters. Full detail: `docs/tdxn/specification.md`.

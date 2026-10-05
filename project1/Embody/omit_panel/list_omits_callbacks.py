@@ -1,7 +1,7 @@
 ﻿# Omit-panel exclusions list. Rows come from the panel's storage
 # ('omit_rows': [[op_path, label, par_name], ...] written by
-# EmbodyExt.RefreshOmitPanel); col 0 = label, col 1 = remove (×).
-# Clicking × removes that tdn_omit tag via OmitPanelRemove.
+# EmbodyExt.refreshOmitPanel); col 0 = label, col 1 = remove (×).
+# Clicking × removes that tdn_omit tag via omitPanelRemove.
 
 TEXT = (0.92, 0.92, 0.92, 1)
 MUTED = (0.60, 0.61, 0.60, 1)
@@ -53,5 +53,5 @@ def onSelect(comp, startRow, startCol, startCoords, endRow, endCol, endCoords, s
 	if endCol == 1:
 		r = rows[endRow]
 		kind = r[3] if len(r) > 3 else 'par'
-		parent.Embody.OmitPanelRemove(r[0], r[2], kind)
+		parent.Embody.ext.Embody.omitPanelRemove(r[0], r[2], kind)
 	return

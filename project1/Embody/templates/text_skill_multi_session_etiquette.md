@@ -7,7 +7,7 @@ description: "MUST READ when a _peers advisory appears or multiple AI sessions a
 # Multi-Session Etiquette
 
 
-Multiple AI sessions (Claude Code windows, other MCP clients) often work on
+Multiple AI sessions (several client windows, different MCP clients) often work on
 the same TouchDesigner project at once -- same live network, same
 externalized files, same git tree. Envoy coordinates them; this rule is how
 you cooperate.
@@ -105,7 +105,7 @@ of it until the diff lands. So coordinate by intent, not by touch records:
   in-flight edit is the worktree version of a blind overwrite.
   Run `preflight_landing(worktree_path)` FIRST -- it intersects the
   landing's files with main-tree dirt, peer file territory, and
-  unsaved live TDN state in one call; a `conflicts` verdict means
+  unsaved live TDXN state in one call; a `conflicts` verdict means
   reconcile before any file moves.
 - **Two sessions must never share one worktree** -- one writer per
   checkout, always. A second session starts its own

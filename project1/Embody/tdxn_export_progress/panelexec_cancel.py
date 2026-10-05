@@ -1,5 +1,5 @@
 # Cancel button for the chunked TDN export progress dialog.
 
 def onOffToOn(panelValue):
-	parent.Embody.ext.TDN.CancelExport()
+	parent.Embody.ext.TDXN.cancelExport()
 	return
