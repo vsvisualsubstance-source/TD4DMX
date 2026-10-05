@@ -71,7 +71,7 @@
     "ingresso": {
       "people": [],
       "objects": {},
-      "ambient_light": 1.7631935968238326,
+      "ambient_light": 2.0941124558508926,
       "darkness": true,
       "_temps": {
         "hue_temperature_sensor_4_temperatura": 18.93
@@ -163,18 +163,18 @@
       "name": "salotto",
       "persons_count": 2,
       "objects": {},
-      "lastUpdate": 1791205914003,
+      "lastUpdate": 1791206120807,
       "people": [],
       "main_user": null,
       "_mediapipe": true,
       "activity": "present",
-      "currentEmotion": "neutral",
+      "currentEmotion": null,
       "currentPose": "standing",
       "mediapipe": {
-        "emotion": "neutral",
+        "emotion": null,
         "pose": "standing",
-        "attention": "right",
-        "smile_score": 37,
+        "attention": "unknown",
+        "smile_score": 0,
         "mouth_open": false,
         "eyes_open": true,
         "gesture": null,
@@ -182,16 +182,16 @@
         "people": [
           {
             "id": 0,
-            "emotion": "neutral",
-            "smile_score": 37,
-            "attention": "right",
+            "emotion": null,
+            "smile_score": 0,
+            "attention": "unknown",
             "mouth_open": false,
             "eyes_open": true,
             "pose": "standing",
             "gestures": []
           }
         ],
-        "ts": 1791205914003
+        "ts": 1791206120807
       },
       "_touchdesigner": true,
       "lastTd": 1791031808919,
@@ -203,9 +203,9 @@
       "people": [],
       "persons_count": 0,
       "objects": {},
-      "lastUpdate": 1791205902613,
+      "lastUpdate": 1791206091618,
       "_touchdesigner": true,
-      "lastTd": 1791205902613,
+      "lastTd": 1791206091618,
       "dmxPaletteA": "Amber",
       "dmxPaletteB": "Deep Purple"
     },
@@ -217,5 +217,5 @@
       "_tccmActive": false
     }
   },
-  "ts": 1791205914468
+  "ts": 1791206121500
 }

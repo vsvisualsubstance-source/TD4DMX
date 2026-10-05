@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.22.toe
-exported_at: '2026-10-03T14:35:48Z'
+source_file: dmx.23.toe
+exported_at: '2026-10-05T13:14:57Z'
 network_path: /
 options:
   include_dat_content: false
@@ -566,6 +566,8 @@ flags:
 - display
 - render
 color: [0.67, 0.67, 0.67]
+tags:
+- tdxn
 operators:
 - name: window1
   type: windowCOMP
@@ -653,6 +655,7 @@ operators:
         label: Mocap Sender
         menuSource: op.Gaia.par.Opsdevice
         help: Gaia device sending mocap (same list as gaia_client Mocap). Empty = accept any sender. The sender must be enabled towards this TD from Admin (Mocap diretto).
+        value: minipc-core-node-0
       - name: Person
         style: Int
         label: Person ID
@@ -680,6 +683,7 @@ operators:
         - Indice sinistro
         - Indice destro
         help: Body point the heads follow (MediaPipe pose landmarks; left/right = the performer own side).
+        value: nose
       - name: Mirror
         style: Toggle
         label: Mirror X
@@ -826,6 +830,12 @@ operators:
       color: [0.9, 0.3, 0.4]
       tags:
       - py
+    - name: frame_cook
+      type: executeDAT
+      parameters:
+        framestart: true
+        file: project1/ptz/frame_cook.py
+      position: [800, -400]
     - name: ptz_callbacks
       type: parameterexecuteDAT
       parameters:
@@ -11670,6 +11680,11 @@ operators:
       position: [-2500, 500]
       tags:
       - tsv
+    - name: _defaults_workspace
+      type: baseCOMP
+      color: [0.325, 0.8, 0.3]
+      tags:
+      - tox
     - name: window_tagging_menu
       type: windowCOMP
       parameters:
@@ -12048,6 +12063,7 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
+        value: ptz
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -12281,7 +12297,7 @@ operators:
           menuSource: me.op('fixture_ui').module.palette_menu()
           help: 'Rigs only: palette of THIS light. ''(palette del rig)'' = follow the rig''s Palette (Look Rig tab); another name = this light uses that palette, with the rig''s speed, phase, dimmer and kick.'
           enableExpr: me.par.Fgroup.eval() != 'heads'
-          value: Red
+          value: Warm
         - name: Fport
           style: Menu
           label: Output Port
@@ -12667,7 +12683,7 @@ operators:
         label: Scan Status
         readOnly: true
         help: 'Read-only: result of the last scan (time, nodes, RDM capability).'
-        value: '2026-10-03 16:30:07: 0 nodi, 0 porte online, RDM: nessun nodo RDM'
+        value: '2026-10-05 11:32:48: 0 nodi, 0 porte online, RDM: nessun nodo RDM'
       Output:
       - name: Output
         style: Toggle
@@ -12739,7 +12755,7 @@ operators:
       type: tableDAT
       parameters:
         file: project1/dmx_patch/fixtures.tsv
-        rows: 5
+        rows: 7
         cols: 11
       position: [0, -1600]
       tags:
@@ -13294,17 +13310,17 @@ operators:
         style: StrMenu
         label: OPS Device ID
         menuNames:
-        - ops-silvermini2
+        - minipc-core-node-0
         menuLabels:
-        - ops-silvermini2 (soggiorno)
+        - minipc-core-node-0 (salotto)
         help: 'Device id of the Gaia OPS node whose mediapipe_node.py sends direct mocap OSC (/gaia/mocap/{Opsdevice}/pose|hand|face/{person}). Now a menu: suggestions are populated live from gaia/device/+/status senders currently reporting osc_landmarks=true (see Mocap Senders Available below) -- still free text, type a value not in the list if you know it''s correct but hasn''t been seen recently. Must match the ACTUAL sender exactly or Mocap Status will say ''listening'' with zero data arriving (found live 2026-09-29).'
-        value: ops-silvermini2
+        value: minipc-core-node-0
       - name: Mocapsenders
         style: Str
         label: Mocap Senders Available
         readOnly: true
         help: 'Read-only: device_id list of every Gaia device currently reporting osc_landmarks=true in its gaia/device/{id}/status heartbeat (same 30s-heartbeat freshness as Device Fleet Control''s devices_table -- a sender missing for 90s drops off this list). Populated regardless of the Device Fleet Control toggle above (most single-purpose mocap installs run with that off). Pick one of these for Opsdevice above; ''none seen recently'' means no Gaia device is currently advertising mocap capability on this broker.'
-        value: ops-silvermini2
+        value: minipc-core-node-0
       - name: Mocapport
         style: Int
         label: Mocap OSC Port
@@ -13330,7 +13346,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 16:35:47
+        value: gaia/td/canvas @ 15:14:56
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -13344,7 +13360,7 @@ operators:
         default: not probed
         readOnly: true
         help: Outcome of the last broker auto-discovery probe (only active when Beacon Discovery is enabled).
-        value: 'auto: 192.168.1.142 (beacon @ core-node-0, 16:35:47)'
+        value: 'auto: 192.168.1.142 (beacon @ core-node-0, 13:10:39)'
       - name: Mocapstatus
         style: Str
         label: Mocap Status
@@ -13357,7 +13373,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 320.1583333333
+      lastmsg_seconds: 13329.1083333333
     children:
     - name: soul
       type: outCHOP
@@ -13563,7 +13579,7 @@ operators:
       type: tableDAT
       parameters:
         file: gaia_client/devices_table.tsv
-        rows: 17
+        rows: 1
         cols: 7
       position: [800, -4200]
       tags:
@@ -14642,6 +14658,7 @@ operators:
         normMin: 1.0
         normMax: 16.0
         help: How many identical heads, addressed one after the other from Start Address (each takes the profile channel count).
+        value: 4
       - name: Startaddress
         style: Int
         label: Start Address
@@ -14653,6 +14670,7 @@ operators:
         normMin: 1.0
         normMax: 512.0
         help: DMX address of head 1 on the output port universe. Head n starts at Start Address + (n-1) x channels.
+        value: 140
       - name: Outputport
         style: StrMenu
         label: Output Port
@@ -15199,7 +15217,7 @@ operators:
     type: tableDAT
     parameters:
       file: project1/externalizations.tsv
-      rows: 377
+      rows: 379
       cols: 11
     position: [-200, 0]
     tags:

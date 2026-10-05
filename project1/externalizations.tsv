@@ -52,7 +52,7 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/gaia_client/beacon_probe_callbacks	text	py	gaia_client/beacon_probe_callbacks.py	2026-10-03 14:33:58 UTC				0	-4820	0.9000,0.3000,0.4000
 /project1/gaia_client/beacon_discovery	text	py	gaia_client/beacon_discovery.py	2026-10-03 14:33:58 UTC				400	-4700	0.9000,0.3000,0.4000
 /project1/gaia_client/agent_lifecycle	execute	py	gaia_client/agent_lifecycle.py	2026-10-03 14:33:58 UTC				800	-3200	0.9000,0.3000,0.4000
-/project1/gaia_client	base	tox	project1/gaia_client.tox	2026-10-05 13:07:13 UTC		98	2025.33230	670	-430	0.6700,0.6700,0.6700
+/project1/gaia_client	base	tox	project1/gaia_client.tox	2026-10-05 13:14:56 UTC		99	2025.33230	670	-430	0.6700,0.6700,0.6700
 /project1/dmx_patch/universe_build_callbacks	text	py	project1/dmx_patch/universe_build_callbacks.py	2026-10-03 14:33:58 UTC				800	-1320	0.9000,0.3000,0.4000
 /project1/dmx_patch/scan_logic	text	py	project1/dmx_patch/scan_logic.py	2026-10-03 14:33:58 UTC				400	0	0.9000,0.3000,0.4000
 /project1/dmx_patch/routing_callbacks	text	py	project1/dmx_patch/routing_callbacks.py	2026-10-03 14:33:58 UTC				800	-1720	0.9000,0.3000,0.4000
@@ -374,5 +374,6 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/Embody/Collection	base	tox	project1/Embody/Collection.tox	2026-10-03 14:35:31 UTC		4	2025.33230	200	-550	0.3250,0.8000,0.3000
 /project1/Embody/CatalogManagerExt	text	py	project1/Embody/CatalogManagerExt.py	2026-10-03 14:35:31 UTC				-2500	700	0.9000,0.3000,0.4000
 /project1/Embody	container	tox	project1/Embody.tox	2026-10-05 13:07:13 UTC		1236	2025.33230	-75	1425	0.3250,0.8000,0.3000
-/	base	tdxn	dmx.tdxn	2026-10-03 14:35:50 UTC			099.2025.33230	0	0	0.6700,0.6700,0.6700
+/	base	tdxn	dmx.tdxn	2026-10-05 13:14:58 UTC			099.2025.33230	0	0	0.6700,0.6700,0.6700
 /project1/ptz/frame_cook	execute	py	project1/ptz/frame_cook.py	2026-10-05 13:02:13 UTC				800	-400	0.9000,0.3000,0.4000
+/project1/Embody/_defaults_workspace	base	tox	project1/Embody/_defaults_workspace.tox	2026-10-05 13:14:56 UTC		1	2025.33230	0	0	0.3250,0.8000,0.3000
