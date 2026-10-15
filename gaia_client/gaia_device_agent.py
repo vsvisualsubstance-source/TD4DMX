@@ -85,7 +85,9 @@ import time
 # 1.2.1 = _self_check ignores gaia_client's own built-in params (Mocapingest/
 #         Opsdevice): with them registered the project registrar never ran
 #         (PatchDeck showed 0 services after upgrading to 1.2.0).
-SW_VERSION = "1.2.1"
+# 1.2.2 = status/profile "ip" routes toward the LAN Brokerhost, not 8.8.8.8:
+#         a multi-homed PC published its Wi-Fi IP instead of the Gaia LAN one.
+SW_VERSION = "1.2.2"
 
 _START_TS = time.time()
 _services = {}   # name -> {"start": fn, "stop": fn, "status": fn}
@@ -259,15 +261,39 @@ def _measured_fps():
 	return round(1.0 / avg_dt, 1) if avg_dt > 0 else None
 
 
-def _get_ip():
-	"""UDP 'connect' to a public address -- no packet actually sent, just
-	reads the local IP the OS routing table would use."""
+def _lan_route_target():
+	"""Brokerhost when it is a literal LAN IPv4 (not Tailscale 100.64/10),
+	else None. Literal only: a hostname would mean a blocking DNS lookup on
+	the main thread."""
 	try:
-		with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-			s.connect(("8.8.8.8", 80))
-			return s.getsockname()[0]
+		host = str(me.parent().par.Brokerhost.eval()).strip()
+		octets = [int(o) for o in host.split('.')]
 	except Exception:
-		return "unknown"
+		return None
+	if len(octets) != 4 or not all(0 <= o <= 255 for o in octets):
+		return None
+	if octets[0] == 100 and 64 <= octets[1] <= 127:
+		return None
+	return host
+
+
+def _get_ip():
+	"""UDP 'connect' -- no packet actually sent, just reads the local IP the
+	OS routing table would use. Routes toward the LAN broker first: on a
+	multi-homed PC (Gaia LAN without internet + Wi-Fi with internet) the
+	route to 8.8.8.8 picks the Wi-Fi, an address Gaia devices can't reach
+	(found live 2026-10-15: 192.168.86.x published instead of 192.168.1.x).
+	Falls back to the internet route when Brokerhost isn't a LAN IP."""
+	for target in (_lan_route_target(), "8.8.8.8"):
+		if not target:
+			continue
+		try:
+			with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+				s.connect((target, 80))
+				return s.getsockname()[0]
+		except Exception:
+			continue
+	return "unknown"
 
 
 def register_service(name, start=None, stop=None, status=None):
