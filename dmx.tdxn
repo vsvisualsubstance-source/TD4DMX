@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.27.toe
-exported_at: '2026-10-15T16:22:09Z'
+source_file: dmx.28.toe
+exported_at: '2026-10-15T17:59:39Z'
 network_path: /
 options:
   include_dat_content: false
@@ -13170,18 +13170,18 @@ operators:
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: chase 5 non implementato (teste/chase rinviati)
+        value: 'ignorato: teste mobili rinviate (/mh/pantilt)'
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /dmx/chase 5  @ 16:58:05
+        value: /mh/pantilt -0.021964 -0.0534395  @ 19:55:30
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 18
+        value: 53
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13481,7 +13481,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 18:22:08
+        value: gaia/brain/state @ 19:59:37
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -13508,7 +13508,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 16504.75
+      lastmsg_seconds: 22353.0083333333
     children:
     - name: soul
       type: outCHOP
@@ -13733,7 +13733,7 @@ operators:
       type: tableDAT
       parameters:
         file: gaia_client/devices_table.tsv
-        rows: 88
+        rows: 14
         cols: 7
       position: [800, -4200]
       tags:
@@ -14816,6 +14816,7 @@ operators:
         normMin: 1.0
         normMax: 16.0
         help: How many identical heads, addressed one after the other from Start Address (each takes the profile channel count).
+        value: 1
       - name: Startaddress
         style: Int
         label: Start Address
@@ -14827,6 +14828,7 @@ operators:
         normMin: 1.0
         normMax: 512.0
         help: DMX address of head 1 on the output port universe. Head n starts at Start Address + (n-1) x channels.
+        value: 100
       - name: Outputport
         style: StrMenu
         label: Output Port
@@ -15126,7 +15128,7 @@ operators:
       Fixture:
         $t: fixture
         Fixtureprofile: D+RGB 4CH
-        Nbars: 2
+        Nbars: 4
     position: [0, 50]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -15407,7 +15409,7 @@ operators:
       Fixture:
         $t: fixture
         Fixtureprofile: D+RGB 4CH
-        Nbars: 1
+        Nbars: 5
         Startaddress: 5
     position: [1025, 25]
     color: [0.325, 0.8, 0.3]
