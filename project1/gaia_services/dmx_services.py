@@ -95,6 +95,11 @@ dmx_<group>_level, _fan, _patch_enable. dmx_fixture_add/update/remove also
 accept the Plancia shape: string id (stored as uid), universe (1-based),
 group alias. dmx_matrix 'rigs' gains the created rigs, 'fixtures.groups'
 gains alias/kind.
+Also the raw Plancia fixture {id, type, name, group, universe, address, x, y,
+enabled}: type/ch are dropped, wall/speaker (no DMX) are skipped, and a group
+that does not exist yet is created from the type (par/bar -> chase rig,
+blinder/haze -> level rig; fixture_logic.PLANCIA_TYPES) in dmx_fixture_add and
+dmx_fixtures.
 """
 import json
 import time
@@ -221,18 +226,84 @@ def _refresh_registry():
 	run("op('%s').module.register_all()" % me.path, delayFrames=1)
 
 
+def _plancia_items(items):
+	"""Plancia-shape fixtures -> patch dicts; types without DMX dropped and
+	missing groups created (see _create_plancia_group). Returns (dicts,
+	groups created) so a failing caller can remove them again."""
+	fl = _fixtures()
+	out, created = [], []
+	try:
+		for raw in items:
+			d = fl.from_plancia(raw, missing_ok=True)
+			if d is None:
+				continue
+			if d.get('group') and fl.resolve_group(d['group']) is None:
+				created.append(_create_plancia_group(raw, d))
+			out.append(d)
+	except Exception:
+		_drop_groups(created)
+		raise
+	return out, created
+
+
+def _create_plancia_group(raw, d):
+	"""Create the group a Plancia fixture names, with one fixture at its
+	profile/port/address (the rigs need at least one unit). Returns the
+	group name; the fixture created is the group's only row."""
+	fl = _fixtures()
+	group, kind = d['group'], fl.plancia_group(raw)[1]
+	if kind is None:
+		raise ValueError('gruppo sconosciuto: %r (tipo %r non crea gruppi)' % (group, raw.get('type')))
+	return _groups().add_group(group, kind, profile=d.get('profile'), port_id=d.get('port_id'),
+		count=1, start=d.get('address'))
+
+
+def _drop_groups(groups):
+	for g in groups:
+		try:
+			_groups().remove_group(g)
+		except Exception as e:
+			debug('rollback gruppo %s: %s' % (g, e))
+
+
 def _register_fixtures(agent):
 	fl = _fixtures
-	agent.register_param('dmx_fixtures', get=lambda: fl().to_list(),
-		set=lambda v: fl().set_all([fl().from_plancia(d) for d in _json_arg(v)]))
+
+	def set_all(v):
+		items, created = _plancia_items(_json_arg(v))
+		try:
+			fl().set_all(items)
+		except Exception:
+			_drop_groups(created)
+			raise
+		if created:
+			_refresh_registry()
+
+	agent.register_param('dmx_fixtures', get=lambda: fl().to_list(), set=set_all)
 
 	def add(v):
-		d = fl().from_plancia(_json_arg(v))
-		fl().add_fixture(d.pop('group'), **d)
+		items, created = _plancia_items([_json_arg(v)])
+		if not items:
+			raise ValueError('fixture senza DMX (tipo %r): ignorata' % _json_arg(v).get('type'))
+		d = items[0]
+		if not created:
+			fl().add_fixture(d.pop('group'), **d)
+			return
+		# the new group already holds this fixture: give it the other fields
+		fid = fl().rows(created[0])[0]['id']
+		rest = {k: d[k] for k in ('name', 'x', 'y', 'enabled', 'palette', 'uid', 'unit') if k in d}
+		try:
+			if rest:
+				fl().update_fixture(fid, **rest)
+		except Exception:
+			_drop_groups(created)
+			raise
+		_refresh_registry()
 
 	def update(v):
 		d = dict(_json_arg(v))
 		fid = _fixture_ref(d.pop('id', None) if 'id' in d else d.pop('uid'))
+		d.pop('type', None)  # an update never moves a fixture to its type's group
 		fl().update_fixture(fid, **fl().from_plancia(d))
 
 	def auto(v):

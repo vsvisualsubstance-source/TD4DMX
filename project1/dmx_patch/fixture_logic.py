@@ -499,21 +499,56 @@ def port_for_universe(universe):
 	raise ValueError('universo U%s non disponibile: nessuna porta Art-Net con universe %d' % (universe, u))
 
 
-def from_plancia(d):
+# Plancia fixture types (gaia plancia/index.html FIX_TYPES) -> (group, kind of
+# the rig created when the group does not exist yet). None = no DMX (LED wall,
+# speaker): skipped. 'heads' is built in, never created here.
+PLANCIA_TYPES = {
+	'mh': ('mh', None),
+	'par': ('front', 'chase'),
+	'bar': ('ledbar', 'chase'),
+	'blinder': ('blinder', 'level'),
+	'haze': ('haze', 'level'),
+	'wall': None,
+	'speaker': None,
+}
+
+
+def plancia_group(d):
+	"""(group name, kind for creating it) a Plancia fixture asks for: its
+	`group`, else the group of its `type`. kind comes from the type; None
+	when it does not say, and then the group cannot be created."""
+	t = PLANCIA_TYPES.get(str(d.get('type') or '').strip())
+	group = str(d.get('group') or '').strip() or (t[0] if t else '')
+	kind = t[1] if t else None
+	return group, kind
+
+
+def from_plancia(d, missing_ok=False):
 	"""Normalise a Plancia-style fixture dict to this patch's fields: a
 	non-numeric `id` becomes `uid`, `universe` (1-based) becomes `port_id`,
-	`group` may be an alias. Our own fields pass through unchanged."""
+	`group` may be an alias or come from `type`, `enabled` becomes 0/1,
+	`type`/`ch` are dropped. Our own fields pass through unchanged.
+	Returns None for a type without DMX (LED wall, speaker). An unknown group
+	raises, unless missing_ok: then its name is kept as is (the caller
+	creates it, see plancia_group for the kind)."""
 	d = dict(d)
+	ftype = str(d.pop('type', '') or '').strip()
+	d.pop('ch', None)
+	if ftype in PLANCIA_TYPES and PLANCIA_TYPES[ftype] is None:
+		return None
 	if 'id' in d and not str(d['id']).strip().lstrip('-').isdigit():
 		d.setdefault('uid', str(d.pop('id')))
 	if 'universe' in d:
 		u = d.pop('universe')
 		d.setdefault('port_id', port_for_universe(u))
-	if 'group' in d:
-		g = resolve_group(d['group'])
-		if g is None:
-			raise ValueError('gruppo sconosciuto: %r' % d['group'])
-		d['group'] = g
+	if 'enabled' in d:
+		d['enabled'] = 0 if d['enabled'] in (False, 0, '0', 'false', 'False', '') else 1
+	if 'group' in d or ftype:
+		name, _kind = plancia_group(dict(d, type=ftype))
+		g = resolve_group(name)
+		if g is None and not missing_ok:
+			raise ValueError('gruppo sconosciuto: %r' % name)
+		d['group'] = g or name
 	return d
 
 
@@ -536,7 +571,7 @@ def dedupe_ids():
 	return changed
 
 
-def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name=None, x=None, y=None, palette='', uid=''):
+def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name=None, x=None, y=None, palette='', uid='', enabled=1):
 	"""Append a fixture; missing fields get sensible defaults (next unit,
 	group port, first free address). Returns the new id."""
 	uid = _check_uid(uid)
@@ -555,7 +590,7 @@ def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name
 		'unit': unit, 'profile': profile, 'port_id': port_id, 'address': address,
 		'x': x if x is not None else (max([f['x'] for f in fx]) + 1 if fx else 0.0),
 		'y': y if y is not None else (fx[-1]['y'] if fx else _default_y(group)),
-		'enabled': 1, 'palette': palette or '', 'uid': uid,
+		'enabled': 0 if enabled in (False, 0, '0') else 1, 'palette': palette or '', 'uid': uid,
 	})
 	t = table()
 	t.appendRow([''] * len(COLUMNS))
