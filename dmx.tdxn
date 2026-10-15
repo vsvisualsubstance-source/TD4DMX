@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.25.toe
-exported_at: '2026-10-15T13:43:14Z'
+source_file: dmx.27.toe
+exported_at: '2026-10-15T16:22:09Z'
 network_path: /
 options:
   include_dat_content: false
@@ -55,8 +55,6 @@ type_defaults:
     color: [0.67, 0.67, 0.67]
   constantTOP:
     parameters:
-      colorb: 0
-      colorg: 0
       resolutionh: 200
       resolutionw: 200
     flags:
@@ -131,6 +129,11 @@ type_defaults:
     color: [0.325, 0.8, 0.3]
     tags:
     - tox
+  oscinDAT:
+    parameters:
+      fromop: =parent()
+    size: [130, 90]
+    color: [0.67, 0.67, 0.67]
   outCHOP:
     parameters:
       autoexportroot: =parent()
@@ -221,6 +224,63 @@ type_defaults:
     tags:
     - tox
 par_templates:
+  fixture:
+  - clampMax: true
+    clampMin: true
+    default: 1
+    help: Livello del gruppo 0-1 (Plancia /dmx/group/<gruppo>, alias front/back). Applicato in dmx_patch/universe_build ai canali di intensita' dopo il motore, insieme a Master e Strobe. Non cambia Maxdimmer.
+    name: Level
+    startSection: true
+    style: Float
+  - default: ZQ006018 4CH RGBW
+    label: Fixture Profile
+    menuNames:
+    - ZQ006018 4CH RGBW
+    - ZQ006018 8CH
+    - RGB 3CH
+    - D+RGB 4CH
+    - D+RGBW 5CH
+    - RGBWA+UV 6CH
+    - D+RGBW+S+M 7CH
+    name: Fixtureprofile
+    style: StrMenu
+  - clampMin: true
+    default: 6
+    label: Numero Fixture
+    min: 1.0
+    name: Nbars
+    normMax: 64.0
+    normMin: 1.0
+    style: Int
+  - clampMin: true
+    default: 1
+    label: Start Address
+    min: 1.0
+    name: Startaddress
+    normMax: 512.0
+    normMin: 1.0
+    style: Int
+  - default: 2.2
+    label: Dimmer Gamma
+    name: Dimmergamma
+    normMax: 3.0
+    normMin: 1.0
+    style: Float
+  - label: Apply / Refresh Profiles
+    name: Applyfixture
+    style: Pulse
+  - default: 2.1.1.2:1
+    help: Art-Net node and DMX port this rig is sent to (list from dmx_patch Scan). The start address below is the DMX address on that port universe.
+    label: Output Port
+    menuSource: tdu.TableMenu(me.parent().op('dmx_patch/ports'), nameCol='port_id', labelCol='label')
+    name: Outputport
+    startSection: true
+    style: StrMenu
+  - default: true
+    help: Send this rig to DMX. Off = the rig keeps running but its channels are not written to any universe (e.g. a rig without real fixtures).
+    label: Patch Enable
+    name: Patchenable
+    style: Toggle
   bands:
   - clampMax: true
     clampMin: true
@@ -289,56 +349,6 @@ par_templates:
     name: Highgain
     normMax: 4.0
     style: Float
-  fixture:
-  - default: ZQ006018 4CH RGBW
-    label: Fixture Profile
-    menuNames:
-    - ZQ006018 4CH RGBW
-    - ZQ006018 8CH
-    - RGB 3CH
-    - D+RGB 4CH
-    - D+RGBW 5CH
-    - RGBWA+UV 6CH
-    - D+RGBW+S+M 7CH
-    name: Fixtureprofile
-    style: StrMenu
-  - clampMin: true
-    default: 6
-    label: Numero Fixture
-    min: 1.0
-    name: Nbars
-    normMax: 64.0
-    normMin: 1.0
-    style: Int
-  - clampMin: true
-    default: 1
-    label: Start Address
-    min: 1.0
-    name: Startaddress
-    normMax: 512.0
-    normMin: 1.0
-    style: Int
-  - default: 2.2
-    label: Dimmer Gamma
-    name: Dimmergamma
-    normMax: 3.0
-    normMin: 1.0
-    style: Float
-  - label: Apply / Refresh Profiles
-    name: Applyfixture
-    style: Pulse
-  - default: 2.1.1.2:1
-    help: Art-Net node and DMX port this rig is sent to (list from dmx_patch Scan). The start address below is the DMX address on that port universe.
-    label: Output Port
-    menuSource: tdu.TableMenu(me.parent().op('dmx_patch/ports'), nameCol='port_id', labelCol='label')
-    name: Outputport
-    startSection: true
-    style: StrMenu
-  - default: true
-    help: Send this rig to DMX. Off = the rig keeps running but its channels are not written to any universe (e.g. a rig without real fixtures).
-    label: Patch Enable
-    name: Patchenable
-    style: Toggle
   dmx_reactive:
   - default: a
     help: Which shared audio source drives this rig (audio_engine/source_a or source_b). Both rigs on A = one source; A and B = two different sources. Exposed to Gaia as dmx_<rig>_audio_source.
@@ -815,10 +825,7 @@ operators:
         port: =int(op.Gaia.par.Mocapport.eval())
         addscope: /gaia/mocap/*/pose/*
         callbacks: osc_mocap_callbacks
-        fromop: =parent()
         maxlines: 1
-      size: [130, 90]
-      color: [0.67, 0.67, 0.67]
       dat_read_only: true
     - name: ptz_logic
       type: textDAT
@@ -906,7 +913,7 @@ operators:
         clampMin: true
         normMax: 300.0
         help: 'Playhead position in seconds. Drag it to scrub: the state at that time is applied.'
-        value: 1.1804
+        value: 0.2
       - name: Rewind
         style: Pulse
         help: Back to 0 and re-apply everything.
@@ -959,7 +966,7 @@ operators:
         style: Str
         readOnly: true
         help: 'Read-only: transport, current cue, scene and fade progress.'
-        value: STOP 00:01.18  |  cue 1/1    -> TestScene1  (fade 28%)
+        value: STOP 00:00.20  |  cue 1/1    -> TestScene1  (fade 0%)
       - name: Message
         style: Str
         readOnly: true
@@ -12272,7 +12279,7 @@ operators:
           style: Str
           label: Name
           help: Free label shown on the plan and on the universe map.
-          value: Bar 1
+          value: Bar 2
         - name: Funit
           style: Int
           label: Unit
@@ -12296,7 +12303,6 @@ operators:
           menuSource: me.op('fixture_ui').module.palette_menu()
           help: 'Rigs only: palette of THIS light. ''(palette del rig)'' = follow the rig''s Palette (Look Rig tab); another name = this light uses that palette, with the rig''s speed, phase, dimmer and kick.'
           enableExpr: me.par.Fgroup.eval() != 'heads'
-          value: Red
         - name: Fport
           style: Menu
           label: Output Port
@@ -12314,12 +12320,14 @@ operators:
           normMin: 1.0
           normMax: 512.0
           help: DMX start address 1..512 on the output port. Overlaps with other fixtures turn red on the universe map.
+          value: 5
         - name: Fx
           style: Float
           label: Plan X
           normMin: -16.0
           normMax: 16.0
           help: Position on the stage plan, in grid cells (drag on the plan snaps to 0.5).
+          value: 1
         - name: Fy
           style: Float
           label: Plan Y
@@ -12694,9 +12702,32 @@ operators:
       - name: Blackout
         style: Toggle
         help: Send 0 on every patched channel (output stays connected).
+      - name: Master
+        style: Float
+        startSection: true
+        default: 1
+        clampMin: true
+        clampMax: true
+        help: 'Master generale 0-1 (Plancia /dmx/master): moltiplica i canali di intensita'' di tutti i gruppi.'
+      - name: Strobe
+        style: Toggle
+        help: 'Strobo generale (Plancia /dmx/strobe): i canali di intensita'' lampeggiano a Stroberate Hz.'
+      - name: Stroberate
+        style: Float
+        label: Strobe Rate
+        default: 8
+        min: 0.5
+        max: 25.0
+        clampMin: true
+        clampMax: true
+        normMin: 0.5
+        normMax: 20.0
+        help: Frequenza dello strobo generale in Hz (Plancia /dmx/strobe/rate). Acceso il 22% di ogni periodo.
+        value: 2
       - name: Rate
         style: Int
         label: Send Rate (Hz)
+        startSection: true
         default: 40
         min: 1.0
         max: 44.0
@@ -12730,6 +12761,7 @@ operators:
       parameters:
         file: project1/dmx_patch/groups.tsv
         rows: 4
+        cols: 6
       position: [0, -1400]
       tags:
       - tsv
@@ -12757,7 +12789,7 @@ operators:
       parameters:
         file: project1/dmx_patch/fixtures.tsv
         rows: 11
-        cols: 11
+        cols: 12
       position: [0, -1600]
       tags:
       - tsv
@@ -12768,6 +12800,17 @@ operators:
         syncfile: true
         language: python
       position: [400, 0]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
+    - name: group_logic
+      type: textDAT
+      parameters:
+        file: project1/dmx_patch/group_logic.py
+        syncfile: true
+        language: python
+      position: [400, -1800]
       size: [130, 90]
       color: [0.9, 0.3, 0.4]
       tags:
@@ -13097,6 +13140,94 @@ operators:
       position: [-70, -470]
       size: [300, 770]
       color: [0.85, 0.45, 0.2]
+  - name: plancia_in
+    type: baseCOMP
+    custom_pars:
+      Plancia:
+      - name: Active
+        style: Toggle
+        default: true
+        help: Ascolta la Plancia (canale 5, OSC /dmx/* e /show/*). Spento = OSC In inattivo, porta libera.
+      - name: Port
+        style: Int
+        default: 7020
+        min: 1024.0
+        max: 65535.0
+        clampMin: true
+        clampMax: true
+        normMin: 7000.0
+        normMax: 7100.0
+        help: 'Porta UDP dell''OSC In (contratto Plancia: 7020 fissa, un solo DMX Master). Un solo listener per porta nel processo.'
+      - name: Fade
+        style: Float
+        label: Scene Fade
+        clampMin: true
+        normMax: 10.0
+        help: Crossfade in secondi usato dal prossimo /dmx/scene (aggiornato da /dmx/fade).
+        value: 1.5
+      - name: Status
+        style: Str
+        startSection: true
+        readOnly: true
+        help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
+        value: chase 5 non implementato (teste/chase rinviati)
+      - name: Lastmessage
+        style: Str
+        label: Last Message
+        readOnly: true
+        help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
+        value: /dmx/chase 5  @ 16:58:05
+      - name: Messages
+        style: Int
+        readOnly: true
+        help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
+        value: 18
+    position: [1800, -430]
+    color: [0.325, 0.8, 0.3]
+    tags:
+    - tox
+    children:
+    - name: osc_plancia
+      type: oscinDAT
+      parameters:
+        active: =bool(parent().par.Active)
+        port: =int(parent().par.Port)
+        callbacks: osc_plancia_callbacks
+        maxlines: 20
+      dat_read_only: true
+    - name: plancia_logic
+      type: textDAT
+      parameters:
+        file: project1/plancia_in/plancia_logic.py
+        syncfile: true
+        language: python
+      position: [400, 0]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
+    - name: osc_plancia_callbacks
+      type: textDAT
+      parameters:
+        file: project1/plancia_in/osc_plancia_callbacks.py
+        syncfile: true
+        language: python
+      flags:
+      - viewer
+      position: [0, -120]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
+      dock: osc_plancia
+    annotations:
+    - name: annotate1
+      mode: annotate
+      title: Ricezione Plancia
+      text: 'osc_plancia (porta Port) → plancia_logic.on_osc: smista gli indirizzi, aggiorna Status/Lastmessage.'
+      position: [-70, -190]
+      size: [670, 450]
+      color: [0.45, 0.45, 0.45]
   - name: transform1
     type: transformTOP
     parameters:
@@ -13350,7 +13481,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/brain/state @ 15:43:13
+        value: gaia/td/canvas @ 18:22:08
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -13377,7 +13508,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 6974.1916666667
+      lastmsg_seconds: 16504.75
     children:
     - name: soul
       type: outCHOP
@@ -13602,7 +13733,7 @@ operators:
       type: tableDAT
       parameters:
         file: gaia_client/devices_table.tsv
-        rows: 2
+        rows: 88
         cols: 7
       position: [800, -4200]
       tags:
@@ -14986,7 +15117,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Warm
+        Palette: Amber
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -15144,6 +15275,8 @@ operators:
       type: constantTOP
       parameters:
         colorr: 0.7843137255
+        colorg: 0.461361015
+        colorb: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -15251,7 +15384,7 @@ operators:
     type: tableDAT
     parameters:
       file: project1/externalizations.tsv
-      rows: 378
+      rows: 382
       cols: 11
     position: [-200, 0]
     tags:
@@ -15263,7 +15396,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Warm
+        Palette: Deep Purple
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -15423,7 +15556,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.7700000239
+        colorr: 0.1811764762
+        colorg: 0
+        colorb: 0.3623529524
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -15570,3 +15705,10 @@ operators:
     position: [930, -2170]
     size: [300, 370]
     color: [0.3, 0.55, 0.8]
+  - name: annotate7
+    mode: annotate
+    title: Plancia → DMX (OSC 7020)
+    text: 'Canale 5 della Plancia: /dmx/*, /show/* → livelli gruppi, master, strobe, scene, cue.'
+    position: [1730, -500]
+    size: [300, 370]
+    color: [0.45, 0.45, 0.45]

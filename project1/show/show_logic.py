@@ -47,6 +47,7 @@ _last = {}        # (target, par) -> last value applied
 _force = [True]   # next tick applies everything
 _clock = {'secs': None}
 _cache = {}       # memoised table reads; cleared by invalidate()
+_xfade = {}       # live recall in progress: {frm, to, t0, dur} (see recall)
 
 
 def _memo(fn):
@@ -287,12 +288,61 @@ def delete_scene(name):
 
 
 def recall(name, fade=0.0):
-	"""Apply a scene now (live use). The timeline, if Active, takes over
-	again only for pars whose target changes afterwards."""
+	"""Apply a scene now (live use), crossfading over `fade` seconds from the
+	current live values (same rules as a cue: numbers interpolate, toggles/
+	menus/strings switch at half fade; tick() advances it). The timeline,
+	if Active, takes over again only for pars whose target changes
+	afterwards."""
 	vals = scene_values(name)
 	if not vals:
 		raise ValueError('scena %r vuota o inesistente' % name)
-	_apply(vals, force=True)
+	fade = max(0.0, _f(fade))
+	_xfade.clear()
+	if fade <= 0:
+		_apply(vals, force=True)
+		return
+	frm = {}
+	for k in vals:
+		p = _par(*k)
+		if p is not None:
+			frm[k] = _read(p)
+	_xfade.update(frm=frm, to=dict(vals), t0=absTime.seconds, dur=fade)
+
+
+def _xfade_step():
+	"""Advance a live recall crossfade (called every frame by tick)."""
+	if not _xfade:
+		return
+	x = min(1.0, (absTime.seconds - _xfade['t0']) / _xfade['dur'])
+	state = {}
+	for k, v in _xfade['to'].items():
+		a = _xfade['frm'].get(k)
+		if x < 1.0 and a is not None:
+			if isinstance(v, float) and isinstance(a, float):
+				v = a + (v - a) * x
+			elif x < 0.5:
+				v = a
+		state[k] = v
+	_apply(state, force=True)
+	if x >= 1.0:
+		_xfade.clear()
+
+
+def goto_cue(step):
+	"""Jump to the next (step=1) or previous (step=-1) cue of the timeline
+	from the current Time. With the timeline not Active the cue's scene is
+	recalled live with the cue's fade. Returns the cue."""
+	p = _show().par
+	idx, _cue, cs = cue_at(float(p.Time.eval()))
+	if not cs:
+		raise ValueError('nessun cue nella timeline')
+	j = max(0, min(len(cs) - 1, idx + int(step)))
+	c = cs[j]
+	p.Time = c['time']
+	force_apply()
+	if not p.Active.eval():
+		recall(c['scene'], c['fade'])
+	return c
 
 
 # ---------------------------------------------------------------- cues
@@ -508,6 +558,7 @@ def tick():
 	if p.Active.eval():
 		_apply(state_at(t), force=_force[0])
 		_force[0] = False
+	_xfade_step()
 	status = status_text(t)
 	if p.Status.eval() != status:
 		p.Status = status

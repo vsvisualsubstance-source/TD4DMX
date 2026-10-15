@@ -1,4 +1,4 @@
-group	comp	select	profiles
-rig_a	dmx_audio_chase	dmx_select	fixture_profiles
-rig_b	dmx_audio_chase_b	dmx_select	fixture_profiles
-heads	moving_heads	heads_dmx	head_profiles
+group	comp	select	profiles	alias	kind
+rig_a	dmx_audio_chase	dmx_select	fixture_profiles	front	chase
+rig_b	dmx_audio_chase_b	dmx_select	fixture_profiles	back	chase
+heads	moving_heads	heads_dmx	head_profiles	mh	heads

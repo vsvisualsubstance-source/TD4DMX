@@ -81,6 +81,20 @@ automation lanes, internal clock) as 'show_*':
             replace all; cue {time, scene, fade?, label?}, key {lane, time,
             value, interp?})
 dmx_matrix gains 'show' ({params, services, scenes, lanes}).
+
+2026-10-15: Plancia (gaia plancia/GAIA_PLANCIA_INTEGRATION.md, channel 1b).
+Groups carry an alias (rig_a = front, rig_b = back, heads = mh) and a kind;
+new groups are created at runtime by dmx_patch/group_logic:
+  dmx_group_add     w  {group, kind: chase|level, profile?, port_id? |
+                        universe?, count?, start?, alias?}
+  dmx_group_remove  w  group name or alias (built-in groups refused)
+Every rig gets dmx_<key>_level (0-1, the Plancia /dmx/group fader): key =
+a / b for the two built-in rigs, the group name for created ones. Created
+chase rigs get the full dmx_<group>_* set like a/b; level rigs get
+dmx_<group>_level, _fan, _patch_enable. dmx_fixture_add/update/remove also
+accept the Plancia shape: string id (stored as uid), universe (1-based),
+group alias. dmx_matrix 'rigs' gains the created rigs, 'fixtures.groups'
+gains alias/kind.
 """
 import json
 import time
@@ -91,6 +105,7 @@ RIGS = [
 ]
 
 FLOAT_PARAMS = [
+	('dmx_level', 'Level'),
 	('dmx_min_dimmer', 'Mindimmer'),
 	('dmx_max_dimmer', 'Maxdimmer'),
 	('dmx_dimmer_boost', 'Dimmerboost'),
@@ -179,29 +194,79 @@ def _patch_report():
 	return out
 
 
+def _groups():
+	"""group_logic module of dmx_patch (resolved at call time)."""
+	return _patch().op('group_logic').module
+
+
+def _created_rigs():
+	"""[(group, comp name, kind)] of the groups created at runtime
+	(dmx_group_add) -- the built-in rigs/heads are registered separately."""
+	builtin = {comp for _, comp in RIGS} | {'moving_heads'}
+	return [(g['group'], g['comp'], g.get('kind') or 'chase') for g in _fixtures().groups()
+		if g['comp'] not in builtin and (g.get('kind') or 'chase') in ('chase', 'level')]
+
+
+def _fixture_ref(v):
+	"""A fixture reference sent as id, uid or {"id": ...}."""
+	v = _json_arg(v) if isinstance(v, (bytes, str)) and str(v).strip()[:1] in '{["' else v
+	if isinstance(v, dict):
+		v = v.get('id', v.get('uid'))
+	return _fixtures().fixture_id(v)
+
+
+def _refresh_registry():
+	"""Re-register everything and republish the matrix a frame later (the
+	groups table has to cook first); also drops names of removed groups."""
+	run("op('%s').module.register_all()" % me.path, delayFrames=1)
+
+
 def _register_fixtures(agent):
 	fl = _fixtures
 	agent.register_param('dmx_fixtures', get=lambda: fl().to_list(),
-		set=lambda v: fl().set_all(_json_arg(v)))
+		set=lambda v: fl().set_all([fl().from_plancia(d) for d in _json_arg(v)]))
 
 	def add(v):
-		d = dict(_json_arg(v))
+		d = fl().from_plancia(_json_arg(v))
 		fl().add_fixture(d.pop('group'), **d)
 
 	def update(v):
 		d = dict(_json_arg(v))
-		fl().update_fixture(int(d.pop('id')), **d)
+		fid = _fixture_ref(d.pop('id', None) if 'id' in d else d.pop('uid'))
+		fl().update_fixture(fid, **fl().from_plancia(d))
 
 	def auto(v):
-		d = dict(_json_arg(v))
+		d = fl().from_plancia(_json_arg(v))
 		fl().auto_address(d['group'], int(d.get('start', 1)), d.get('port_id'))
+
+	def group_add(v):
+		d = dict(_json_arg(v))
+		if 'universe' in d:
+			d.setdefault('port_id', fl().port_for_universe(d.pop('universe')))
+		_groups().add_group(d.pop('group'), **d)
+		_refresh_registry()
+
+	def group_remove(v):
+		v = _json_arg(v) if isinstance(v, (bytes, str)) and str(v).strip()[:1] == '{' else v
+		if isinstance(v, dict):
+			v = v.get('group')
+		g = _groups().remove_group(str(v))
+		# unregister NOW: the status published right after this command
+		# would otherwise poll getters of a COMP that no longer exists
+		ag = op.Gaia.op('gaia_device_agent').module
+		for reg in (ag._params, ag._services):
+			for name in [n for n in reg if n.startswith('dmx_%s_' % g)]:
+				reg.pop(name, None)
+		_refresh_registry()
 
 	agent.register_param('dmx_fixture_add', get=lambda: None, set=add)
 	agent.register_param('dmx_fixture_update', get=lambda: None, set=update)
 	agent.register_param('dmx_fixture_remove', get=lambda: None,
-		set=lambda v: fl().remove_fixture(int(_json_arg(v))))
+		set=lambda v: fl().remove_fixture(_fixture_ref(v)))
 	agent.register_param('dmx_fixture_auto_address', get=lambda: None, set=auto)
 	agent.register_param('dmx_patch_report', get=_patch_report)
+	agent.register_param('dmx_group_add', get=lambda: None, set=group_add)
+	agent.register_param('dmx_group_remove', get=lambda: None, set=group_remove)
 
 
 def _show():
@@ -267,6 +332,8 @@ def _build_fixtures_matrix():
 	for g in fl.groups():
 		groups.append({
 			'group': g['group'],
+			'alias': g.get('alias') or '',
+			'kind': g.get('kind') or '',
 			'profiles': [{'name': n, 'channels': fl.profile_channels(g['group'], n)}
 				for n in fl.profile_names(g['group'])],
 			# per-fixture palette options ('' = the rig's palette); [] = none
@@ -279,8 +346,26 @@ def _build_fixtures_matrix():
 		'dmx_fixture_remove': {'kind': 'param', 'type': 'int', 'access': 'w'},
 		'dmx_fixture_auto_address': {'kind': 'param', 'type': 'json', 'access': 'w'},
 		'dmx_patch_report': {'kind': 'param', 'type': 'json', 'access': 'r'},
+		'dmx_group_add': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'dmx_group_remove': {'kind': 'param', 'type': 'str', 'access': 'w'},
 	}
-	return {'params': params, 'columns': list(fl.COLUMNS), 'groups': groups}
+	return {'params': params, 'columns': list(fl.COLUMNS), 'groups': groups,
+		'group_kinds': list(_groups().KINDS)}
+
+
+LEVEL_RIG_FLOATS = [('level', 'Level'), ('fan', 'Fan')]
+
+
+def _build_level_rig_matrix(group, comp_name):
+	rig = _rig(comp_name)
+	prefix = 'dmx_%s_' % group
+	params = {}
+	for suffix, par_name in LEVEL_RIG_FLOATS:
+		par = rig.par[par_name]
+		params[prefix + suffix] = {'kind': 'param', 'type': 'float',
+			'range': _numeric_range(par), 'default': float(par.default)}
+	services = {prefix + 'patch_enable': {'kind': 'service', 'type': 'bool'}}
+	return {'kind': 'level', 'params': params, 'services': services}
 
 
 # Moving heads (/project1/moving_heads): 'heads_*', one group per device.
@@ -669,6 +754,19 @@ def _build_matrix_for_rig(rig_name):
 	return {'params': params, 'services': services}
 
 
+def _build_rigs_matrix():
+	"""Built-in rigs keyed a / b (names dmx_<letter>_*), created rigs keyed
+	by group (dmx_<group>_*). Chase-rig entries keep the unprefixed names,
+	as before; level rigs list their full names."""
+	out = {letter: _build_matrix_for_rig(rig_name) for letter, rig_name in RIGS}
+	for group, comp_name, kind in _created_rigs():
+		if _rig(comp_name) is None:
+			continue
+		out[group] = _build_matrix_for_rig(comp_name) if kind == 'chase' \
+			else _build_level_rig_matrix(group, comp_name)
+	return out
+
+
 def publish_matrix():
 	"""Publishes the combined per-rig matrix on MQTT, retained -- survives
 	device reconnects, stays on the broker until overwritten by a future
@@ -682,7 +780,7 @@ def publish_matrix():
 	family = (cfg_op.par.Family.eval() if cfg_op else '') or 'dmx'
 	payload = {
 		'device_id': device_id,
-		'rigs': {letter: _build_matrix_for_rig(rig_name) for letter, rig_name in RIGS},
+		'rigs': _build_rigs_matrix(),
 		'audio': _build_audio_matrix(),
 		'patch': _build_patch_matrix(),
 		'heads': _build_heads_matrix(),
@@ -697,10 +795,40 @@ def publish_matrix():
 	return True
 
 
+def _register_level_rig(agent, group, rig_name):
+	prefix = 'dmx_%s_' % group
+	for suffix, par_name in LEVEL_RIG_FLOATS:
+		_register_value(agent, prefix + suffix, rig_name, par_name, float)
+	agent.register_service(
+		prefix + 'patch_enable',
+		start=lambda rn=rig_name: setattr(_rig(rn).par, 'Patchenable', 1),
+		stop=lambda rn=rig_name: setattr(_rig(rn).par, 'Patchenable', 0),
+		status=lambda rn=rig_name: bool(_rig(rn).par.Patchenable.eval()))
+
+
+def _drop_stale_rig_names(agent, live_keys):
+	"""Unregister dmx_<key>_* of rigs that no longer exist (removed groups)."""
+	fixed = ('dmx_fixture', 'dmx_fixtures', 'dmx_patch_report', 'dmx_group_',
+		'dmx_scan', 'dmx_output', 'dmx_blackout')
+	for reg in (agent._params, agent._services):
+		for name in list(reg):
+			if not name.startswith('dmx_') or name.startswith(fixed):
+				continue
+			if not any(name.startswith('dmx_%s_' % k) for k in live_keys):
+				reg.pop(name, None)
+
+
 def register_all():
 	agent = op.Gaia.op('gaia_device_agent').module
 
-	for letter, rig_name in RIGS:
+	created = [(g, c, k) for g, c, k in _created_rigs() if _rig(c) is not None]
+	chase_rigs = list(RIGS) + [(g, c) for g, c, k in created if k == 'chase']
+	for g, c, k in created:
+		if k == 'level':
+			_register_level_rig(agent, g, c)
+	_drop_stale_rig_names(agent, [key for key, _ in RIGS] + [g for g, _, _ in created])
+
+	for letter, rig_name in chase_rigs:
 		prefix = 'dmx_%s_' % letter
 
 		for name, par_name in FLOAT_PARAMS:

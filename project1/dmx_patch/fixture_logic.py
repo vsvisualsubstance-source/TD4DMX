@@ -15,6 +15,12 @@ source of truth: one row per physical light.
   palette  rigs only: palette of THIS light (a name of the rig's Palette
            menu, 'Custom' = the rig's custom colours); empty = the rig's
            palette. Speed, phase, dimmer and kick stay the rig's.
+  uid      optional string id chosen by an external designer (Plancia,
+           "mh-01"); unique when set. Commands may name a fixture by id
+           or by uid.
+
+Groups may carry an `alias` (groups table): the Plancia name of the group
+(rig_a = front, rig_b = back, heads = mh). resolve_group() accepts both.
 
 Mixed profiles: each unit is generated with the profile of its fixture, so a
 group can mix 4CH and 8CH bars (or different heads).
@@ -32,7 +38,7 @@ Called from: dmx_patch (patch_report, lifecycle), the rig/heads generators and
 par callbacks, the config UI and gaia_services (dmx_fixtures param).
 """
 
-COLUMNS = ['id', 'name', 'group', 'unit', 'profile', 'port_id', 'address', 'x', 'y', 'enabled', 'palette']
+COLUMNS = ['id', 'name', 'group', 'unit', 'profile', 'port_id', 'address', 'x', 'y', 'enabled', 'palette', 'uid']
 
 # per group kind: names of the quick-patch pars on the group COMP
 _COUNT_PARS = ('Nbars', 'Count')
@@ -74,6 +80,16 @@ def group_info(group):
 	for g in groups():
 		if g['group'] == group:
 			return g
+	return None
+
+
+def resolve_group(name):
+	"""Group name for a group name or its alias (front -> rig_a); None if
+	neither exists."""
+	name = str(name or '').strip()
+	for g in groups():
+		if g['group'] == name or (g.get('alias') or '') == name:
+			return g['group']
 	return None
 
 
@@ -161,6 +177,7 @@ def rows(group=None):
 		d['y'] = _float(d['y'])
 		d['enabled'] = 1 if _int(d['enabled'], 1) else 0
 		d['palette'] = d['palette'].strip()
+		d['uid'] = d['uid'].strip()
 		out.append(d)
 	return out
 
@@ -287,7 +304,14 @@ def _write(t, r, d):
 
 
 def _label(group, unit):
-	return '%s %d' % ('Head' if group == 'heads' else 'Bar', unit)
+	kind = (group_info(group) or {}).get('kind') or ''
+	if group == 'heads' or kind == 'heads':
+		word = 'Head'
+	elif kind == 'level':
+		word = str(group).replace('_', ' ').capitalize()
+	else:
+		word = 'Bar'
+	return '%s %d' % (word, unit)
 
 
 def _default_y(group):
@@ -314,11 +338,13 @@ def quick_patch(comp):
 	existing = {}
 	for f in rows(group):
 		existing.setdefault(f['unit'], f)
+	# next id BEFORE dropping the group's rows: computed after, it reused the
+	# dropped ids and collided with the kept units (rig_b had four id 15)
+	nid = _next_id()
 	# drop the group's rows, then rewrite them unit by unit
 	for r in range(t.numRows - 1, 0, -1):
 		if t[r, 'group'].val == group:
 			t.deleteRow(r)
-	nid = _next_id()
 	for i in range(n):
 		u = i + 1
 		old = existing.get(u)
@@ -435,9 +461,85 @@ def next_free_address(port_id, nch, exclude_id=None):
 	return a if a + nch - 1 <= 512 else None
 
 
-def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name=None, x=None, y=None, palette=''):
+def fixture_id(ref):
+	"""Numeric id of a fixture named by id (int or digit string) or by uid;
+	raises ValueError if no fixture matches."""
+	s = str(ref).strip()
+	if s.lstrip('-').isdigit():
+		if _row_index(int(s)) is not None:
+			return int(s)
+	else:
+		for f in rows():
+			if f['uid'] == s:
+				return f['id']
+	raise ValueError('fixture %r non trovata' % ref)
+
+
+def _check_uid(uid, own_id=None):
+	uid = str(uid or '').strip()
+	if not uid:
+		return ''
+	if uid.lstrip('-').isdigit():
+		raise ValueError('uid %r: deve contenere almeno una lettera (i numeri sono gli id)' % uid)
+	for f in rows():
+		if f['uid'] == uid and f['id'] != own_id:
+			raise ValueError('uid %r gia\' usato dalla fixture %d' % (uid, f['id']))
+	return uid
+
+
+def port_for_universe(universe):
+	"""port_id of a Plancia universe (1-based, U1 = Art-Net universe 0 of the
+	ports table); raises ValueError when no scanned port carries it."""
+	u = _int(universe, 0) - 1
+	ports = _patch().op('ports')
+	for r in range(1, ports.numRows if ports is not None else 0):
+		if _int(ports[r, 'universe'].val, -1) == u and _int(ports[r, 'net'].val) == 0 \
+				and _int(ports[r, 'subnet'].val) == 0:
+			return ports[r, 'port_id'].val
+	raise ValueError('universo U%s non disponibile: nessuna porta Art-Net con universe %d' % (universe, u))
+
+
+def from_plancia(d):
+	"""Normalise a Plancia-style fixture dict to this patch's fields: a
+	non-numeric `id` becomes `uid`, `universe` (1-based) becomes `port_id`,
+	`group` may be an alias. Our own fields pass through unchanged."""
+	d = dict(d)
+	if 'id' in d and not str(d['id']).strip().lstrip('-').isdigit():
+		d.setdefault('uid', str(d.pop('id')))
+	if 'universe' in d:
+		u = d.pop('universe')
+		d.setdefault('port_id', port_for_universe(u))
+	if 'group' in d:
+		g = resolve_group(d['group'])
+		if g is None:
+			raise ValueError('gruppo sconosciuto: %r' % d['group'])
+		d['group'] = g
+	return d
+
+
+def dedupe_ids():
+	"""Give a fresh id to every row whose id repeats an earlier row's (keeps
+	the first occurrence). Returns [(row, old id, new id)]."""
+	t = table()
+	seen = set()
+	nid = _next_id()
+	changed = []
+	for r in range(1, t.numRows):
+		fid = _int(t[r, 'id'].val)
+		if fid in seen or fid <= 0:
+			t[r, 'id'] = nid
+			changed.append((r, fid, nid))
+			seen.add(nid)
+			nid += 1
+		else:
+			seen.add(fid)
+	return changed
+
+
+def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name=None, x=None, y=None, palette='', uid=''):
 	"""Append a fixture; missing fields get sensible defaults (next unit,
 	group port, first free address). Returns the new id."""
+	uid = _check_uid(uid)
 	fx = rows(group)
 	comp = group_comp(group)
 	profile = profile or (fx[-1]['profile'] if fx else default_profile(group))
@@ -453,7 +555,7 @@ def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name
 		'unit': unit, 'profile': profile, 'port_id': port_id, 'address': address,
 		'x': x if x is not None else (max([f['x'] for f in fx]) + 1 if fx else 0.0),
 		'y': y if y is not None else (fx[-1]['y'] if fx else _default_y(group)),
-		'enabled': 1, 'palette': palette or '',
+		'enabled': 1, 'palette': palette or '', 'uid': uid,
 	})
 	t = table()
 	t.appendRow([''] * len(COLUMNS))
@@ -469,6 +571,8 @@ def update_fixture(fid, **fields):
 	t = table()
 	cur = {c: t[r, c].val for c in COLUMNS}
 	fields.pop('id', None)
+	if 'uid' in fields:
+		fields['uid'] = _check_uid(fields['uid'], own_id=_int(cur['id']))
 	d = _check(dict(cur, **fields))
 	_write(t, r, {k: d[k] for k in fields if k in COLUMNS})
 	for g in {cur['group'], d['group']}:
@@ -528,6 +632,9 @@ def set_all(items):
 		d.setdefault('name', _label(d.get('group'), _int(d['unit'], 1)))
 		d.setdefault('port_id', '')
 		d.setdefault('palette', '')
+		d['uid'] = str(d.get('uid') or '').strip()
+		if d['uid'] and d['uid'] in {c['uid'] for c in clean}:
+			raise ValueError('uid %r ripetuto' % d['uid'])
 		clean.append(_check(d))
 	t = table()
 	t.clear()
