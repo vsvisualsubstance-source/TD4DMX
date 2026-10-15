@@ -87,7 +87,8 @@ import time
 #         (PatchDeck showed 0 services after upgrading to 1.2.0).
 # 1.2.2 = status/profile "ip" routes toward the LAN Brokerhost, not 8.8.8.8:
 #         a multi-homed PC published its Wi-Fi IP instead of the Gaia LAN one.
-SW_VERSION = "1.2.2"
+# 1.2.3 = status publishes mocap_port (= Mocapport): per-instance mocap port.
+SW_VERSION = "1.2.3"
 
 _START_TS = time.time()
 _services = {}   # name -> {"start": fn, "stop": fn, "status": fn}
@@ -427,11 +428,16 @@ def _read_config():
 			return default
 
 	default_id = f"td-{project.name.removesuffix('.toe')}-{_project_key()}"
+	try:
+		mocap_port = int(par("Mocapport", 0)) or None
+	except (TypeError, ValueError):
+		mocap_port = None
 	return {
-		"device_id": par("Deviceid", default_id),
-		"stanza":    par("Stanza", "unknown"),
-		"name":      par("Name", project.name),
-		"family":    par("Family", "").strip().lower(),
+		"device_id":  par("Deviceid", default_id),
+		"stanza":     par("Stanza", "unknown"),
+		"name":       par("Name", project.name),
+		"family":     par("Family", "").strip().lower(),
+		"mocap_port": mocap_port,
 	}
 
 
@@ -492,6 +498,12 @@ def _publish_status():
 		"dropped_frames": _perf_dropped_window,
 		"ts":             int(time.time() * 1000),
 	}
+	# mocap_port (gaia 81ba289, 2026-10-15): mediapipe's _MocapTargetRegistry
+	# sends direct mocap to this port instead of its shared 7010 default, so
+	# several TD instances on one machine can each listen on their own.
+	# Mocapport must be the port this project's mocap OSC In actually binds.
+	if cfg["mocap_port"]:
+		payload["mocap_port"] = cfg["mocap_port"]
 	dat.publish(f"gaia/device/{cfg['device_id']}/status", json.dumps(payload).encode('utf-8'), retain=True)
 	_publish_profile(dat, cfg)
 	_perf_dropped_window = 0
