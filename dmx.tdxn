@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.28.toe
-exported_at: '2026-10-15T17:59:39Z'
+source_file: dmx.29.toe
+exported_at: '2026-10-15T18:13:27Z'
 network_path: /
 options:
   include_dat_content: false
@@ -55,6 +55,8 @@ type_defaults:
     color: [0.67, 0.67, 0.67]
   constantTOP:
     parameters:
+      colorb: 0
+      colorg: 0
       resolutionh: 200
       resolutionw: 200
     flags:
@@ -13481,7 +13483,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/brain/state @ 19:59:37
+        value: gaia/td/canvas @ 20:13:27
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -13508,7 +13510,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 22353.0083333333
+      lastmsg_seconds: 23182.3166666667
     children:
     - name: soul
       type: outCHOP
@@ -13733,7 +13735,7 @@ operators:
       type: tableDAT
       parameters:
         file: gaia_client/devices_table.tsv
-        rows: 14
+        rows: 1
         cols: 7
       position: [800, -4200]
       tags:
@@ -15119,7 +15121,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Amber
+        Palette: Basic
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -15277,8 +15279,6 @@ operators:
       type: constantTOP
       parameters:
         colorr: 0.7843137255
-        colorg: 0.461361015
-        colorb: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -15398,7 +15398,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Deep Purple
+        Palette: Basic
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -15558,9 +15558,7 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.1811764762
-        colorg: 0
-        colorb: 0.3623529524
+        colorr: 0.7700000239
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
