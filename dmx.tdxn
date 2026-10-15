@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.23.toe
-exported_at: '2026-10-05T13:14:57Z'
+source_file: dmx.25.toe
+exported_at: '2026-10-15T13:43:14Z'
 network_path: /
 options:
   include_dat_content: false
@@ -55,6 +55,7 @@ type_defaults:
     color: [0.67, 0.67, 0.67]
   constantTOP:
     parameters:
+      colorb: 0
       colorg: 0
       resolutionh: 200
       resolutionw: 200
@@ -655,7 +656,7 @@ operators:
         label: Mocap Sender
         menuSource: op.Gaia.par.Opsdevice
         help: Gaia device sending mocap (same list as gaia_client Mocap). Empty = accept any sender. The sender must be enabled towards this TD from Admin (Mocap diretto).
-        value: minipc-core-node-0
+        value: ops-silvermini2
       - name: Person
         style: Int
         label: Person ID
@@ -11682,9 +11683,7 @@ operators:
       - tsv
     - name: _defaults_workspace
       type: baseCOMP
-      color: [0.325, 0.8, 0.3]
-      tags:
-      - tox
+      color: [0.67, 0.67, 0.67]
     - name: window_tagging_menu
       type: windowCOMP
       parameters:
@@ -12297,7 +12296,7 @@ operators:
           menuSource: me.op('fixture_ui').module.palette_menu()
           help: 'Rigs only: palette of THIS light. ''(palette del rig)'' = follow the rig''s Palette (Look Rig tab); another name = this light uses that palette, with the rig''s speed, phase, dimmer and kick.'
           enableExpr: me.par.Fgroup.eval() != 'heads'
-          value: Warm
+          value: Red
         - name: Fport
           style: Menu
           label: Output Port
@@ -12644,7 +12643,9 @@ operators:
       syncfile: true
       language: python
       wordwrap: 'on'
-    position: [1200, -1200]
+    flags:
+    - viewer
+    position: [1250, -1100]
     size: [130, 90]
     color: [0.9, 0.3, 0.4]
     tags:
@@ -12683,7 +12684,7 @@ operators:
         label: Scan Status
         readOnly: true
         help: 'Read-only: result of the last scan (time, nodes, RDM capability).'
-        value: '2026-10-05 11:32:48: 0 nodi, 0 porte online, RDM: nessun nodo RDM'
+        value: '2026-10-15 13:47:00: 0 nodi, 0 porte online, RDM: nessun nodo RDM'
       Output:
       - name: Output
         style: Toggle
@@ -12755,7 +12756,7 @@ operators:
       type: tableDAT
       parameters:
         file: project1/dmx_patch/fixtures.tsv
-        rows: 7
+        rows: 11
         cols: 11
       position: [0, -1600]
       tags:
@@ -13244,16 +13245,19 @@ operators:
         startSection: true
         default: 192.168.1.142
         help: MQTT broker IP address for Gaia's LAN broker (mosquitto). Not localhost -- point this at the actual Gaia broker host for the deployment.
+        value: 192.168.1.240
       - name: Brokerport
         style: Int
         label: Broker Port
         default: 1883
         help: MQTT broker TCP port. Standard unencrypted MQTT port is 1883.
+        value: 11883
       - name: Tailscalehost
         style: Str
         label: Tailscale Host
         default: core-node-0.tail62079e.ts.net
         help: 'Optional fallback broker host (Tailscale hostname or IP) used ONLY when the LAN is unreachable: neither mqtt_ingest nor mqtt_device is connected AND no beacon reply has been heard for ~90s. Beacon Discovery''s LAN self-correction always stays primary -- this never overrides a reachable LAN broker, and does nothing (stays disconnected, never blocks) if left blank. GAIA_INTERFACE.md section 3 (Gaia Agent Universale, 2026-08-29).'
+        value: ''
       - name: Deviceid
         style: Str
         label: Device ID
@@ -13264,13 +13268,13 @@ operators:
         style: Str
         label: Room
         help: 'Room/zone this TD instance claims in Gaia''s roomGraph (room_claim on announce). Leave blank if not tied to a specific physical room. Rooms Gaia''s room graph currently recognizes: soggiorno, salotto, cucina, ingresso, corridoio, studio (touring installs have their own, e.g. palazzo-ducale) -- a name outside that set is harmless but won''t connect to anything on the Gaia side.'
-        value: ConsolleDmx
+        value: soggiorno
       - name: Name
         style: Str
         label: Display Name
         default: GaiaClient
         help: Human-readable display name shown in Gaia's Pi Manager/device list.
-        value: DMXRIG
+        value: DMXMaster
       - name: Family
         style: Str
         help: Gaia project family -- declares WHICH TD PROJECT this instance belongs to (e.g. 'dmx', 'patchdeck', 'gaia'), shared by every instance of that project. Distinct from Deviceid, which identifies the individual instance -- Deviceid distinguishes the instance, Family distinguishes the project. Feeds the channel-5 matrix topic name (gaia/devices/{id}/{family}_matrix, built in the project-specific services script, not gaia_client itself) and is included in the status/profile MQTT payloads so Gaia-side consumers (Admin, watchdog) can group/filter by project without hand-maintained device_id lists or regexes. Always lowercase (GAIA_INTERFACE.md section 1b) -- gaia_device_agent.py normalizes it automatically, but type it lowercase so what you see here matches what gets published. Leave blank only if this instance intentionally has no channel-5 matrix to publish.
@@ -13304,28 +13308,28 @@ operators:
         style: Toggle
         label: Broker Auto-Discovery (Beacon)
         help: 'Enable UDP broker self-correction: every 30s, probes whatever Brokerhost is currently set to on port 8899 with ''GAIA_DISCOVER''; if it answers as service==''gaia-core'', Brokerhost is corrected to the reported mqtt_host. Does nothing if that host doesn''t answer (no blind network-wide discovery -- verify a gaia_beacon responder exists on this deployment''s Gaia Core before enabling). Off by default so a deliberately-set Brokerhost is never silently overwritten.'
-        value: true
       Mocap:
       - name: Opsdevice
         style: StrMenu
         label: OPS Device ID
         menuNames:
-        - minipc-core-node-0
+        - ops-silvermini2
         menuLabels:
-        - minipc-core-node-0 (salotto)
+        - ops-silvermini2 (soggiorno)
         help: 'Device id of the Gaia OPS node whose mediapipe_node.py sends direct mocap OSC (/gaia/mocap/{Opsdevice}/pose|hand|face/{person}). Now a menu: suggestions are populated live from gaia/device/+/status senders currently reporting osc_landmarks=true (see Mocap Senders Available below) -- still free text, type a value not in the list if you know it''s correct but hasn''t been seen recently. Must match the ACTUAL sender exactly or Mocap Status will say ''listening'' with zero data arriving (found live 2026-09-29).'
-        value: minipc-core-node-0
+        value: ops-silvermini2
       - name: Mocapsenders
         style: Str
         label: Mocap Senders Available
         readOnly: true
         help: 'Read-only: device_id list of every Gaia device currently reporting osc_landmarks=true in its gaia/device/{id}/status heartbeat (same 30s-heartbeat freshness as Device Fleet Control''s devices_table -- a sender missing for 90s drops off this list). Populated regardless of the Device Fleet Control toggle above (most single-purpose mocap installs run with that off). Pick one of these for Opsdevice above; ''none seen recently'' means no Gaia device is currently advertising mocap capability on this broker.'
-        value: minipc-core-node-0
+        value: ops-silvermini2
       - name: Mocapport
         style: Int
         label: Mocap OSC Port
         default: 7010
         help: 'UDP port oscin_mocap listens on for direct mocap OSC. Default 7010 (changed from 7000 on 2026-09-29 to stay clear of a host project''s own channel-1-style OSC In, which often defaults to 7000 too). Guarded: mocap_lifecycle.py bind-tests this port before activating -- if something OUTSIDE this TD process already holds it, ingest stays off and Mocapstatus (Status page) says why. Running multiple gaia_client instances in one project (e.g. one per rig) CAN share one Mocapport -- TD shares a port between its own operators with no error -- but give each instance a distinct Opsdevice or the OSC scope filtering does more redundant work than it needs to; a distinct Mocapport per instance avoids that entirely.'
+        value: 7011
       Status:
       - name: Identitystatus
         style: Str
@@ -13346,7 +13350,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 15:14:56
+        value: gaia/brain/state @ 15:43:13
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -13360,7 +13364,7 @@ operators:
         default: not probed
         readOnly: true
         help: Outcome of the last broker auto-discovery probe (only active when Beacon Discovery is enabled).
-        value: 'auto: 192.168.1.142 (beacon @ core-node-0, 13:10:39)'
+        value: 'fallback: Tailscale core-node-0.tail62079e.ts.net (LAN unreachable 90s)'
       - name: Mocapstatus
         style: Str
         label: Mocap Status
@@ -13373,7 +13377,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 13329.1083333333
+      lastmsg_seconds: 6974.1916666667
     children:
     - name: soul
       type: outCHOP
@@ -13397,6 +13401,8 @@ operators:
       parameters:
         label: 'Mocap: f* face, h* hand, p* pose, faces/hands/poses counts'
         connectorder: 1
+      flags:
+      - viewer
       position: [2800, -1400]
       color: [0.67, 0.67, 0.67]
       inputs:
@@ -13449,21 +13455,29 @@ operators:
       type: scriptCHOP
       parameters:
         callbacks: chop_face_callbacks
+      flags:
+      - viewer
       position: [800, -1000]
     - name: chop_hand
       type: scriptCHOP
       parameters:
         callbacks: chop_hand_callbacks
+      flags:
+      - viewer
       position: [800, -1400]
     - name: chop_meta
       type: scriptCHOP
       parameters:
         callbacks: chop_meta_callbacks
+      flags:
+      - viewer
       position: [800, -2200]
     - name: chop_pose
       type: scriptCHOP
       parameters:
         callbacks: chop_pose_callbacks
+      flags:
+      - viewer
       position: [800, -1800]
     - name: dat_words
       type: scriptDAT
@@ -13485,6 +13499,8 @@ operators:
       dat_read_only: true
     - name: merge_mocap
       type: mergeCHOP
+      flags:
+      - viewer
       position: [2400, -1400]
       inputs:
       - chop_face
@@ -13497,6 +13513,8 @@ operators:
         netaddress: ="tcp://" + parent.GaiaClient.par.Brokerhost.eval() + ":" + str(int(parent.GaiaClient.par.Brokerport.eval()))
         usercid: =(parent.GaiaClient.par.Deviceid.eval() or ('td-' + str(me.id))) + '-device'
         callbacks: mqtt_device_callbacks
+      flags:
+      - viewer
       position: [0, -3200]
       dat_read_only: true
     - name: mqtt_ingest
@@ -13505,6 +13523,8 @@ operators:
         netaddress: ="tcp://" + parent.GaiaClient.par.Brokerhost.eval() + ":" + str(int(parent.GaiaClient.par.Brokerport.eval()))
         usercid: =(parent.GaiaClient.par.Deviceid.eval() or ('td-' + str(me.id))) + '-ingest'
         callbacks: mqtt_ingest_callbacks
+      flags:
+      - viewer
       position: [0, 700]
       dat_read_only: true
     - name: oscin_mocap
@@ -13512,8 +13532,11 @@ operators:
       parameters:
         active: =op('mocap_lifecycle').module.resolveActive()
         port: =parent.GaiaClient.par.Mocapport.eval()
+        localaddress: 192.168.1.73
         oscaddressscope: ='/gaia/mocap/' + parent.GaiaClient.par.Opsdevice.eval() + '/*'
         autoexportroot: =parent()
+      flags:
+      - viewer
       position: [0, -1000]
       size: [130, 90]
       color: [0.67, 0.67, 0.67]
@@ -13579,7 +13602,7 @@ operators:
       type: tableDAT
       parameters:
         file: gaia_client/devices_table.tsv
-        rows: 1
+        rows: 2
         cols: 7
       position: [800, -4200]
       tags:
@@ -13614,6 +13637,8 @@ operators:
       parameters:
         framestart: true
         file: gaia_client/mocap_lifecycle.py
+      flags:
+      - viewer
       position: [0, -1400]
     - name: beacon_discovery
       type: textDAT
@@ -13663,6 +13688,8 @@ operators:
         file: gaia_client/gaia_device_agent.py
         syncfile: true
         language: python
+      flags:
+      - viewer
       position: [400, -3200]
       size: [130, 90]
       color: [0.9, 0.3, 0.4]
@@ -14658,7 +14685,6 @@ operators:
         normMin: 1.0
         normMax: 16.0
         help: How many identical heads, addressed one after the other from Start Address (each takes the profile channel count).
-        value: 4
       - name: Startaddress
         style: Int
         label: Start Address
@@ -14670,7 +14696,6 @@ operators:
         normMin: 1.0
         normMax: 512.0
         help: DMX address of head 1 on the output port universe. Head n starts at Start Address + (n-1) x channels.
-        value: 140
       - name: Outputport
         style: StrMenu
         label: Output Port
@@ -14867,6 +14892,8 @@ operators:
         create: true
         framestart: true
         file: project1/gaia_services/lifecycle.py
+      flags:
+      - viewer
       position: [400, 0]
     - name: dmx_services
       type: textDAT
@@ -14874,6 +14901,8 @@ operators:
         file: project1/gaia_services/dmx_services.py
         syncfile: true
         language: python
+      flags:
+      - viewer
       size: [130, 90]
       color: [0.9, 0.3, 0.4]
       tags:
@@ -14884,6 +14913,8 @@ operators:
         netaddress: ="tcp://" + op.Gaia.par.Brokerhost.eval() + ":" + str(int(op.Gaia.par.Brokerport.eval()))
         usercid: =(op.Gaia.par.Deviceid.eval() or ('td-' + str(me.id))) + '-discovery'
         callbacks: mqtt_discovery_callbacks
+      flags:
+      - viewer
       position: [0, -800]
       dat_read_only: true
     - name: touch_discovery
@@ -14892,6 +14923,8 @@ operators:
         file: project1/gaia_services/touch_discovery.py
         syncfile: true
         language: python
+      flags:
+      - viewer
       position: [400, -800]
       size: [130, 90]
       color: [0.9, 0.3, 0.4]
@@ -14926,6 +14959,8 @@ operators:
         file: project1/gaia_services/touch_senders_touch_bands.tsv
         rows: 1
         cols: 9
+      flags:
+      - viewer
       position: [800, -1000]
       tags:
       - tsv
@@ -14951,7 +14986,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Amber
+        Palette: Warm
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -15109,7 +15144,6 @@ operators:
       type: constantTOP
       parameters:
         colorr: 0.7843137255
-        colorb: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -15217,7 +15251,7 @@ operators:
     type: tableDAT
     parameters:
       file: project1/externalizations.tsv
-      rows: 379
+      rows: 378
       cols: 11
     position: [-200, 0]
     tags:
@@ -15229,7 +15263,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Deep Purple
+        Palette: Warm
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -15389,8 +15423,7 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.1811764762
-        colorb: 0.3623529524
+        colorr: 0.7700000239
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
