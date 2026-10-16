@@ -160,6 +160,15 @@ in last_error) | auto (moved to the suggestion).
   dmx_groups_strict   service (bool): on = TD never creates a group from a
                           fixture or a type; an undefined group is an error.
                           Off by default until Plancia sends dmx_groups.
+  dmx_patch_optimize  w   {request_id?, apply?, mode?: keep|fill, align?}
+                          pack the patch without holes (conflict_logic.
+                          optimize) ->
+  dmx_patch_optimize_result  r  {request_id, ts, applied, mode, align,
+                          moves, unresolved, before, after, spacing_waste}
+                          Also computed by itself (preview, request_id
+                          "auto") every time dmx_fixtures replaces the
+                          whole patch: the proposal is there when Plancia
+                          reads the status after sending its stage.
 """
 import json
 import time
@@ -353,6 +362,11 @@ def _register_fixtures(agent):
 		except Exception:
 			_drop_groups(created)
 			raise
+		try:   # the packing proposal for the stage just received
+			_planning['optimize'] = dict(_conflicts().optimize(apply=False),
+				request_id='auto', ts=int(time.time() * 1000))
+		except Exception as e:
+			debug('optimize preview:', e)
 		if created:
 			_refresh_registry()
 
@@ -439,7 +453,7 @@ def _register_fixtures(agent):
 		status=lambda: bool(_groups().is_strict()))
 
 
-_planning = {'check': None, 'resolve': None, 'groups': None}   # last results (read via status)
+_planning = {'check': None, 'resolve': None, 'groups': None, 'optimize': None}   # last results (read via status)
 
 
 def _register_planning(agent):
@@ -471,6 +485,15 @@ def _register_planning(agent):
 	agent.register_param('dmx_patch_check_result', get=lambda: _planning['check'])
 	agent.register_param('dmx_patch_resolve', get=lambda: None, set=resolve)
 	agent.register_param('dmx_patch_resolve_result', get=lambda: _planning['resolve'])
+
+	def optimize(v):
+		r = request(v)
+		res = cl().optimize(apply=bool(r.get('apply')), mode=r.get('mode') or 'keep',
+			align=r.get('align') or 1)
+		_planning['optimize'] = dict(res, request_id=r.get('request_id'), ts=int(time.time() * 1000))
+
+	agent.register_param('dmx_patch_optimize', get=lambda: None, set=optimize)
+	agent.register_param('dmx_patch_optimize_result', get=lambda: _planning['optimize'])
 
 
 def _catalog():
@@ -603,6 +626,8 @@ def _build_fixtures_matrix():
 		'dmx_patch_check_result': {'kind': 'param', 'type': 'json', 'access': 'r'},
 		'dmx_patch_resolve': {'kind': 'param', 'type': 'json', 'access': 'w'},
 		'dmx_patch_resolve_result': {'kind': 'param', 'type': 'json', 'access': 'r'},
+		'dmx_patch_optimize': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'dmx_patch_optimize_result': {'kind': 'param', 'type': 'json', 'access': 'r'},
 	}
 	return {'params': params, 'columns': list(fl.COLUMNS), 'groups': groups,
 		'group_kinds': list(_groups().KINDS),
@@ -610,7 +635,8 @@ def _build_fixtures_matrix():
 		'bind_targets': list(_groups().PROTECTED),
 		'services': {'dmx_groups_strict': {'kind': 'service', 'type': 'bool'}},
 		'planning': {'auto': 'auto', 'on_conflict': list(_conflicts().ON_CONFLICT),
-			'conflict_kinds': ['duplicate', 'shared', 'overlap']}}
+			'conflict_kinds': ['duplicate', 'shared', 'overlap'],
+			'optimize_modes': list(_conflicts().OPTIMIZE_MODES)}}
 
 
 LEVEL_RIG_FLOATS = [('level', 'Level'), ('fan', 'Fan')]

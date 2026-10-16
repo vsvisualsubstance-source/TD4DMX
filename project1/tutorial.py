@@ -100,7 +100,9 @@ Indice
     - Riquadro vuoto con scritta OFF = la luce o il suo gruppo non inviano
       (Patch Enable spento o luce disabilitata). Bordo rosso = problema
       (porta mancante, conflitto, oltre 512).
-    - Testo: nome, "U<unit> @<indirizzo>".
+    - Testo: nome, "U<universo>@<indirizzo>  #<unit>" -- U e' l'UNIVERSO
+      come nella Plancia (U1 = prima uscita del nodo), # la unit (la
+      posizione della luce nel suo gruppo, NON un universo).
     - CLICK = seleziona. TRASCINA = sposta (aggancio a mezza cella).
       La posizione si salva al rilascio del mouse.
 

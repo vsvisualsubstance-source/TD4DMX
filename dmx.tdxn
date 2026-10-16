@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.32.toe
-exported_at: '2026-10-16T13:59:14Z'
+source_file: dmx.33.toe
+exported_at: '2026-10-16T14:13:37Z'
 network_path: /
 options:
   include_dat_content: false
@@ -12322,7 +12322,7 @@ operators:
           clampMin: true
           normMax: 64.0
           help: Id of the fixture shown in the inspector (click it on the plan or on the universe map).
-          value: 20
+          value: 23
         - name: Status
           style: Str
           readOnly: true
@@ -12332,6 +12332,7 @@ operators:
           style: Str
           readOnly: true
           help: 'Read-only: last error of an edit (e.g. address out of range); empty when the last edit was applied.'
+          value: 'ANTEPRIMA keep: 38 spostamenti. Prima: U1 186/512 (fino a 271, 19 buchi), U2 44/512 (fino a 268, 10 buchi). Dopo: U1 186/512 (fino a 186, 0 buchi), U2 44/512 (fino a 44, 0 buchi)'
         - name: Fgroup
           style: Menu
           label: Group
@@ -12343,17 +12344,17 @@ operators:
           style: Str
           label: Name
           help: Free label shown on the plan and on the universe map.
-          value: UP5
+          value: UP8
         - name: Funit
           style: Int
-          label: Unit
+          label: Unit (# nel gruppo)
           default: 1
           min: 1.0
           clampMin: true
           normMin: 1.0
           normMax: 32.0
-          help: Generator output driving this fixture (bar<unit> / head<unit>). Two fixtures on the same unit are mirrored copies.
-          value: 7
+          help: 'Posizione della luce nel suo gruppo: l''uscita del motore che la pilota (bar3, head11) e l''ordine del chase. NON e'' un universo: l''universo e'' la Output Port.'
+          value: 10
         - name: Fprofile
           style: Menu
           label: Profile
@@ -12385,21 +12386,21 @@ operators:
           normMin: 1.0
           normMax: 512.0
           help: DMX start address 1..512 on the output port. Overlaps with other fixtures turn red on the universe map.
-          value: 225
+          value: 249
         - name: Fx
           style: Float
           label: Plan X
           normMin: -16.0
           normMax: 16.0
           help: Position on the stage plan, in grid cells (drag on the plan snaps to 0.5).
-          value: 0.5
+          value: 5.2
         - name: Fy
           style: Float
           label: Plan Y
           normMin: -8.0
           normMax: 8.0
           help: Position on the stage plan, in grid cells, y up (stage front at the bottom).
-          value: 1
+          value: 1.05
         - name: Fenabled
           style: Toggle
           label: Enabled
@@ -12450,6 +12451,35 @@ operators:
           style: Pulse
           label: Risolvi
           help: Toglie i doppioni (resta la fixture creata in TD, poi la piu' vecchia) e sposta le fixture sovrapposte al primo indirizzo libero, cominciando da quella che ne copre di piu'.
+        - name: Optimizemode
+          style: Menu
+          label: Ottimizza universi
+          startSection: true
+          default: keep
+          menuNames:
+          - keep
+          - fill
+          menuLabels:
+          - Tieni l'universo scelto (poi il successivo se pieno)
+          - Riempi U1, poi U2
+          help: 'Come Ottimizza compatta la patch: keep = ogni luce resta nell''universo che ha (scelta della Plancia) e passa al successivo solo se e'' pieno; fill = ignora gli universi, riempie U1 e poi U2.'
+        - name: Optimizealign
+          style: Int
+          label: Allinea gruppi a
+          default: 1
+          min: 1.0
+          clampMin: true
+          normMin: 1.0
+          normMax: 20.0
+          help: '1 = gruppi attaccati, nessun buco. 10 = ogni gruppo comincia a un indirizzo tondo (1, 11, 21...): qualche canale perso, indirizzi piu'' leggibili sui display delle luci.'
+        - name: Optimizepreview
+          style: Pulse
+          label: Anteprima ottimizza
+          help: Scrive in Message quante luci si sposterebbero e come diventano gli universi, senza cambiare niente.
+        - name: Optimizeapply
+          style: Pulse
+          label: Ottimizza
+          help: 'Compatta la patch: gruppi in ordine, luci in ordine di unit, ognuna con i suoi canali reali, senza buchi. Cambia gli indirizzi: le luci vere vanno reindirizzate. Da fare in fase di progetto.'
       position: [1600, -400]
       size: [160, 130]
       color: [0.325, 0.8, 0.3]
@@ -12594,7 +12624,7 @@ operators:
         type: parameterexecuteDAT
         parameters:
           op: ..
-          pars: Selected Fgroup Fname Funit Fprofile Fport Faddress Fx Fy Fenabled Add Duplicate Remove Autoaddress Fpalette Fixaddress Resolvepreview Resolveapply
+          pars: Selected Fgroup Fname Funit Fprofile Fport Faddress Fx Fy Fenabled Add Duplicate Remove Autoaddress Fpalette Fixaddress Resolvepreview Resolveapply Optimizepreview Optimizeapply
           file: project1/config/tab_fixtures/inspector_callbacks.py
           syncfile: true
         position: [400, 0]
@@ -12981,7 +13011,7 @@ operators:
       parameters:
         file: project1/dmx_patch/fixtures.tsv
         syncfile: true
-        rows: 42
+        rows: 40
         cols: 12
       position: [0, -1600]
       color: [0.9, 0.3, 0.4]
@@ -13496,7 +13526,7 @@ operators:
       Fixture:
         $t: fixture_2
         Fixtureprofile: D+RGB 4CH
-        Nbars: 13
+        Nbars: 12
         Outputport: 2.1.1.2:2
     position: [-600, -3000]
     color: [0.325, 0.8, 0.3]
@@ -14006,7 +14036,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 15:59:13
+        value: gaia/td/canvas @ 16:13:36
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14033,7 +14063,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 23358.9416666667
+      lastmsg_seconds: 24217.5666666667
     children:
     - name: soul
       type: outCHOP
@@ -14259,7 +14289,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 14
+        rows: 2
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]

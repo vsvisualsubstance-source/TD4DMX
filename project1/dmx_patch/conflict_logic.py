@@ -478,3 +478,107 @@ def resolve(apply=False, include_shared=False, remove_duplicates=True):
 			if a['action'] == 'move':
 				fl.update_fixture(a['id'], port_id=a['to']['port_id'], address=a['to']['address'])
 	return {'applied': bool(apply), 'actions': actions, 'unresolved': unresolved}
+
+
+# ---------------------------------------------------------------- optimize
+
+OPTIMIZE_MODES = ('keep', 'fill')
+
+
+def _universe_stats(entries):
+	"""Per port: fixtures, used channels, last used channel, gaps BETWEEN
+	lights (count, channels), largest free block, free channels."""
+	out = []
+	for p in ports():
+		u = sorted((e for e in entries if e['port_id'] == p['port_id']), key=lambda e: e['start'])
+		free = free_ranges(u)
+		last = max([e['end'] for e in u] or [0])
+		inner = [g for g in free if g[1] < last]
+		used = 512 - sum(b - a + 1 for a, b in free)
+		out.append({'port_id': p['port_id'], 'universe': p['universe'], 'fixtures': len(u),
+			'used': used, 'last': last, 'gaps': len(inner), 'gap_channels': sum(b - a + 1 for a, b in inner),
+			'largest_free': max([b - a + 1 for a, b in free] or [0]), 'free': 512 - used})
+	return out
+
+
+def _spacing_waste(entries):
+	"""Channels lost because consecutive lights of a group sit further apart
+	than their footprint (e.g. 11ch heads every 16): {group: channels}."""
+	out = {}
+	by = {}
+	for e in entries:
+		by.setdefault((e['port_id'], e['group']), []).append(e)
+	for (_pid, g), es in by.items():
+		es.sort(key=lambda e: e['start'])
+		for a, b in zip(es, es[1:]):
+			gap = b['start'] - a['end'] - 1
+			if 0 < gap < 64:   # a short hole inside a group's block, not a group boundary
+				out[g] = out.get(g, 0) + gap
+	return out
+
+
+def optimize(apply=False, mode='keep', align=1):
+	"""Pack the patch without holes: groups in groups-table order, inside a
+	group by unit then id, each light at its real footprint.
+	mode keep: every light stays in the universe it has (Plancia's choice)
+	  and goes to the next universe only when its own is full;
+	mode fill: universes ignored, U1 first, then U2 when U1 is full.
+	align > 1: every group block starts at the next address = k*align + 1
+	(1, 11, 21... with 10), easier to read on the lights' displays.
+	Shared lamps (same range, other group) keep sharing their new range.
+	Returns {applied, mode, align, moves, unresolved, before, after,
+	spacing_waste}. Moving addresses on a rig already cabled means
+	re-addressing the real lights: do it while designing."""
+	mode = str(mode or 'keep').strip().lower()
+	if mode not in OPTIMIZE_MODES:
+		raise ValueError('mode %r non valido (%s)' % (mode, ', '.join(OPTIMIZE_MODES)))
+	align = max(1, _int(align, 1))
+	fl = _fl()
+	entries = occupancy()
+	order = [p['port_id'] for p in ports()]
+	if not order:
+		raise ValueError('nessuna porta Art-Net: fare lo scan')
+	gidx = {g['group']: i for i, g in enumerate(fl.groups())}
+	units = {f['id']: f['unit'] for f in fl.rows()}
+	entries.sort(key=lambda e: (gidx.get(e['group'], 99), units.get(e['id'], 0), e['id']))
+	cursor = {pid: 1 for pid in order}
+	placed, moves, unresolved, after = {}, [], [], []
+	last_group = {}
+
+	for e in entries:
+		key = (e['port_id'], e['start'], e['end'])
+		prev = placed.get(key)
+		if prev is not None and prev['group'] != e['group']:
+			pid, a = prev['port_id'], prev['address']   # shared lamp: same new range
+		else:
+			want = e['port_id'] if mode == 'keep' and e['port_id'] in order else order[0]
+			cands = order[order.index(want):]
+			pid = a = None
+			for c in cands:
+				x = cursor[c]
+				if align > 1 and last_group.get(c) != e['group']:
+					x = ((x - 1 + align - 1) // align) * align + 1
+				if x + e['footprint'] - 1 <= 512:
+					pid, a = c, x
+					break
+			if pid is None:
+				unresolved.append(dict(_public(e), reason='universi pieni'))
+				after.append(e)
+				continue
+			cursor[pid] = a + e['footprint']
+			last_group[pid] = e['group']
+			placed.setdefault(key, {'port_id': pid, 'address': a, 'group': e['group']})
+		new = dict(e, port_id=pid, start=a, end=a + e['footprint'] - 1)
+		after.append(new)
+		if pid != e['port_id'] or a != e['start']:
+			moves.append({'action': 'move', 'id': e['id'], 'uid': e['uid'], 'name': e['name'],
+				'group': e['group'],
+				'from': {'port_id': e['port_id'], 'universe': universe_of(e['port_id']), 'address': e['start']},
+				'to': {'port_id': pid, 'universe': universe_of(pid), 'address': a}})
+
+	if apply:
+		for m in moves:
+			fl.update_fixture(m['id'], port_id=m['to']['port_id'], address=m['to']['address'])
+	return {'applied': bool(apply), 'mode': mode, 'align': align, 'moves': moves,
+		'unresolved': unresolved, 'before': _universe_stats(entries), 'after': _universe_stats(after),
+		'spacing_waste': _spacing_waste(entries)}

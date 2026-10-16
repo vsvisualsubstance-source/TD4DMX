@@ -198,6 +198,10 @@ def render_plan(scriptOp):
 	_text(img, 'FRONTE PALCO / PUBBLICO', 10, min(h - 6, int(py0)), DIM, 0.4)
 
 	half = max(10, s * 0.42)
+	# U = UNIVERSE like in Plancia (U1 = Art-Net universe 0), # = unit
+	# (the light's output of its group); it used to print U<unit>, which
+	# read as many universes
+	uni = {p['port_id']: p['universe'] for p in _cl().ports()}
 	for f in sorted(fx, key=lambda f: f['id'] == sel):
 		cx, cy = to_px(f['x'], f['y'])
 		gcol = GROUP_COLORS.get(f['group'], OTHER)
@@ -220,8 +224,10 @@ def render_plan(scriptOp):
 		if f['id'] == sel:
 			_rect(img, (p1[0] - 4, p1[1] - 4), (p2[0] + 4, p2[1] + 4), SEL, 2)
 		_text(img, f['name'], p1[0] + 6, p1[1] + 17, tc, 0.45)
-		_text(img, 'U%d  @%d' % (f['unit'], f['address']) if sending else '%s @%d' % (st.upper(), f['address']),
-			p1[0] + 6, p2[1] - 7, tc, 0.38)
+		if half >= 34:   # small tiles (dense Plancia stage): name only, details in Status
+			where = 'U%s@%d' % (uni.get(f['port_id'], '?'), f['address'])
+			_text(img, '%s  #%d' % (where, f['unit']) if sending else '%s %s' % (st.upper(), where),
+				p1[0] + 6, p2[1] - 7, tc, 0.38)
 		if f['palette']:   # own palette (not the rig's): name above the tile
 			_text(img, f['palette'][:14], p1[0], p1[1] - 5, gcol, 0.36)
 
@@ -520,6 +526,12 @@ def on_pulse(par):
 			load_selected()
 			tab.par.Message = 'spostata a U%s@%d' % (s['universe'], s['address'])
 			return
+		elif par.name in ('Optimizepreview', 'Optimizeapply'):
+			r = _cl().optimize(apply=par.name == 'Optimizeapply', mode=str(tab.par.Optimizemode.eval()),
+				align=int(tab.par.Optimizealign.eval()))
+			load_selected()   # clears Message: before writing it
+			tab.par.Message = _optimize_text(r)
+			return
 		elif par.name in ('Resolvepreview', 'Resolveapply'):
 			plan = _cl().resolve(apply=par.name == 'Resolveapply',
 				include_shared=bool(tab.par.Includeshared.eval()))
@@ -547,6 +559,17 @@ def _plan_text(plan):
 			a['to']['universe'], a['to']['address']) for a in mv[:6]) + (' ...' if len(mv) > 6 else '') + ')'
 	if plan['unresolved']:
 		s += ', %d senza spazio' % len(plan['unresolved'])
+	return s
+
+
+def _optimize_text(r):
+	def uni(stats):
+		return ', '.join('U%s %d/512 (fino a %d, %d buchi)' % (s['universe'], s['used'], s['last'], s['gaps'])
+			for s in stats if s['fixtures'])
+	s = '%s %s: %d spostamenti. Prima: %s. Dopo: %s' % (
+		'FATTO' if r['applied'] else 'ANTEPRIMA', r['mode'], len(r['moves']), uni(r['before']), uni(r['after']))
+	if r['unresolved']:
+		s += '. %d senza spazio' % len(r['unresolved'])
 	return s
 
 
