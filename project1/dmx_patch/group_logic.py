@@ -22,7 +22,7 @@ KINDS = ('chase', 'level')
 PROTECTED = ('rig_a', 'rig_b', 'heads')
 # would collide with the dmx_<key>_* names of gaia_services/dmx_services
 RESERVED = ('a', 'b', 'group', 'fixture', 'fixtures', 'patch', 'scan', 'output', 'blackout',
-	'model', 'models', 'type', 'types', 'universe')
+	'model', 'models', 'type', 'types', 'universe', 'groups')
 CHASE_MASTER = 'dmx_audio_chase'
 
 # profiles of 'level' rigs: the catalog models of kind 'level'
@@ -139,6 +139,7 @@ def _build_level_rig(name):
 	out.par.callbacks = 'level_out_callbacks'
 	out.nodeX, out.nodeY = 400, 0
 	cb.dock = out
+	cb.nodeX, cb.nodeY = out.nodeX, out.nodeY - cb.nodeHeight - 30   # hug the host
 	return comp
 
 
@@ -184,13 +185,16 @@ def _build_chase_rig(name):
 	return comp
 
 
-def add_group(group, kind='chase', profile=None, port_id=None, count=1, start=None, alias=''):
-	"""Create a group and its rig COMP, then `count` fixtures at consecutive
-	free addresses on port_id. Returns the group name."""
+def add_group(group, kind='chase', profile=None, port_id=None, count=1, start=None, alias='',
+		label='', source='td'):
+	"""Create a group and its rig COMP, then `count` fixtures (0 = none:
+	a group defined ahead of its lights, dmx_groups) at consecutive free
+	addresses on port_id. Returns the group name."""
 	fl = _fl()
 	group = str(group or '').strip()
 	kind = str(kind or 'chase').strip()
 	alias = str(alias or '').strip()
+	_ensure_columns()
 	if not _NAME.match(group):
 		raise ValueError('nome gruppo %r non valido (minuscole, cifre, _; max 24)' % group)
 	if group in RESERVED:
@@ -207,7 +211,7 @@ def add_group(group, kind='chase', profile=None, port_id=None, count=1, start=No
 	port_id = str(port_id or (port_ids[0] if port_ids else ''))
 	if port_id not in port_ids:
 		raise ValueError('porta %r sconosciuta (disponibili: %s)' % (port_id, ', '.join(port_ids)))
-	count = max(1, int(count or 1))
+	count = max(0, int(1 if count is None else count))
 
 	comp = _build_chase_rig(name) if kind == 'chase' else _build_level_rig(name)
 	comp.nodeX, comp.nodeY = _free_slot(), ROW_Y
@@ -217,7 +221,7 @@ def add_group(group, kind='chase', profile=None, port_id=None, count=1, start=No
 		row = {'group': group, 'comp': name,
 			'select': 'dmx_select' if kind == 'chase' else 'level_out',
 			'profiles': 'fixture_profiles' if kind == 'chase' else 'level_profiles',
-			'alias': alias, 'kind': kind}
+			'alias': alias, 'kind': kind, 'label': str(label or '').strip(), 'source': source}
 		t.appendRow([row.get(t[0, c].val, '') for c in range(t.numCols)])
 		if profile is None:
 			profile = DEFAULT_LEVEL_PROFILE.get(group, fl.default_profile(group)) \
@@ -226,6 +230,8 @@ def add_group(group, kind='chase', profile=None, port_id=None, count=1, start=No
 			raise ValueError('profilo %r non esiste per %s (disponibili: %s)' % (
 				profile, kind, ', '.join(fl.profile_names(group))))
 		nch = len(fl.profile_channels(group, profile))
+		if count == 0:
+			return group
 		addr = int(start) if start else fl.next_free_address(port_id, nch * count)
 		if addr is None:
 			raise ValueError('nessuno spazio libero su %s per %d canali' % (port_id, nch * count))
@@ -264,3 +270,147 @@ def remove_group(group):
 		raise ValueError('il gruppo %s e\' di base e non si rimuove da qui' % g)
 	_drop(g, fl.group_info(g)['comp'])
 	return g
+
+
+# ---------------------------------------------------------------- Plancia groups
+# The groups are Plancia's (GAIA_INTERFACE "TD/Win-PD, 21"): Plancia sends
+# its list with dmx_groups. TD's three engines (rig_a, rig_b, heads) are
+# BOUND to a Plancia name (their alias: front, back, mh); any other group is
+# created here as a rig of its kind. Strict (dmx_patch Groupstrict, Gaia
+# service dmx_groups_strict): TD no longer creates a group by itself from
+# a fixture or a type -- an undefined group is an error.
+
+GROUP_COLUMNS = ('label', 'source')
+SET_KINDS = KINDS + ('heads', 'none')
+
+
+def _ensure_columns():
+	t = _groups_table()
+	for c in GROUP_COLUMNS:
+		if t[0, c] is None:
+			t.appendCol([c] + [''] * (t.numRows - 1))
+	return t
+
+
+def is_strict():
+	p = getattr(_patch().par, 'Groupstrict', None)
+	return bool(p.eval()) if p is not None else False
+
+
+def require_defined(group):
+	"""Raise when strict and `group` is not defined (name or alias)."""
+	if is_strict() and _fl().resolve_group(group) is None:
+		raise ValueError('gruppo %r non definito: la Plancia deve mandarlo con dmx_groups '
+			'(gruppi solo da Plancia attivo)' % group)
+
+
+def groups_list():
+	"""Groups as Plancia sees them: group = the Plancia name (alias, else
+	the TD name), td_group = TD's name, kind, label, builtin, fixtures,
+	source (builtin | td = created by TD from a fixture/type | plancia)."""
+	fl = _fl()
+	t = _ensure_columns()
+	out = []
+	for g in fl.groups():
+		out.append({
+			'group': g.get('alias') or g['group'], 'td_group': g['group'],
+			'kind': g.get('kind') or 'chase', 'label': g.get('label') or '',
+			'builtin': g['group'] in PROTECTED, 'fixtures': len(fl.rows(g['group'])),
+			'source': g.get('source') or ('builtin' if g['group'] in PROTECTED else 'td')})
+	return out
+
+
+def _set_cells(group, **cells):
+	t = _ensure_columns()
+	for r in range(1, t.numRows):
+		if t[r, 'group'].val == group:
+			for k, v in cells.items():
+				t[r, k] = v
+			return
+
+
+def set_groups(items, source='plancia'):
+	"""Align TD's groups to Plancia's list (dmx_groups). Item: {group,
+	kind: chase|level|heads|none, label?, bind?: rig_a|rig_b|heads}.
+	Everything is validated before anything changes. Then: bind sets the
+	alias of a built-in engine; an existing group (name or alias) gets its
+	label; a missing chase/level group is created empty; kind none (LED
+	wall) is only acknowledged. Created groups absent from the list are
+	removed when empty, kept (and reported) when they still hold fixtures.
+	Returns {created, bound, updated, removed, kept, ignored}."""
+	fl = _fl()
+	if not isinstance(items, (list, tuple)):
+		raise ValueError('dmx_groups: serve una lista di gruppi')
+	plan, seen, bound_targets = [], set(), {}
+	for raw in items:
+		d = dict(raw)
+		name = str(d.get('group') or '').strip()
+		kind = str(d.get('kind') or '').strip()
+		bind = str(d.get('bind') or '').strip()
+		label = str(d.get('label') or '').replace('\t', ' ').strip()
+		if not _NAME.match(name):
+			raise ValueError('gruppo %r: nome non valido (minuscole, cifre, _; max 24)' % name)
+		if name in seen:
+			raise ValueError('gruppo %s ripetuto' % name)
+		seen.add(name)
+		if kind and kind not in SET_KINDS:
+			raise ValueError('gruppo %s: kind %r non valido (%s)' % (name, kind, ', '.join(SET_KINDS)))
+		if kind == 'none':
+			plan.append(('ignore', name, kind, label, None))
+			continue
+		if bind:
+			if bind not in PROTECTED:
+				raise ValueError('gruppo %s: bind %r non valido (motori TD: %s)' % (name, bind, ', '.join(PROTECTED)))
+			bkind = fl.group_info(bind).get('kind') or 'chase'
+			if kind and kind != bkind:
+				raise ValueError('gruppo %s: il motore %s e\' %s, non %s' % (name, bind, bkind, kind))
+			if bind in bound_targets:
+				raise ValueError('motore %s legato a due gruppi (%s, %s)' % (bind, bound_targets[bind], name))
+			other = fl.resolve_group(name)
+			if other is not None and other != bind:
+				raise ValueError('gruppo %s: il nome e\' gia\' di %s, non si lega a %s' % (name, other, bind))
+			bound_targets[bind] = name
+			plan.append(('bind', name, bkind, label, bind))
+			continue
+		g = fl.resolve_group(name)
+		if g is not None:
+			gkind = fl.group_info(g).get('kind') or 'chase'
+			if kind and kind != gkind:
+				raise ValueError('gruppo %s esiste gia\' come %s, non %s' % (name, gkind, kind))
+			plan.append(('update', name, gkind, label, g))
+			continue
+		if kind == 'heads':
+			raise ValueError('gruppo %s: le teste sono un motore solo, usare bind: heads' % name)
+		if kind not in KINDS:
+			raise ValueError('gruppo %s: serve kind (chase o level) per crearlo' % name)
+		if name in RESERVED or _home().op('rig_' + name) is not None:
+			raise ValueError('gruppo %s: nome riservato o operatore rig_%s gia\' esistente' % (name, name))
+		plan.append(('create', name, kind, label, None))
+
+	res = {'created': [], 'bound': [], 'updated': [], 'removed': [], 'kept': [], 'ignored': []}
+	for action, name, kind, label, target in plan:
+		if action == 'ignore':
+			res['ignored'].append(name)
+		elif action == 'bind':
+			# the Plancia name moves to this engine: clear it elsewhere first
+			for g in fl.groups():
+				if g.get('alias') == name and g['group'] != target:
+					_set_cells(g['group'], alias='')
+			_set_cells(target, alias=name, label=label)
+			res['bound'].append({'group': name, 'td_group': target})
+		elif action == 'update':
+			_set_cells(target, label=label)
+			res['updated'].append(name)
+		else:
+			add_group(name, kind, count=0, label=label, source=source)
+			res['created'].append(name)
+	listed = {n for _a, n, _k, _l, _t in plan}
+	for g in fl.groups():
+		if g['group'] in PROTECTED or g['group'] in listed or (g.get('alias') or '') in listed:
+			continue
+		if fl.rows(g['group']):
+			res['kept'].append({'group': g['group'], 'fixtures': len(fl.rows(g['group']))})
+		else:
+			remove_group(g['group'])
+			res['removed'].append(g['group'])
+	return res

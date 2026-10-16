@@ -148,6 +148,18 @@ and address "auto" (first free place for the footprint), and
 dmx_fixture_add / update accept on_conflict: accept (default, as before:
 written, flagged in dmx_patch_report) | reject (error with the suggestion
 in last_error) | auto (moved to the suggestion).
+
+2026-10-16: groups come from Plancia (GAIA_INTERFACE "TD/Win-PD, 21"):
+  dmx_groups          rw  [{group, kind: chase|level|heads|none, label?,
+                          bind?: rig_a|rig_b|heads}]; get = [{group (the
+                          Plancia name), td_group, kind, label, builtin,
+                          fixtures, source}]; set = align TD to the list
+                          (dmx_patch/group_logic.set_groups) ->
+  dmx_groups_result   r   {ts, created, bound, updated, removed, kept,
+                          ignored}
+  dmx_groups_strict   service (bool): on = TD never creates a group from a
+                          fixture or a type; an undefined group is an error.
+                          Off by default until Plancia sends dmx_groups.
 """
 import json
 import time
@@ -302,6 +314,7 @@ def _plancia_items(items, whole=False):
 				cl.place(d, raw, u, a, oc)
 		for d, raw, _u, _a, _oc in staged:
 			if d.get('group') and fl.resolve_group(d['group']) is None:
+				_groups().require_defined(d['group'])
 				created.append(_create_plancia_group(raw, d))
 			out.append(d)
 	except Exception:
@@ -407,8 +420,26 @@ def _register_fixtures(agent):
 	agent.register_param('dmx_group_add', get=lambda: None, set=group_add)
 	agent.register_param('dmx_group_remove', get=lambda: None, set=group_remove)
 
+	def groups_set(v):
+		res = _groups().set_groups(_json_arg(v), source='plancia')
+		_planning['groups'] = dict(res, ts=int(time.time() * 1000))
+		ag = op.Gaia.op('gaia_device_agent').module
+		for g in res['removed']:   # unregister now, like group_remove
+			for reg in (ag._params, ag._services):
+				for name in [n for n in reg if n.startswith('dmx_%s_' % g)]:
+					reg.pop(name, None)
+		_refresh_registry()
 
-_planning = {'check': None, 'resolve': None}   # last results (read via status)
+	agent.register_param('dmx_groups', get=lambda: _groups().groups_list(), set=groups_set)
+	agent.register_param('dmx_groups_result', get=lambda: _planning.get('groups'))
+	agent.register_service(
+		'dmx_groups_strict',
+		start=lambda: setattr(_patch().par, 'Groupstrict', 1),
+		stop=lambda: setattr(_patch().par, 'Groupstrict', 0),
+		status=lambda: bool(_groups().is_strict()))
+
+
+_planning = {'check': None, 'resolve': None, 'groups': None}   # last results (read via status)
 
 
 def _register_planning(agent):
@@ -564,6 +595,8 @@ def _build_fixtures_matrix():
 		'dmx_patch_report': {'kind': 'param', 'type': 'json', 'access': 'r'},
 		'dmx_group_add': {'kind': 'param', 'type': 'json', 'access': 'w'},
 		'dmx_group_remove': {'kind': 'param', 'type': 'str', 'access': 'w'},
+		'dmx_groups': {'kind': 'param', 'type': 'json', 'access': 'rw'},
+		'dmx_groups_result': {'kind': 'param', 'type': 'json', 'access': 'r'},
 		'dmx_universe_map': {'kind': 'param', 'type': 'json', 'access': 'r'},
 		'dmx_patch_conflicts': {'kind': 'param', 'type': 'json', 'access': 'r'},
 		'dmx_patch_check': {'kind': 'param', 'type': 'json', 'access': 'w'},
@@ -573,6 +606,9 @@ def _build_fixtures_matrix():
 	}
 	return {'params': params, 'columns': list(fl.COLUMNS), 'groups': groups,
 		'group_kinds': list(_groups().KINDS),
+		'groups_strict': bool(_groups().is_strict()),
+		'bind_targets': list(_groups().PROTECTED),
+		'services': {'dmx_groups_strict': {'kind': 'service', 'type': 'bool'}},
 		'planning': {'auto': 'auto', 'on_conflict': list(_conflicts().ON_CONFLICT),
 			'conflict_kinds': ['duplicate', 'shared', 'overlap']}}
 
@@ -1035,7 +1071,7 @@ def _drop_stale_rig_names(agent, live_keys):
 	"""Unregister dmx_<key>_* of rigs that no longer exist (removed groups)."""
 	fixed = ('dmx_fixture', 'dmx_fixtures', 'dmx_patch_report', 'dmx_group_',
 		'dmx_scan', 'dmx_output', 'dmx_blackout', 'dmx_model', 'dmx_type',
-		'dmx_patch_', 'dmx_universe_')
+		'dmx_patch_', 'dmx_universe_', 'dmx_groups')
 	for reg in (agent._params, agent._services):
 		for name in list(reg):
 			if not name.startswith('dmx_') or name.startswith(fixed):

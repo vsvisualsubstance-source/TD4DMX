@@ -43,6 +43,12 @@ Indice
             rig_a  = dmx_audio_chase      (barre audio-reattive A)
             rig_b  = dmx_audio_chase_b    (barre audio-reattive B)
             heads  = moving_heads         (teste mobili, anche via PTZ)
+          I nomi dei gruppi li decide la Plancia (front, back, mh, ledbar,
+          haze, blinder...): rig_a / rig_b / heads sono i motori di TD,
+          legati ai nomi Plancia (front, back, mh); gli altri gruppi sono
+          rig creati quando la Plancia li manda (dmx_groups). Con "Gruppi
+          solo da Plancia" (dmx_patch, pagina Catalog) TD non crea gruppi
+          da solo: un gruppo non definito dalla Plancia e' un errore.
  UNIT     L'uscita del generatore che pilota la luce: bar1, bar2... per i
           rig, head1, head2... per le teste. L'ordine delle unit e' l'ordine
           del chase (la fase tra barre va da unit 1 in su).

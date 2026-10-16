@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.31.toe
-exported_at: '2026-10-16T09:21:15Z'
+source_file: dmx.32.toe
+exported_at: '2026-10-16T13:59:14Z'
 network_path: /
 options:
   include_dat_content: false
@@ -12134,7 +12134,6 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
-        value: timeline
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -12323,7 +12322,7 @@ operators:
           clampMin: true
           normMax: 64.0
           help: Id of the fixture shown in the inspector (click it on the plan or on the universe map).
-          value: 11
+          value: 20
         - name: Status
           style: Str
           readOnly: true
@@ -12333,7 +12332,6 @@ operators:
           style: Str
           readOnly: true
           help: 'Read-only: last error of an edit (e.g. address out of range); empty when the last edit was applied.'
-          value: 'ANTEPRIMA: 28 doppioni da togliere, 4 da spostare (MH1 U1@1->U1@207, MH2 U1@17->U1@218, MH5 U1@65->U1@229, PAR7 U1@177->U1@179)'
         - name: Fgroup
           style: Menu
           label: Group
@@ -12341,12 +12339,11 @@ operators:
           default: rig_a
           menuSource: tdu.TableMenu(parent.Config.parent().op('dmx_patch/groups'))
           help: 'Patch group the fixture belongs to (rig_a, rig_b, heads): sets which generator drives it and which profile library applies.'
-          value: heads
         - name: Fname
           style: Str
           label: Name
           help: Free label shown on the plan and on the universe map.
-          value: Head 1
+          value: UP5
         - name: Funit
           style: Int
           label: Unit
@@ -12356,13 +12353,14 @@ operators:
           normMin: 1.0
           normMax: 32.0
           help: Generator output driving this fixture (bar<unit> / head<unit>). Two fixtures on the same unit are mirrored copies.
+          value: 7
         - name: Fprofile
           style: Menu
           label: Profile
-          default: Generic Spot 9ch
+          default: ZQ006018 4CH RGBW
           menuSource: me.op('fixture_ui').module.profile_menu()
           help: 'Fixture profile (channel layout) from the group library. Each fixture can have its own: profiles can be mixed in a group.'
-          value: Generic Spot 11ch 16bit
+          value: D+RGB 4CH
         - name: Fpalette
           style: Menu
           label: Palette
@@ -12370,14 +12368,12 @@ operators:
           menuSource: me.op('fixture_ui').module.palette_menu()
           help: 'Rigs only: palette of THIS light. ''(palette del rig)'' = follow the rig''s Palette (Look Rig tab); another name = this light uses that palette, with the rig''s speed, phase, dimmer and kick.'
           enableExpr: me.par.Fgroup.eval() != 'heads'
-          enable: false
         - name: Fport
           style: Menu
           label: Output Port
           default: 2.1.1.2:1
           menuSource: me.op('fixture_ui').module.port_menu()
           help: Art-Net output port (node / port / universe) the fixture is connected to.
-          value: 2.1.1.2:2
         - name: Faddress
           style: Int
           label: DMX Address
@@ -12389,20 +12385,21 @@ operators:
           normMin: 1.0
           normMax: 512.0
           help: DMX start address 1..512 on the output port. Overlaps with other fixtures turn red on the universe map.
-          value: 132
+          value: 225
         - name: Fx
           style: Float
           label: Plan X
           normMin: -16.0
           normMax: 16.0
           help: Position on the stage plan, in grid cells (drag on the plan snaps to 0.5).
-          value: -10.5
+          value: 0.5
         - name: Fy
           style: Float
           label: Plan Y
           normMin: -8.0
           normMax: 8.0
           help: Position on the stage plan, in grid cells, y up (stage front at the bottom).
+          value: 1
         - name: Fenabled
           style: Toggle
           label: Enabled
@@ -12742,7 +12739,7 @@ operators:
       Fixture:
         $t: fixture
         Count: 2
-        Startaddress: 177
+        Startaddress: 12
         Profile: Haze 2CH
         Outputport: 2.1.1.2:1
     position: [-200, -3000]
@@ -12923,6 +12920,11 @@ operators:
         style: Pulse
         label: Remove
         help: Toglie il modello dal catalogo. Rifiutato se una fixture, un tipo o il profilo di default di un gruppo lo usa.
+      - name: Groupstrict
+        style: Toggle
+        label: Gruppi solo da Plancia
+        startSection: true
+        help: 'Acceso: TD non crea piu'' gruppi da solo (da una fixture o da un tipo); un gruppo non definito dalla Plancia (dmx_groups) e'' un errore. Spento: comportamento di prima, il gruppo nasce dal tipo della prima fixture. Anche da Gaia: servizio dmx_groups_strict.'
       - name: Catalogstatus
         style: Str
         label: Status
@@ -12950,7 +12952,7 @@ operators:
         file: project1/dmx_patch/groups.tsv
         syncfile: true
         rows: 7
-        cols: 6
+        cols: 8
       position: [0, -1400]
       color: [0.9, 0.3, 0.4]
       tags:
@@ -12979,7 +12981,7 @@ operators:
       parameters:
         file: project1/dmx_patch/fixtures.tsv
         syncfile: true
-        rows: 69
+        rows: 42
         cols: 12
       position: [0, -1600]
       color: [0.9, 0.3, 0.4]
@@ -13419,18 +13421,18 @@ operators:
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: blinder Level=0.39
+        value: blinder Level=0.79
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /led/color 0.9726 1 0.8547  @ 11:06:46
+        value: /led/mode 0  @ 15:46:10
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 1544
+        value: 1989
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13494,7 +13496,7 @@ operators:
       Fixture:
         $t: fixture_2
         Fixtureprofile: D+RGB 4CH
-        Nbars: 19
+        Nbars: 13
         Outputport: 2.1.1.2:2
     position: [-600, -3000]
     color: [0.325, 0.8, 0.3]
@@ -14004,7 +14006,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 11:21:14
+        value: gaia/td/canvas @ 15:59:13
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14031,7 +14033,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 6684.0083333333
+      lastmsg_seconds: 23358.9416666667
     children:
     - name: soul
       type: outCHOP
@@ -14257,7 +14259,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 2
+        rows: 14
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -14665,8 +14667,9 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
-        Level: 0.3923048973
-        Startaddress: 201
+        Level: 0.7937303782
+        Count: 2
+        Startaddress: 28
         Outputport: 2.1.1.2:1
     position: [200, -3000]
     color: [0.67, 0.67, 0.67]
@@ -15388,7 +15391,7 @@ operators:
         normMin: 1.0
         normMax: 16.0
         help: How many identical heads, addressed one after the other from Start Address (each takes the profile channel count).
-        value: 22
+        value: 12
       - name: Startaddress
         style: Int
         label: Start Address
@@ -15400,7 +15403,6 @@ operators:
         normMin: 1.0
         normMax: 512.0
         help: DMX address of head 1 on the output port universe. Head n starts at Start Address + (n-1) x channels.
-        value: 132
       - name: Outputport
         style: StrMenu
         label: Output Port
@@ -15408,6 +15410,7 @@ operators:
         default: 2.1.1.2:2
         menuSource: tdu.TableMenu(me.parent().op('dmx_patch/ports'), nameCol='port_id', labelCol='label')
         help: 'Art-Net node and DMX port the heads are sent to (list from dmx_patch Scan). Default: port 2 (universe 1), separate from the bar rigs.'
+        value: 2.1.1.2:1
       - name: Patchenable
         style: Toggle
         label: Patch Enable
@@ -15708,7 +15711,8 @@ operators:
       Fixture:
         $t: fixture_2
         Fixtureprofile: D+RGB 4CH
-        Nbars: 19
+        Nbars: 12
+        Startaddress: 65
     position: [0, 50]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -15995,7 +15999,7 @@ operators:
       Fixture:
         $t: fixture_2
         Fixtureprofile: D+RGB 4CH
-        Nbars: 5
+        Nbars: 1
         Startaddress: 5
     position: [1025, 25]
     color: [0.325, 0.8, 0.3]

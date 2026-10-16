@@ -1,7 +1,7 @@
-group	comp	select	profiles	alias	kind
-rig_a	dmx_audio_chase	dmx_select	fixture_profiles	front	chase
-rig_b	dmx_audio_chase_b	dmx_select	fixture_profiles	back	chase
-heads	moving_heads	heads_dmx	head_profiles	mh	heads
-ledbar	rig_ledbar	dmx_select	fixture_profiles		chase
-haze	rig_haze	level_out	level_profiles		level
-blinder	rig_blinder	level_out	level_profiles		level
+group	comp	select	profiles	alias	kind	label	source
+rig_a	dmx_audio_chase	dmx_select	fixture_profiles	front	chase	Front	builtin
+rig_b	dmx_audio_chase_b	dmx_select	fixture_profiles	back	chase	Back	builtin
+heads	moving_heads	heads_dmx	head_profiles	mh	heads	Teste	builtin
+ledbar	rig_ledbar	dmx_select	fixture_profiles		chase	LED bar	td
+haze	rig_haze	level_out	level_profiles		level	Haze	td
+blinder	rig_blinder	level_out	level_profiles		level	Blinder	td
