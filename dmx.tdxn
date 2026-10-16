@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.29.toe
-exported_at: '2026-10-15T18:13:27Z'
+source_file: dmx.30.toe
+exported_at: '2026-10-16T08:17:38Z'
 network_path: /
 options:
   include_dat_content: false
@@ -55,8 +55,6 @@ type_defaults:
     color: [0.67, 0.67, 0.67]
   constantTOP:
     parameters:
-      colorb: 0
-      colorg: 0
       resolutionh: 200
       resolutionw: 200
     flags:
@@ -12071,7 +12069,7 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
-        value: ptz
+        value: look
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -12260,7 +12258,7 @@ operators:
           clampMin: true
           normMax: 64.0
           help: Id of the fixture shown in the inspector (click it on the plan or on the universe map).
-          value: 13
+          value: 11
         - name: Status
           style: Str
           readOnly: true
@@ -12277,11 +12275,12 @@ operators:
           default: rig_a
           menuSource: tdu.TableMenu(parent.Config.parent().op('dmx_patch/groups'))
           help: 'Patch group the fixture belongs to (rig_a, rig_b, heads): sets which generator drives it and which profile library applies.'
+          value: heads
         - name: Fname
           style: Str
           label: Name
           help: Free label shown on the plan and on the universe map.
-          value: Bar 2
+          value: Head 1
         - name: Funit
           style: Int
           label: Unit
@@ -12294,10 +12293,10 @@ operators:
         - name: Fprofile
           style: Menu
           label: Profile
-          default: ZQ006018 4CH RGBW
+          default: Generic Spot 9ch
           menuSource: me.op('fixture_ui').module.profile_menu()
           help: 'Fixture profile (channel layout) from the group library. Each fixture can have its own: profiles can be mixed in a group.'
-          value: D+RGB 4CH
+          value: Generic Spot 11ch 16bit
         - name: Fpalette
           style: Menu
           label: Palette
@@ -12305,12 +12304,14 @@ operators:
           menuSource: me.op('fixture_ui').module.palette_menu()
           help: 'Rigs only: palette of THIS light. ''(palette del rig)'' = follow the rig''s Palette (Look Rig tab); another name = this light uses that palette, with the rig''s speed, phase, dimmer and kick.'
           enableExpr: me.par.Fgroup.eval() != 'heads'
+          enable: false
         - name: Fport
           style: Menu
           label: Output Port
           default: 2.1.1.2:1
           menuSource: me.op('fixture_ui').module.port_menu()
           help: Art-Net output port (node / port / universe) the fixture is connected to.
+          value: 2.1.1.2:2
         - name: Faddress
           style: Int
           label: DMX Address
@@ -12322,20 +12323,21 @@ operators:
           normMin: 1.0
           normMax: 512.0
           help: DMX start address 1..512 on the output port. Overlaps with other fixtures turn red on the universe map.
-          value: 5
+          value: 132
         - name: Fx
           style: Float
           label: Plan X
           normMin: -16.0
           normMax: 16.0
           help: Position on the stage plan, in grid cells (drag on the plan snaps to 0.5).
-          value: 1
+          value: -9
         - name: Fy
           style: Float
           label: Plan Y
           normMin: -8.0
           normMax: 8.0
           help: Position on the stage plan, in grid cells, y up (stage front at the bottom).
+          value: -3.5
         - name: Fenabled
           style: Toggle
           label: Enabled
@@ -12694,7 +12696,7 @@ operators:
         label: Scan Status
         readOnly: true
         help: 'Read-only: result of the last scan (time, nodes, RDM capability).'
-        value: '2026-10-15 13:47:00: 0 nodi, 0 porte online, RDM: nessun nodo RDM'
+        value: '2026-10-16 09:29:19: 0 nodi, 0 porte online, RDM: nessun nodo RDM'
       Output:
       - name: Output
         style: Toggle
@@ -12745,6 +12747,52 @@ operators:
         readOnly: true
         help: 'Read-only: patch summary (groups sent, conflicts, missing ports).'
         value: =op('./patch_report')[1, 'summary'].val if op('./patch_report') and op('./patch_report').numRows > 1 and op('./patch_report')[1, 'summary'] is not None else 'no groups'
+      Catalog:
+      - name: Modelname
+        style: StrMenu
+        label: Model
+        menuSource: tdu.TableMenu(op('./fixture_models'), nameCol='model', labelCol='model')
+        help: Nome del modello nel catalogo fixture (fixture_models). Scegline uno esistente e premi Load per modificarlo, o scrivi un nome nuovo. Lo stesso catalogo e' quello che Plancia legge e scrive (dmx_models).
+      - name: Modelkind
+        style: Menu
+        label: Kind
+        default: chase
+        menuNames:
+        - chase
+        - level
+        - heads
+        menuLabels:
+        - Chase (rig a/b, barre, par)
+        - Level (haze, blinder)
+        - Heads (teste mobili)
+        help: 'Motore che pilota il modello: chase = rig audio a colori, level = livello singolo (haze, blinder), heads = teste mobili.'
+      - name: Modelchannels
+        style: Str
+        label: Channels
+        help: 'Canali DMX in ordine di indirizzo: i ruoli separati da spazio ("dimmer red green blue"), oppure solo il NUMERO di canali (es. 8): in quel caso i ruoli restano ch1..chN, il range di indirizzi e'' giusto ma il motore manda 0 finche'' non li compili.'
+      - name: Modelmanufacturer
+        style: Str
+        label: Manufacturer
+        help: Produttore (testo libero, facoltativo).
+      - name: Modelload
+        style: Pulse
+        label: Load
+        startSection: true
+        help: Carica nei campi sopra kind, canali e produttore del modello scelto in Model.
+      - name: Modelsave
+        style: Pulse
+        label: Save
+        help: Aggiunge il modello al catalogo, o lo aggiorna se esiste (il kind non cambia se e' in uso). I profili dei gruppi si riallineano da soli.
+      - name: Modelremove
+        style: Pulse
+        label: Remove
+        help: Toglie il modello dal catalogo. Rifiutato se una fixture, un tipo o il profilo di default di un gruppo lo usa.
+      - name: Catalogstatus
+        style: Str
+        label: Status
+        startSection: true
+        readOnly: true
+        help: Esito dell'ultima operazione sul catalogo (o l'errore).
     position: [-600, -1200]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -12834,6 +12882,23 @@ operators:
       - groups
       - fixtures
       dat_read_only: true
+    - name: catalog_logic
+      type: textDAT
+      parameters:
+        file: project1/dmx_patch/catalog_logic.py
+        syncfile: true
+        language: python
+      position: [800, -2600]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
+    - name: catalog_watch
+      type: datexecuteDAT
+      parameters:
+        dat: fixture_models fixture_types
+        file: project1/dmx_patch/catalog_watch.py
+      position: [1200, -2600]
     - name: fixture_logic
       type: textDAT
       parameters:
@@ -12845,6 +12910,24 @@ operators:
       color: [0.9, 0.3, 0.4]
       tags:
       - py
+    - name: fixture_types
+      type: tableDAT
+      parameters:
+        file: project1/dmx_patch/fixture_types.tsv
+        rows: 8
+        cols: 6
+      position: [400, -2600]
+      tags:
+      - tsv
+    - name: fixture_models
+      type: tableDAT
+      parameters:
+        file: project1/dmx_patch/fixture_models.tsv
+        rows: 16
+        cols: 9
+      position: [0, -2600]
+      tags:
+      - tsv
     - name: universe_build
       type: scriptCHOP
       parameters:
@@ -12854,7 +12937,7 @@ operators:
       type: parameterexecuteDAT
       parameters:
         op: ..
-        pars: Scan
+        pars: Scan Modelload Modelsave Modelremove
         valuechange: false
         file: project1/dmx_patch/patch_callbacks.py
         syncfile: true
@@ -12936,9 +13019,16 @@ operators:
     - name: annotate2
       mode: annotate
       title: Patch & Output
-      text: 'fixtures (una riga per luce: gruppo, unit, profilo, porta, indirizzo, posizione) + fixture_logic (modulo: patch rapida, profili per unit, API per Config UI e Gaia) -> patch_report (una riga per fixture: porta, indirizzi, conflitti) -> universe_build (512 canali per universo, ogni unit al suo indirizzo) -> dmx_out unico (Packet Per Channel, routing per universo/IP, 40 Hz). groups = gruppi (rig/teste) e libreria profili di ognuno.'
+      text: 'fixtures (una riga per luce: gruppo, unit, profilo, porta, indirizzo, posizione) + fixture_logic (modulo: patch rapida, profili per unit, API per Config UI e Gaia) -> patch_report (una riga per fixture: porta, indirizzi, conflitti) -> universe_build (512 canali per universo, ogni unit al suo indirizzo) -> dmx_out unico (Packet Per Channel, routing per universo/IP, 40 Hz). groups = gruppi (rig/teste); la libreria profili di ognuno deriva dal Catalogo fixture qui sotto.'
       position: [-70, -1870]
       size: [1470, 930]
+      color: [0.3, 0.55, 0.8]
+    - name: annotate3
+      mode: annotate
+      title: Catalogo fixture
+      text: Modelli (fixture_models) e tipi Plancia (fixture_types). I profili dei gruppi derivano da qui (catalog_logic.sync_profiles). Pagina Catalog per l'inserimento manuale; Plancia via dmx_model_* / dmx_types.
+      position: [-70, -2670]
+      size: [1470, 330]
       color: [0.3, 0.55, 0.8]
   - name: ptz_panel
     type: containerCOMP
@@ -13172,18 +13262,18 @@ operators:
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: 'ignorato: teste mobili rinviate (/mh/pantilt)'
+        value: gruppo 'blinder' non esiste
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /mh/pantilt -0.021964 -0.0534395  @ 19:55:30
+        value: /led/bright 0.704633  @ 10:16:49
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 53
+        value: 1116
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13483,7 +13573,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 20:13:27
+        value: gaia/brain/state @ 10:17:37
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -13510,7 +13600,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 23182.3166666667
+      lastmsg_seconds: 2871.5416666667
     children:
     - name: soul
       type: outCHOP
@@ -13735,7 +13825,7 @@ operators:
       type: tableDAT
       parameters:
         file: gaia_client/devices_table.tsv
-        rows: 1
+        rows: 49
         cols: 7
       position: [800, -4200]
       tags:
@@ -14830,7 +14920,7 @@ operators:
         normMin: 1.0
         normMax: 512.0
         help: DMX address of head 1 on the output port universe. Head n starts at Start Address + (n-1) x channels.
-        value: 100
+        value: 132
       - name: Outputport
         style: StrMenu
         label: Output Port
@@ -15121,7 +15211,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Basic
+        Palette: Amber
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -15279,6 +15369,8 @@ operators:
       type: constantTOP
       parameters:
         colorr: 0.7843137255
+        colorg: 0.461361015
+        colorb: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -15386,7 +15478,7 @@ operators:
     type: tableDAT
     parameters:
       file: project1/externalizations.tsv
-      rows: 382
+      rows: 386
       cols: 11
     position: [-200, 0]
     tags:
@@ -15398,7 +15490,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Basic
+        Palette: Deep Purple
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -15558,7 +15650,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.7700000239
+        colorr: 0.1811764762
+        colorg: 0
+        colorb: 0.3623529524
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP

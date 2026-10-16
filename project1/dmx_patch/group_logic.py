@@ -21,16 +21,25 @@ import re
 KINDS = ('chase', 'level')
 PROTECTED = ('rig_a', 'rig_b', 'heads')
 # would collide with the dmx_<key>_* names of gaia_services/dmx_services
-RESERVED = ('a', 'b', 'group', 'fixture', 'fixtures', 'patch', 'scan', 'output', 'blackout')
+RESERVED = ('a', 'b', 'group', 'fixture', 'fixtures', 'patch', 'scan', 'output', 'blackout',
+	'model', 'models', 'type', 'types')
 CHASE_MASTER = 'dmx_audio_chase'
 
-# profiles of 'level' rigs: name -> channel list (see INTENSITY in
-# universe_build_callbacks for which channels follow Level/Master/Strobe)
+# profiles of 'level' rigs: the catalog models of kind 'level'
+# (catalog_logic; see COLOUR in universe_build_callbacks for which channels
+# follow Level/Master/Strobe). Fallback when the catalog has none:
 LEVEL_PROFILES = [
 	('Dimmer 1CH', 'dimmer'),
 	('Haze 2CH', 'output fan'),
 ]
 DEFAULT_LEVEL_PROFILE = {'haze': 'Haze 2CH'}
+
+
+def _level_profiles():
+	"""[(name, channels)] of the level models in the catalog."""
+	cat = _patch().op('catalog_logic')
+	rows = cat.module.profile_rows('level')[1:] if cat is not None else []
+	return [(r[0], r[1]) for r in rows] or LEVEL_PROFILES
 
 ROW_Y = -3000      # network row of the rigs created here (below the heads)
 ROW_X0 = -600
@@ -99,10 +108,11 @@ def _build_level_rig(name):
 	p.normMin, p.normMax = 1, 512
 	p.help = 'Indirizzo DMX della prima unita\' (riflesso dalla tabella fixtures).'
 
+	profiles = _level_profiles()
 	p = page.appendStrMenu('Profile', label='Profile')[0]
-	p.menuNames = [n for n, _ in LEVEL_PROFILES]
-	p.menuLabels = [n for n, _ in LEVEL_PROFILES]
-	p.default = LEVEL_PROFILES[0][0]
+	p.menuNames = [n for n, _ in profiles]
+	p.menuLabels = [n for n, _ in profiles]
+	p.default = profiles[0][0]
 	p.help = 'Profilo di default delle fixture del gruppo (tabella level_profiles).'
 
 	p = page.appendStrMenu('Outputport', label='Output Port')[0]
@@ -117,7 +127,7 @@ def _build_level_rig(name):
 	prof = comp.create(tableDAT, 'level_profiles')
 	prof.clear()
 	prof.appendRow(['name', 'channels'])
-	for n, ch in LEVEL_PROFILES:
+	for n, ch in profiles:
 		prof.appendRow([n, ch])
 	prof.nodeX, prof.nodeY = 0, 0
 
@@ -133,10 +143,13 @@ def _build_level_rig(name):
 
 
 LEVEL_OUT_CALLBACKS = '''"""level_out -- one channel per unit attribute (unit<u>_<attr>, DMX order of
-the unit's profile, see dmx_patch/group_logic). Intensity channels at full
-scale (255): Level/Master/Strobe are applied in dmx_patch/universe_build.
-'fan' follows the Fan par. Cooks on change only (tables + pars)."""
+the unit's profile, see dmx_patch/group_logic). Intensity channels (dimmer*
+and colour/output) at full scale (255): Level/Master/Strobe are applied in
+dmx_patch/universe_build. 'fan' follows the Fan par; any other role
+(strobe, mode, placeholder ch<N> of a catalog model with only its channel
+count) is 0. Cooks on change only (tables + pars)."""
 FULL = 255.0
+INTENSITY = ('red', 'green', 'blue', 'white', 'amber', 'uv', 'output')
 
 
 def onSetupParameters(scriptOp):
@@ -155,7 +168,7 @@ def onCook(scriptOp):
 	for u, prof in enumerate(fl.unit_profiles(comp, cached=False), 1):
 		for attr in fl.profile_channels(group, prof) or []:
 			c = scriptOp.appendChan('unit%d_%s' % (u, attr))
-			c[0] = fan if attr == 'fan' else FULL
+			c[0] = fan if attr == 'fan' else 				FULL if attr.startswith('dimmer') or attr in INTENSITY else 0.0
 	return
 '''
 

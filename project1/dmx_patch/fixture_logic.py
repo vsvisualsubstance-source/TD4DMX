@@ -7,7 +7,9 @@ source of truth: one row per physical light.
   unit     which output unit of the group's generator drives it (bar<unit>_*,
            head<unit>_*). Two fixtures on the same unit = mirrored copies.
   profile  profile name in the group's library (groups 'profiles' column:
-           fixture_profiles for the rigs, head_profiles for the heads)
+           fixture_profiles for the rigs, head_profiles for the heads). Those
+           libraries are derived from the fixture catalog (catalog_logic,
+           fixture_models): a profile = a catalog model of the group's kind.
   port_id  Art-Net output port (ports table, "<node ip>:<port>")
   address  DMX start address 1..512
   x, y     position on the stage plan (grid cells, y up)
@@ -499,43 +501,51 @@ def port_for_universe(universe):
 	raise ValueError('universo U%s non disponibile: nessuna porta Art-Net con universe %d' % (universe, u))
 
 
-# Plancia fixture types (gaia plancia/index.html FIX_TYPES) -> (group, kind of
-# the rig created when the group does not exist yet). None = no DMX (LED wall,
-# speaker): skipped. 'heads' is built in, never created here.
-PLANCIA_TYPES = {
-	'mh': ('mh', None),
-	'par': ('front', 'chase'),
-	'bar': ('ledbar', 'chase'),
-	'blinder': ('blinder', 'level'),
-	'haze': ('haze', 'level'),
-	'wall': None,
-	'speaker': None,
-}
+def _catalog():
+	return _patch().op('catalog_logic').module
 
 
 def plancia_group(d):
 	"""(group name, kind for creating it) a Plancia fixture asks for: its
-	`group`, else the group of its `type`. kind comes from the type; None
-	when it does not say, and then the group cannot be created."""
-	t = PLANCIA_TYPES.get(str(d.get('type') or '').strip())
-	group = str(d.get('group') or '').strip() or (t[0] if t else '')
-	kind = t[1] if t else None
+	`group`, else the group of its `type` (fixture_types, see
+	catalog_logic). kind comes from the type: chase or level, None
+	otherwise, and then the group cannot be created."""
+	t = _catalog().type_info(d.get('type'))
+	group = str(d.get('group') or '').strip() or (t['group'] if t else '')
+	kind = t['kind'] if t and t['kind'] in ('chase', 'level') else None
 	return group, kind
+
+
+def _type_model(t, group):
+	"""The type's default model when it fits the group the fixture goes to
+	(same kind), else None."""
+	if not t or not t['model']:
+		return None
+	m = _catalog().model(t['model'])
+	g = resolve_group(group)
+	kind = ((group_info(g) or {}).get('kind') or 'chase') if g else t['kind']
+	return t['model'] if m is not None and m['kind'] == kind else None
 
 
 def from_plancia(d, missing_ok=False):
 	"""Normalise a Plancia-style fixture dict to this patch's fields: a
 	non-numeric `id` becomes `uid`, `universe` (1-based) becomes `port_id`,
-	`group` may be an alias or come from `type`, `enabled` becomes 0/1,
-	`type`/`ch` are dropped. Our own fields pass through unchanged.
-	Returns None for a type without DMX (LED wall, speaker). An unknown group
-	raises, unless missing_ok: then its name is kept as is (the caller
-	creates it, see plancia_group for the kind)."""
+	`group` may be an alias or come from `type`, `model` becomes `profile`
+	(default: the model of the type, catalog fixture_types), `enabled`
+	becomes 0/1, `type`/`ch` are dropped. Our own fields pass through
+	unchanged. Returns None for a type without DMX (kind none: LED wall,
+	speaker). An unknown group raises, unless missing_ok: then its name is
+	kept as is (the caller creates it, see plancia_group for the kind)."""
 	d = dict(d)
 	ftype = str(d.pop('type', '') or '').strip()
 	d.pop('ch', None)
-	if ftype in PLANCIA_TYPES and PLANCIA_TYPES[ftype] is None:
+	t = _catalog().type_info(ftype) if ftype else None
+	if t is not None and t['kind'] == 'none':
 		return None
+	if 'model' in d:
+		mdl = str(d.pop('model') or '').strip()
+		if mdl:
+			d.setdefault('profile', mdl)
 	if 'id' in d and not str(d['id']).strip().lstrip('-').isdigit():
 		d.setdefault('uid', str(d.pop('id')))
 	if 'universe' in d:
@@ -549,6 +559,10 @@ def from_plancia(d, missing_ok=False):
 		if g is None and not missing_ok:
 			raise ValueError('gruppo sconosciuto: %r' % name)
 		d['group'] = g or name
+		if not d.get('profile'):
+			mdl = _type_model(t, d['group'])
+			if mdl:
+				d['profile'] = mdl
 	return d
 
 

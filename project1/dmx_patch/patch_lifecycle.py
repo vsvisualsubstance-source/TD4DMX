@@ -1,7 +1,10 @@
-"""dmx_patch lifecycle -- optional scan on project start."""
+"""dmx_patch lifecycle -- fixture catalog seed/sync, optional scan on project
+start."""
 
 
 def onStart():
+	run("op('catalog_logic').module.ensure_seeded(); op('catalog_logic').module.sync_profiles()",
+		fromOP=me, delayFrames=30)
 	if parent().par.Scanonstart.eval():
 		run("op('scan_logic').module.scan()", fromOP=me, delayFrames=60)
 	return

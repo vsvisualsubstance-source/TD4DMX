@@ -50,8 +50,15 @@ Indice
  PROFILO  La mappa canali della luce (es. "ZQ006018 4CH RGBW" =
           rosso verde blu bianco). Ogni luce ha il suo: in un gruppo puoi
           mischiare barre 4CH, 6CH, 8CH, oppure teste di modelli diversi.
-          Le librerie: dmx_audio_chase/fixture_profiles (rig) e
-          moving_heads/head_profiles (teste).
+          I profili sono i MODELLI del catalogo fixture
+          (/project1/dmx_patch/fixture_models): si aggiungono dalla pagina
+          Catalog di dmx_patch (nome, kind, ruoli dei canali o solo il
+          numero di canali) o da Plancia. Le librerie dei gruppi
+          (fixture_profiles dei rig, head_profiles delle teste) si
+          riallineano da sole: non modificarle a mano.
+ TIPO     Le famiglie di luci del palco (par, wash, barra, testa, haze...),
+          decise da Plancia (/project1/dmx_patch/fixture_types): per ogni
+          tipo il gruppo in cui vanno le sue luci e il modello di default.
  PORTA    L'uscita Art-Net fisica: "<ip nodo>:<porta>" = un universo.
  INDIRIZZO  Il canale DMX iniziale (1..512) della luce su quella porta.
             Una luce da N canali occupa indirizzo .. indirizzo+N-1.

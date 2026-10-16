@@ -1,5 +1,5 @@
 id	name	group	unit	profile	port_id	address	x	y	enabled	palette	uid
-11	Head 1	heads	1	Generic Spot 11ch 16bit	2.1.1.2:2	100	-9	-3.5	1		
+11	Head 1	heads	1	Generic Spot 11ch 16bit	2.1.1.2:2	132	-9	-3.5	1		
 12	Bar 1	rig_a	1	D+RGB 4CH	2.1.1.2:1	1	0	0	1		
 13	Bar 2	rig_a	1	D+RGB 4CH	2.1.1.2:1	5	1	0	1		
 14	Bar 3	rig_a	1	D+RGB 4CH	2.1.1.2:1	9	2	0	1		

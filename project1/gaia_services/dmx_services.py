@@ -100,6 +100,28 @@ enabled}: type/ch are dropped, wall/speaker (no DMX) are skipped, and a group
 that does not exist yet is created from the type (par/bar -> chase rig,
 blinder/haze -> level rig; fixture_logic.PLANCIA_TYPES) in dmx_fixture_add and
 dmx_fixtures.
+
+2026-10-16: fixture CATALOG (dmx_patch/catalog_logic, GAIA_INTERFACE
+"TD/Win-PD, 19"). Models = what a light is (kind chase|level|heads, DMX
+roles in order, footprint), types = the stage taxonomy Plancia defines
+(type -> group, kind, default model). The group profile tables are derived
+from the models. All JSON:
+  dmx_models        r   [{model, kind, channels: [roles], footprint,
+                          complete, manufacturer, source, notes, (heads:)
+                          pan_range, tilt_range, defaults}]
+  dmx_model_add     w   {model, kind, channels: [roles] | "r g b" | N,
+                          footprint?: N, manufacturer?, notes?, ...}
+  dmx_model_update  w   {model, <any field>} (kind fixed while in use)
+  dmx_model_remove  w   model name (refused while in use)
+  dmx_types         rw  [{type, label, group, kind, model, source}];
+                        set = replace the whole taxonomy. A type naming a
+                        model not in the catalog creates it when it carries
+                        channels or footprint.
+  dmx_type_set      w   {type, label?, group, kind?, model?} (upsert)
+  dmx_type_remove   w   type
+A Plancia fixture may carry `model` (= profile); without it the type's
+model is used. dmx_matrix gains 'catalog' ({params, models, types, kinds:
+{kind: {roles, groups}}, type_kinds, sources}).
 """
 import json
 import time
@@ -338,6 +360,49 @@ def _register_fixtures(agent):
 	agent.register_param('dmx_patch_report', get=_patch_report)
 	agent.register_param('dmx_group_add', get=lambda: None, set=group_add)
 	agent.register_param('dmx_group_remove', get=lambda: None, set=group_remove)
+
+
+def _catalog():
+	"""catalog_logic module of dmx_patch (resolved at call time)."""
+	return _patch().op('catalog_logic').module
+
+
+def _register_catalog(agent):
+	"""dmx_model* / dmx_type* params. Every change rewrites the catalog
+	tables; dmx_patch/catalog_watch then republishes the matrix."""
+	cat = _catalog
+
+	def name_of(v, key):
+		v = _json_arg(v) if isinstance(v, (bytes, str)) and str(v).strip()[:1] == '{' else v
+		return v.get(key) if isinstance(v, dict) else v
+
+	agent.register_param('dmx_models', get=lambda: cat().models())
+	agent.register_param('dmx_model_add', get=lambda: None,
+		set=lambda v: cat().add_model(_json_arg(v), source='plancia'))
+	agent.register_param('dmx_model_update', get=lambda: None,
+		set=lambda v: cat().update_model(_json_arg(v), source='plancia'))
+	agent.register_param('dmx_model_remove', get=lambda: None,
+		set=lambda v: cat().remove_model(name_of(v, 'model')))
+	agent.register_param('dmx_types', get=lambda: cat().types(),
+		set=lambda v: cat().set_types(_json_arg(v), source='plancia'))
+	agent.register_param('dmx_type_set', get=lambda: None,
+		set=lambda v: cat().set_type(_json_arg(v), source='plancia'))
+	agent.register_param('dmx_type_remove', get=lambda: None,
+		set=lambda v: cat().remove_type(name_of(v, 'type')))
+
+
+def _build_catalog_matrix():
+	out = _catalog().to_matrix()
+	out['params'] = {
+		'dmx_models': {'kind': 'param', 'type': 'json', 'access': 'r'},
+		'dmx_model_add': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'dmx_model_update': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'dmx_model_remove': {'kind': 'param', 'type': 'str', 'access': 'w'},
+		'dmx_types': {'kind': 'param', 'type': 'json', 'access': 'rw'},
+		'dmx_type_set': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'dmx_type_remove': {'kind': 'param', 'type': 'str', 'access': 'w'},
+	}
+	return out
 
 
 def _show():
@@ -857,6 +922,7 @@ def publish_matrix():
 		'heads': _build_heads_matrix(),
 		'ptz': _build_ptz_matrix(),
 		'fixtures': _build_fixtures_matrix(),
+		'catalog': _build_catalog_matrix(),
 		'show': _build_show_matrix(),
 		'ts': int(time.time() * 1000),
 	}
@@ -880,7 +946,7 @@ def _register_level_rig(agent, group, rig_name):
 def _drop_stale_rig_names(agent, live_keys):
 	"""Unregister dmx_<key>_* of rigs that no longer exist (removed groups)."""
 	fixed = ('dmx_fixture', 'dmx_fixtures', 'dmx_patch_report', 'dmx_group_',
-		'dmx_scan', 'dmx_output', 'dmx_blackout')
+		'dmx_scan', 'dmx_output', 'dmx_blackout', 'dmx_model', 'dmx_type')
 	for reg in (agent._params, agent._services):
 		for name in list(reg):
 			if not name.startswith('dmx_') or name.startswith(fixed):
@@ -952,6 +1018,7 @@ def register_all():
 
 	_register_ptz(agent)
 	_register_fixtures(agent)
+	_register_catalog(agent)
 	_register_show(agent)
 
 	agent.register_service(
