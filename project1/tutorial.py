@@ -129,6 +129,25 @@ Indice
     Auto Address Group rinumera il gruppo della luce selezionata in ordine
                        di unit, consecutivo dal suo indirizzo piu' basso
                        (con profili misti li impacchetta senza buchi)
+    Primo libero       sposta la luce selezionata al primo indirizzo dove
+                       stanno tutti i suoi canali (dal suo in su, poi
+                       dall'inizio dell'universo, poi gli altri universi).
+                       Se la luce e' in conflitto, Status dice con chi e
+                       l'indirizzo libero suggerito.
+    Conflitti          riepilogo di tutta la patch, contando anche le luci
+                       di gruppi spenti:
+                         duplicate = la stessa luce inserita due volte
+                           (stesso gruppo e canali: es. lo stesso palco
+                           mandato dalla Plancia da due dispositivi)
+                         shared = stessa lampada pilotata da due gruppi
+                           (stessi canali, gruppi diversi: voluto)
+                         overlap = canali sovrapposti: da correggere
+    Includi condivise  se acceso, Risolvi sposta anche le shared
+    Anteprima risoluzione / Risolvi
+                       Anteprima scrive in Message cosa farebbe Risolvi.
+                       Risolvi toglie i doppioni (resta quella creata in TD,
+                       poi la piu' vecchia) e sposta le luci sovrapposte,
+                       cominciando da quella che ne copre di piu'.
 
  ESEMPIO -- rig A con 4 barre 4CH + 2 barre 8CH
   1. Seleziona una barra del rig A, Profile = "ZQ006018 4CH RGBW".

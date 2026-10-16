@@ -122,6 +122,32 @@ from the models. All JSON:
 A Plancia fixture may carry `model` (= profile); without it the type's
 model is used. dmx_matrix gains 'catalog' ({params, models, types, kinds:
 {kind: {roles, groups}}, type_kinds, sources}).
+
+2026-10-16: address planning (dmx_patch/conflict_logic, GAIA_INTERFACE
+"TD/Win-PD, 20"): occupancy per universe, conflicts by kind (duplicate /
+shared / overlap), suggestions, check before writing, resolve. All JSON:
+  dmx_universe_map          r  {universes: [{port_id, universe, label,
+                                online, used: [{id, uid, name, group,
+                                profile, start, end, conflict}], free:
+                                [[a, b]], free_channels, conflicts}],
+                                unassigned: [...]}
+  dmx_patch_conflicts       r  [{port_id, universe, kind, start, end,
+                                fixtures: [...]}]
+  dmx_patch_check           w  [fixture, ...] or {request_id?, fixtures}:
+                                evaluates WITHOUT writing ->
+  dmx_patch_check_result    r  {request_id, ts, results: [{index, ref,
+                                status, group, profile, footprint, port_id,
+                                universe, start, end, conflicts,
+                                suggestion, update_of, message}]}
+  dmx_patch_resolve         w  {request_id?, apply?, include_shared?,
+                                remove_duplicates?} ->
+  dmx_patch_resolve_result  r  {request_id, ts, applied, actions,
+                                unresolved}
+dmx_fixture_add / dmx_fixture_update / dmx_fixtures accept universe "auto"
+and address "auto" (first free place for the footprint), and
+dmx_fixture_add / update accept on_conflict: accept (default, as before:
+written, flagged in dmx_patch_report) | reject (error with the suggestion
+in last_error) | auto (moved to the suggestion).
 """
 import json
 import time
@@ -248,17 +274,33 @@ def _refresh_registry():
 	run("op('%s').module.register_all()" % me.path, delayFrames=1)
 
 
-def _plancia_items(items):
-	"""Plancia-shape fixtures -> patch dicts; types without DMX dropped and
-	missing groups created (see _create_plancia_group). Returns (dicts,
-	groups created) so a failing caller can remove them again."""
+def _conflicts():
+	"""conflict_logic module of dmx_patch (resolved at call time)."""
+	return _patch().op('conflict_logic').module
+
+
+def _plancia_items(items, whole=False):
+	"""Plancia-shape fixtures -> patch dicts; types without DMX dropped,
+	universe/address 'auto' and on_conflict applied (conflict_logic: place,
+	or place_all when the list is the WHOLE new patch), missing groups
+	created (see _create_plancia_group). Returns (dicts, groups created) so
+	a failing caller can remove them again."""
 	fl = _fixtures()
-	out, created = [], []
+	cl = _conflicts()
+	out, created, staged = [], [], []
 	try:
 		for raw in items:
-			d = fl.from_plancia(raw, missing_ok=True)
+			d0, auto_u, auto_a, oc = cl.split_auto(raw)
+			d = fl.from_plancia(d0, missing_ok=True)
 			if d is None:
 				continue
+			staged.append((d, raw, auto_u, auto_a, oc))
+		if whole:
+			cl.place_all([(d, raw, u, a) for d, raw, u, a, _oc in staged])
+		else:
+			for d, raw, u, a, oc in staged:
+				cl.place(d, raw, u, a, oc)
+		for d, raw, _u, _a, _oc in staged:
 			if d.get('group') and fl.resolve_group(d['group']) is None:
 				created.append(_create_plancia_group(raw, d))
 			out.append(d)
@@ -292,7 +334,7 @@ def _register_fixtures(agent):
 	fl = _fixtures
 
 	def set_all(v):
-		items, created = _plancia_items(_json_arg(v))
+		items, created = _plancia_items(_json_arg(v), whole=True)
 		try:
 			fl().set_all(items)
 		except Exception:
@@ -326,7 +368,11 @@ def _register_fixtures(agent):
 		d = dict(_json_arg(v))
 		fid = _fixture_ref(d.pop('id', None) if 'id' in d else d.pop('uid'))
 		d.pop('type', None)  # an update never moves a fixture to its type's group
-		fl().update_fixture(fid, **fl().from_plancia(d))
+		d0, auto_u, auto_a, oc = _conflicts().split_auto(d)
+		nd = fl().from_plancia(d0)
+		cur = [f for f in fl().rows() if f['id'] == fid][0]
+		_conflicts().place(nd, d, auto_u, auto_a, oc, cur=cur)
+		fl().update_fixture(fid, **nd)
 
 	def auto(v):
 		d = fl().from_plancia(_json_arg(v))
@@ -360,6 +406,40 @@ def _register_fixtures(agent):
 	agent.register_param('dmx_patch_report', get=_patch_report)
 	agent.register_param('dmx_group_add', get=lambda: None, set=group_add)
 	agent.register_param('dmx_group_remove', get=lambda: None, set=group_remove)
+
+
+_planning = {'check': None, 'resolve': None}   # last results (read via status)
+
+
+def _register_planning(agent):
+	"""dmx_universe_map / dmx_patch_conflicts (r), dmx_patch_check /
+	dmx_patch_resolve (w) with their *_result (r). The agent publishes the
+	status right after each command, so the result is there at once."""
+	cl = _conflicts
+
+	def request(v):
+		v = _json_arg(v) if isinstance(v, (bytes, str)) and str(v).strip()[:1] in '{["' else v
+		if isinstance(v, list):
+			return {'fixtures': v}
+		return dict(v) if isinstance(v, dict) else {}
+
+	def check(v):
+		r = request(v)
+		_planning['check'] = {'request_id': r.get('request_id'), 'ts': int(time.time() * 1000),
+			'results': cl().check(r.get('fixtures') or [])}
+
+	def resolve(v):
+		r = request(v)
+		res = cl().resolve(apply=bool(r.get('apply')), include_shared=bool(r.get('include_shared')),
+			remove_duplicates=bool(r.get('remove_duplicates', True)))
+		_planning['resolve'] = dict(res, request_id=r.get('request_id'), ts=int(time.time() * 1000))
+
+	agent.register_param('dmx_universe_map', get=lambda: cl().universe_map())
+	agent.register_param('dmx_patch_conflicts', get=lambda: cl().conflicts())
+	agent.register_param('dmx_patch_check', get=lambda: None, set=check)
+	agent.register_param('dmx_patch_check_result', get=lambda: _planning['check'])
+	agent.register_param('dmx_patch_resolve', get=lambda: None, set=resolve)
+	agent.register_param('dmx_patch_resolve_result', get=lambda: _planning['resolve'])
 
 
 def _catalog():
@@ -484,9 +564,17 @@ def _build_fixtures_matrix():
 		'dmx_patch_report': {'kind': 'param', 'type': 'json', 'access': 'r'},
 		'dmx_group_add': {'kind': 'param', 'type': 'json', 'access': 'w'},
 		'dmx_group_remove': {'kind': 'param', 'type': 'str', 'access': 'w'},
+		'dmx_universe_map': {'kind': 'param', 'type': 'json', 'access': 'r'},
+		'dmx_patch_conflicts': {'kind': 'param', 'type': 'json', 'access': 'r'},
+		'dmx_patch_check': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'dmx_patch_check_result': {'kind': 'param', 'type': 'json', 'access': 'r'},
+		'dmx_patch_resolve': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'dmx_patch_resolve_result': {'kind': 'param', 'type': 'json', 'access': 'r'},
 	}
 	return {'params': params, 'columns': list(fl.COLUMNS), 'groups': groups,
-		'group_kinds': list(_groups().KINDS)}
+		'group_kinds': list(_groups().KINDS),
+		'planning': {'auto': 'auto', 'on_conflict': list(_conflicts().ON_CONFLICT),
+			'conflict_kinds': ['duplicate', 'shared', 'overlap']}}
 
 
 LEVEL_RIG_FLOATS = [('level', 'Level'), ('fan', 'Fan')]
@@ -946,7 +1034,8 @@ def _register_level_rig(agent, group, rig_name):
 def _drop_stale_rig_names(agent, live_keys):
 	"""Unregister dmx_<key>_* of rigs that no longer exist (removed groups)."""
 	fixed = ('dmx_fixture', 'dmx_fixtures', 'dmx_patch_report', 'dmx_group_',
-		'dmx_scan', 'dmx_output', 'dmx_blackout', 'dmx_model', 'dmx_type')
+		'dmx_scan', 'dmx_output', 'dmx_blackout', 'dmx_model', 'dmx_type',
+		'dmx_patch_', 'dmx_universe_')
 	for reg in (agent._params, agent._services):
 		for name in list(reg):
 			if not name.startswith('dmx_') or name.startswith(fixed):
@@ -1019,6 +1108,7 @@ def register_all():
 	_register_ptz(agent)
 	_register_fixtures(agent)
 	_register_catalog(agent)
+	_register_planning(agent)
 	_register_show(agent)
 
 	agent.register_service(

@@ -22,7 +22,7 @@ KINDS = ('chase', 'level')
 PROTECTED = ('rig_a', 'rig_b', 'heads')
 # would collide with the dmx_<key>_* names of gaia_services/dmx_services
 RESERVED = ('a', 'b', 'group', 'fixture', 'fixtures', 'patch', 'scan', 'output', 'blackout',
-	'model', 'models', 'type', 'types')
+	'model', 'models', 'type', 'types', 'universe')
 CHASE_MASTER = 'dmx_audio_chase'
 
 # profiles of 'level' rigs: the catalog models of kind 'level'

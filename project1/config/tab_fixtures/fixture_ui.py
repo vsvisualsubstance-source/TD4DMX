@@ -512,13 +512,52 @@ def on_pulse(par):
 			fx = [f for f in fl.rows(cur['group']) if f['port_id'] == cur['port_id']]
 			fl.auto_address(cur['group'], min(f['address'] for f in fx) if fx else 1)
 			load_selected()
+		elif par.name == 'Fixaddress' and cur:
+			s = _cl().suggest(_nchans(cur), cur['port_id'], cur['address'], exclude=(cur['id'],))
+			if s is None:
+				raise ValueError('nessuno spazio libero per %d canali' % _nchans(cur))
+			fl.update_fixture(cur['id'], port_id=s['port_id'], address=s['address'])
+			load_selected()
+			tab.par.Message = 'spostata a U%s@%d' % (s['universe'], s['address'])
+			return
+		elif par.name in ('Resolvepreview', 'Resolveapply'):
+			plan = _cl().resolve(apply=par.name == 'Resolveapply',
+				include_shared=bool(tab.par.Includeshared.eval()))
+			load_selected()   # clears Message: before writing it
+			tab.par.Message = _plan_text(plan)
+			return
 		tab.par.Message = ''
 	except ValueError as e:
 		tab.par.Message = str(e)
 
 
+def _cl():
+	return _patch().op('conflict_logic').module
+
+
+def _plan_text(plan):
+	rm = [a for a in plan['actions'] if a['action'] == 'remove']
+	mv = [a for a in plan['actions'] if a['action'] == 'move']
+	if not rm and not mv and not plan['unresolved']:
+		return 'nessun conflitto da risolvere'
+	s = '%s: %d doppioni da togliere, %d da spostare' % (
+		'FATTO' if plan['applied'] else 'ANTEPRIMA', len(rm), len(mv))
+	if mv:
+		s += ' (' + ', '.join('%s U%s@%s->U%s@%s' % (a['name'], a['from']['universe'], a['from']['address'],
+			a['to']['universe'], a['to']['address']) for a in mv[:6]) + (' ...' if len(mv) > 6 else '') + ')'
+	if plan['unresolved']:
+		s += ', %d senza spazio' % len(plan['unresolved'])
+	return s
+
+
+def conflicts_text():
+	"""Read-only summary of the Conflicts par."""
+	return _cl().summary()
+
+
 def status_text():
-	"""Read-only status line of the inspector."""
+	"""Read-only status line of the inspector; on a conflict also who it
+	overlaps and the first free address."""
 	rep = _report()
 	r = rep.get(selected())
 	if r is None:
@@ -526,4 +565,16 @@ def status_text():
 	s = '%s: %s  DMX %s-%s (%s ch)' % (r['name'], r['status'].upper(), r['start'], r['end'], r['nchans'])
 	if r['universe'] != '':
 		s += '  universo %s:%s:%s' % (r['net'], r['subnet'], r['universe'])
+	# planning conflicts count every enabled fixture, also in a group that
+	# is switched off (patch_report only flags what is being sent)
+	cl = _cl()
+	fid, start, end, port = selected(), int(r['start']), int(r['end']), r['port_id']
+	hits = [e for e in cl.occupancy((fid,)) if e['port_id'] == port and not (end < e['start'] or e['end'] < start)]
+	if hits or r['status'] == 'overflow':
+		if hits:
+			s += '  | con: ' + ', '.join('%s (%d-%d)' % (e['name'] or e['id'], e['start'], e['end']) for e in hits[:4]) + \
+				(' ...' if len(hits) > 4 else '')
+		sug = cl.suggest(int(r['nchans']) or 1, port, start, exclude=(fid,))
+		if sug:
+			s += '  | libero: U%s@%d (Primo libero)' % (sug['universe'], sug['address'])
 	return s
