@@ -1,40 +1,40 @@
 id	name	group	unit	profile	port_id	address	x	y	enabled	palette	uid
-1	MH1	heads	1	Generic Spot 11ch 16bit	2.1.1.2:1	1	-5	3.5	1		p-fslozhy
-2	MH2	heads	2	Generic Spot 11ch 16bit	2.1.1.2:1	17	-1.5	2	1		p-dl1fqlr
-3	MH3	heads	3	Generic Spot 11ch 16bit	2.1.1.2:1	33	1.667	2	1		p-pxce082
-4	MH4	heads	4	Generic Spot 11ch 16bit	2.1.1.2:1	49	-3.5	2	1		p-uvsp0d5
-5	UP1	rig_a	1	D+RGB 4CH	2.1.1.2:1	65	-5.2	1.05	1		p-p75dqtd
-6	UP2	rig_a	2	D+RGB 4CH	2.1.1.2:1	73	5.2	1.05	1		p-o255v60
-7	BAR1	ledbar	1	D+RGB 4CH	2.1.1.2:2	1	-4.834	7.592	1		p-nvef9lh
-9	MH6	heads	5	Generic Spot 11ch 16bit	2.1.1.2:1	81	-0.5	2	1		p-51kr5fl
-10	MH7	heads	6	Generic Spot 11ch 16bit	2.1.1.2:1	97	0.455	2	1		p-j7famis
-11	MH8	heads	7	Generic Spot 11ch 16bit	2.1.1.2:1	113	1.5	2	1		p-p7gq2jw
-12	MH9	heads	8	Generic Spot 11ch 16bit	2.1.1.2:1	129	2.5	2	1		p-f8711rf
-13	MH10	heads	9	Generic Spot 11ch 16bit	2.1.1.2:1	145	3	2	1		p-sj82qie
-14	MH11	heads	10	Generic Spot 11ch 16bit	2.1.1.2:1	161	4.091	2	1		p-b3u4a81
-15	MH12	heads	11	Generic Spot 11ch 16bit	2.1.1.2:1	177	5	2	1		p-k176621
-16	UP1	rig_a	3	D+RGB 4CH	2.1.1.2:1	193	-5.2	1.05	1		p-6sbj0ql
-17	UP2	rig_a	4	D+RGB 4CH	2.1.1.2:1	201	-3.714	1.05	1		p-hsidilf
-18	UP3	rig_a	5	D+RGB 4CH	2.1.1.2:1	209	-2.229	1.05	1		p-ubavjyf
-19	UP4	rig_a	6	D+RGB 4CH	2.1.1.2:1	217	-0.743	1.05	1		p-r8eyktp
-20	UP5	rig_a	7	D+RGB 4CH	2.1.1.2:1	225	0.5	1	1		p-0kdcec0
-21	UP6	rig_a	8	D+RGB 4CH	2.1.1.2:1	233	2.229	1.05	1		p-wblmjiz
-22	UP7	rig_a	9	D+RGB 4CH	2.1.1.2:1	241	3.714	1.05	1		p-zn4r39o
-23	UP8	rig_a	10	D+RGB 4CH	2.1.1.2:1	249	5.2	1.05	1		p-pxf87h7
-24	BAR3	ledbar	3	D+RGB 4CH	2.1.1.2:2	49	-3.033	7.6	1		p-5etxbdc
-25	BAR4	ledbar	4	D+RGB 4CH	2.1.1.2:2	73	-2.167	7.6	1		p-2ulupey
-26	BAR5	ledbar	5	D+RGB 4CH	2.1.1.2:2	97	-1.3	7.6	1		p-jxzbep7
-27	BAR6	ledbar	6	D+RGB 4CH	2.1.1.2:2	121	-0.433	7.6	1		p-zw0ilfl
-28	BAR7	ledbar	7	D+RGB 4CH	2.1.1.2:2	145	0.433	7.6	1		p-v7avmnn
-29	BAR8	ledbar	8	D+RGB 4CH	2.1.1.2:2	169	1.3	7.6	1		p-1f3tnap
-30	BAR9	ledbar	9	D+RGB 4CH	2.1.1.2:2	193	2.167	7.6	1		p-ucaj1aj
-31	BAR10	ledbar	10	D+RGB 4CH	2.1.1.2:2	217	3.033	7.6	1		p-j700wpc
-32	BAR11	ledbar	11	D+RGB 4CH	2.1.1.2:2	241	3.9	7.6	1		p-qy4habe
-33	BAR12	ledbar	12	D+RGB 4CH	2.1.1.2:2	265	4.767	7.6	1		p-gwrcxj2
-34	PAR11	rig_a	11	D+RGB 4CH	2.1.1.2:1	253	-8	5.5	1		p-u8nbbfq
-35	HAZ1	haze	1	Haze 2CH	2.1.1.2:1	12	-10.5	3.5	1		p-3pkies2
-36	BLI1	blinder	1	Dimmer 1CH	2.1.1.2:1	28	4	5.5	1		p-uyfie6d
-38	TES12	heads	12	Generic Spot 11ch 16bit	2.1.1.2:1	257	-10.5	5.5	1		p-2197lwa
-39	PAR12	rig_a	12	D+RGB 4CH	2.1.1.2:1	268	-0.5	4.5	1		p-x9lw9x0
-40	BLI2	blinder	2	Dimmer 1CH	2.1.1.2:1	14	1	10	1		p-fub1bhy
-41	HAZ2	haze	2	Haze 2CH	2.1.1.2:1	15	3.5	10	1		p-fxqhack
+1	MH1	heads	1	Generic Spot 11ch 16bit	2.1.1.2:1	49	-5	3.5	1		p-fslozhy
+2	MH2	heads	2	Generic Spot 11ch 16bit	2.1.1.2:1	60	-1.5	2	1		p-dl1fqlr
+3	MH3	heads	3	Generic Spot 11ch 16bit	2.1.1.2:1	71	1.667	2	1		p-pxce082
+4	MH4	heads	4	Generic Spot 11ch 16bit	2.1.1.2:1	82	-3.5	2	1		p-uvsp0d5
+5	UP1	rig_a	1	D+RGB 4CH	2.1.1.2:1	1	-5	1	1		p-p75dqtd
+6	UP2	rig_a	2	D+RGB 4CH	2.1.1.2:1	5	5	1	1		p-o255v60
+7	BAR1	ledbar	1	D+RGB 4CH	2.1.1.2:1	187	-4.834	7.592	1		p-nvef9lh
+9	MH6	heads	5	Generic Spot 11ch 16bit	2.1.1.2:1	93	-0.5	2	1		p-51kr5fl
+10	MH7	heads	6	Generic Spot 11ch 16bit	2.1.1.2:1	104	0.455	2	1		p-j7famis
+11	MH8	heads	7	Generic Spot 11ch 16bit	2.1.1.2:1	115	1.5	2	1		p-p7gq2jw
+12	MH9	heads	8	Generic Spot 11ch 16bit	2.1.1.2:1	126	2.5	2	1		p-f8711rf
+13	MH10	heads	9	Generic Spot 11ch 16bit	2.1.1.2:1	137	3	2	1		p-sj82qie
+14	MH11	heads	10	Generic Spot 11ch 16bit	2.1.1.2:1	148	4.091	2	1		p-b3u4a81
+15	MH12	heads	11	Generic Spot 11ch 16bit	2.1.1.2:1	159	5	2	1		p-k176621
+16	UP1	rig_a	3	D+RGB 4CH	2.1.1.2:1	9	-5.2	1.05	1		p-6sbj0ql
+17	UP2	rig_a	4	D+RGB 4CH	2.1.1.2:1	13	-3.5	1	1		p-hsidilf
+18	UP3	rig_a	5	D+RGB 4CH	2.1.1.2:1	17	-2	1	1		p-ubavjyf
+19	UP4	rig_a	6	D+RGB 4CH	2.1.1.2:1	21	-0.5	1	1		p-r8eyktp
+20	UP5	rig_a	7	D+RGB 4CH	2.1.1.2:1	25	0.5	1	1		p-0kdcec0
+21	UP6	rig_a	8	D+RGB 4CH	2.1.1.2:1	29	2	1	1		p-wblmjiz
+22	UP7	rig_a	9	D+RGB 4CH	2.1.1.2:1	33	3.5	1	1		p-zn4r39o
+23	UP8	rig_a	10	D+RGB 4CH	2.1.1.2:1	37	5.2	1.05	1		p-pxf87h7
+24	BAR3	ledbar	3	D+RGB 4CH	2.1.1.2:2	5	-3.033	7.6	1		p-5etxbdc
+25	BAR4	ledbar	4	D+RGB 4CH	2.1.1.2:2	9	-2.167	7.6	1		p-2ulupey
+26	BAR5	ledbar	5	D+RGB 4CH	2.1.1.2:2	13	-1.3	7.6	1		p-jxzbep7
+27	BAR6	ledbar	6	D+RGB 4CH	2.1.1.2:2	17	-0.433	7.6	1		p-zw0ilfl
+28	BAR7	ledbar	7	D+RGB 4CH	2.1.1.2:2	21	0.433	7.6	1		p-v7avmnn
+29	BAR8	ledbar	8	D+RGB 4CH	2.1.1.2:2	25	1.3	7.6	1		p-1f3tnap
+30	BAR9	ledbar	9	D+RGB 4CH	2.1.1.2:2	29	2.167	7.6	1		p-ucaj1aj
+31	BAR10	ledbar	10	D+RGB 4CH	2.1.1.2:2	33	3.033	7.6	1		p-j700wpc
+32	BAR11	ledbar	11	D+RGB 4CH	2.1.1.2:2	37	3.9	7.6	1		p-qy4habe
+33	BAR12	ledbar	12	D+RGB 4CH	2.1.1.2:2	41	4.767	7.6	1		p-gwrcxj2
+34	PAR11	rig_a	11	D+RGB 4CH	2.1.1.2:1	41	-2	4.5	1		p-u8nbbfq
+35	HAZ1	haze	1	Haze 2CH	2.1.1.2:1	181	-4.957	5.152	1		p-3pkies2
+36	BLI1	blinder	1	Dimmer 1CH	2.1.1.2:1	185	4	5.5	1		p-uyfie6d
+38	TES12	heads	12	Generic Spot 11ch 16bit	2.1.1.2:1	170	-3.174	4.373	1		p-2197lwa
+39	PAR12	rig_a	12	D+RGB 4CH	2.1.1.2:1	45	-0.5	4.5	1		p-x9lw9x0
+40	BLI2	blinder	2	Dimmer 1CH	2.1.1.2:1	186	1.253	4.557	1		p-fub1bhy
+41	HAZ2	haze	2	Haze 2CH	2.1.1.2:1	183	2.687	4.578	1		p-fxqhack

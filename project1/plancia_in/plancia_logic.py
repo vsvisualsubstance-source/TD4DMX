@@ -13,7 +13,12 @@ to on_osc(). Status / Lastmessage / Messages on this COMP show what happened.
   /dmx/scene i          show scene number i (0-based, show order), crossfade Fade
   /show/go, /show/back  next / previous cue of the show timeline (on press)
   /dmx/chase i          not implemented yet (no chase modes on the rigs)
-  /mh/*                 moving heads: deferred, logged only
+  /mh/*                 moving heads, selective: moving_heads/head_programmer
+                        (select mask / select/heads|add|remove|set|all|clear,
+                        pantilt, pan, tilt, color, dimmer, zoom, focus,
+                        white, strobe, gobo, colorwheel, position,
+                        position/store, preset/recall, preset/store, home,
+                        follow, release) on the selected heads
   /led/*                no LED wall: ignored
 
 All numbers arrive as OSC floats. Runs on the main thread (OSC In DAT
@@ -113,7 +118,7 @@ def handle(address, args):
 	if address == '/dmx/chase':
 		return 'chase %d non implementato (teste/chase rinviati)' % int(_f(args))
 	if address.startswith('/mh/'):
-		return 'ignorato: teste mobili rinviate (%s)' % address
+		return _home().op('moving_heads/head_programmer').module.on_osc(address, args)
 	if address.startswith('/led/'):
 		return None
 	return 'indirizzo sconosciuto %s' % address

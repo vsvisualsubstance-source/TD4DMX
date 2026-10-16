@@ -12,6 +12,11 @@ Position (degrees from the head center):
 Then per head (head_config): + offset, invert, clamp to [min, max] (blank =
 the profile range), and 16-bit when the profile has pan_fine / tilt_fine.
 
+Per-head programmer (head_programmer, Plancia /mh/* and Gaia heads_*): a
+head with a head_state row overrides the above -- manual = its own pan /
+tilt / look (blank fields = global), follow = pan/tilt from its PTZ target
+whatever Control says; strobe gates its shutter at dmx_patch Stroberate.
+
 Attributes not driven here use the profile 'defaults' (e.g. shutter=255,
 the open value -- check the fixture manual) or 0.
 """
@@ -100,12 +105,31 @@ def onCook(scriptOp):
 		'speed': (1.0 - float(p.Speed.eval())) * 255.0,
 	}
 	shutter_open = bool(p.Shutteropen.eval())
+	# per-head programmer (head_programmer: Plancia /mh/*, Gaia heads_*):
+	# a head with a state row overrides the global look / position
+	ustate = {}
+	hp = comp.op('head_programmer')
+	if hp is not None:
+		try:
+			ustate = hp.module.unit_state()
+		except Exception as e:
+			debug('head_programmer.unit_state:', e)
+	follow_src = scriptOp.inputs[0] if len(scriptOp.inputs) > 0 else None
+	strobing = any(s and s.get('strobe') for s in ustate.values())
+	strobe_on = hp.module.strobe_open() if strobing else True
 	for n in range(1, len(profiles) + 1):
 		chans, pan_range, tilt_range, defaults = _profile(comp, profiles[n - 1])
 		cfg = _head_cfg(comp, n, pan_range, tilt_range)
+		st = ustate.get(n)
 		pan, tilt = float(p.Pan.eval()), float(p.Tilt.eval())
-		if targets is not None:
-			tp, tt = targets['head%d_pan' % n], targets['head%d_tilt' % n]
+		src = targets
+		if st is not None:
+			src = follow_src if st['mode'] == 'follow' else None
+			if st['mode'] == 'manual':
+				pan = st['pan'] if st['pan'] is not None else pan
+				tilt = st['tilt'] if st['tilt'] is not None else tilt
+		if src is not None:
+			tp, tt = src['head%d_pan' % n], src['head%d_tilt' % n]
 			if tp is not None:
 				pan = float(tp[0])
 			if tt is not None:
@@ -116,11 +140,19 @@ def onCook(scriptOp):
 		tilt16 = _to_dmx(tilt, tilt_range, cfg['tilt_min'], cfg['tilt_max'])
 		has_pan_fine, has_tilt_fine = 'pan_fine' in chans, 'tilt_fine' in chans
 		values = dict(look)
+		if st is not None:
+			for f in ('dimmer', 'red', 'green', 'blue', 'white', 'zoom', 'focus'):
+				if st[f] is not None:
+					values[f] = st[f] * 255.0
+			for f in ('color', 'gobo'):
+				if st[f] is not None:
+					values[f] = st[f]
 		values['pan'] = (pan16 >> 8) if has_pan_fine else round(pan16 / 257.0)
 		values['pan_fine'] = pan16 & 0xFF
 		values['tilt'] = (tilt16 >> 8) if has_tilt_fine else round(tilt16 / 257.0)
 		values['tilt_fine'] = tilt16 & 0xFF
-		values['shutter'] = defaults.get('shutter', 255.0) if shutter_open else 0.0
+		open_now = shutter_open and (strobe_on if st is not None and st['strobe'] else True)
+		values['shutter'] = defaults.get('shutter', 255.0) if open_now else 0.0
 		seen = {}
 		for attr in chans:
 			k = seen.get(attr, 0)

@@ -14,6 +14,8 @@ Plancia (GAIA_INTERFACE "TD/Win-PD, 19"). Two sibling tables:
     source        builtin | manual (TD) | plancia | scan
     pan_range, tilt_range, defaults   heads only (degrees, "shutter=255")
     notes         free text
+    gobos, colors heads only: wheel slots in order, "Open=0 Dots=16 ..."
+                  (name=DMX value); /mh/gobo i picks slot i
 
   fixture_types    the stage TAXONOMY, defined by Plancia while building the
                    stage (par, wash, bar, mh, blinder, haze, wall, ...):
@@ -44,7 +46,7 @@ gaia_services/dmx_services (dmx_models, dmx_types, ...).
 import re
 
 MODEL_COLUMNS = ['model', 'kind', 'channels', 'manufacturer', 'source',
-	'pan_range', 'tilt_range', 'defaults', 'notes']
+	'pan_range', 'tilt_range', 'defaults', 'notes', 'gobos', 'colors']
 TYPE_COLUMNS = ['type', 'label', 'group', 'kind', 'model', 'source']
 
 KINDS = ('chase', 'level', 'heads')
@@ -195,7 +197,35 @@ def _model_dict(d):
 		out['pan_range'] = _num(d['pan_range'], 540.0)
 		out['tilt_range'] = _num(d['tilt_range'], 270.0)
 		out['defaults'] = d['defaults']
+		out['gobos'] = parse_slots(d.get('gobos', ''))
+		out['colors'] = parse_slots(d.get('colors', ''))
 	return out
+
+
+def parse_slots(text):
+	"""'Open=0 Dots=16' -> [{'name': 'Open', 'value': 0}, ...]; a list of
+	such dicts (or [name, value] pairs) passes through cleaned."""
+	out = []
+	items = text if isinstance(text, (list, tuple)) else str(text or '').split()
+	for it in items:
+		if isinstance(it, dict):
+			name, val = it.get('name'), it.get('value')
+		elif isinstance(it, (list, tuple)) and len(it) == 2:
+			name, val = it
+		elif '=' in str(it):
+			name, val = str(it).split('=', 1)
+		else:
+			continue
+		try:
+			v = max(0, min(255, int(float(val))))
+		except (TypeError, ValueError):
+			continue
+		out.append({'name': str(name).strip().replace(' ', '_'), 'value': v})
+	return out
+
+
+def _slots_text(v):
+	return ' '.join('%s=%d' % (s['name'], s['value']) for s in parse_slots(v))
 
 
 def models(kind=None):
@@ -235,6 +265,8 @@ def _clean_model(raw, source, cur=None):
 	for k in ('manufacturer', 'notes', 'defaults'):
 		v = d.get(k, cur.get(k, ''))
 		row[k] = str(v if v is not None else '').replace('\t', ' ').replace('\n', ' ').strip()
+	for k in ('gobos', 'colors'):
+		row[k] = _slots_text(d.get(k, cur.get(k, '')))
 	for k in ('pan_range', 'tilt_range'):
 		v = d.get(k, cur.get(k, ''))
 		row[k] = _fmt(_num(v, 0.0)) if str(v).strip() else ''

@@ -1,16 +1,16 @@
-model	kind	channels	manufacturer	source	pan_range	tilt_range	defaults	notes
-ZQ006018 4CH RGBW	chase	red green blue white		builtin				
-ZQ006018 8CH	chase	dimmer red green blue white strobe mode speed		builtin				
-RGB 3CH	chase	red green blue		builtin				
-D+RGB 4CH	chase	dimmer red green blue		builtin				
-D+RGBW 5CH	chase	dimmer red green blue white		builtin				
-RGBWA+UV 6CH	chase	red green blue white amber uv		builtin				
-D+RGBW+S+M 7CH	chase	dimmer red green blue white strobe mode		builtin				
-Generic Spot 9ch	heads	pan tilt color gobo shutter dimmer speed macro reset		builtin	540	270	shutter=255 speed=0	generico 8 bit -- verificare sul manuale
-Generic Spot 11ch 16bit	heads	pan pan_fine tilt tilt_fine speed dimmer shutter color gobo macro reset		builtin	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
-Generic Wash RGBW 9ch	heads	pan tilt speed dimmer shutter red green blue white		builtin	540	270	shutter=255 speed=0	generico 8 bit -- verificare sul manuale
-Generic Wash RGBW 14ch 16bit	heads	pan pan_fine tilt tilt_fine speed dimmer shutter red green blue white macro macro_speed reset		builtin	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
-Generic Wash RGBWA+UV 16ch 16bit	heads	pan pan_fine tilt tilt_fine speed dimmer shutter red green blue white amber uv zoom macro reset		builtin	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
-Generic Beam 16ch 16bit	heads	pan pan_fine tilt tilt_fine speed dimmer shutter color gobo prism prism_rot focus frost macro reset none		builtin	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
-Dimmer 1CH	level	dimmer		builtin				
-Haze 2CH	level	output fan		builtin				
+model	kind	channels	manufacturer	source	pan_range	tilt_range	defaults	notes	gobos	colors
+ZQ006018 4CH RGBW	chase	red green blue white		builtin						
+ZQ006018 8CH	chase	dimmer red green blue white strobe mode speed		builtin						
+RGB 3CH	chase	red green blue		builtin						
+D+RGB 4CH	chase	dimmer red green blue		builtin						
+D+RGBW 5CH	chase	dimmer red green blue white		builtin						
+RGBWA+UV 6CH	chase	red green blue white amber uv		builtin						
+D+RGBW+S+M 7CH	chase	dimmer red green blue white strobe mode		builtin						
+Generic Spot 9ch	heads	pan tilt color gobo shutter dimmer speed macro reset		builtin	540	270	shutter=255 speed=0	generico 8 bit -- verificare sul manuale		
+Generic Spot 11ch 16bit	heads	pan pan_fine tilt tilt_fine speed dimmer shutter color gobo macro reset		builtin	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale		
+Generic Wash RGBW 9ch	heads	pan tilt speed dimmer shutter red green blue white		builtin	540	270	shutter=255 speed=0	generico 8 bit -- verificare sul manuale		
+Generic Wash RGBW 14ch 16bit	heads	pan pan_fine tilt tilt_fine speed dimmer shutter red green blue white macro macro_speed reset		builtin	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale		
+Generic Wash RGBWA+UV 16ch 16bit	heads	pan pan_fine tilt tilt_fine speed dimmer shutter red green blue white amber uv zoom macro reset		builtin	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale		
+Generic Beam 16ch 16bit	heads	pan pan_fine tilt tilt_fine speed dimmer shutter color gobo prism prism_rot focus frost macro reset none		builtin	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale		
+Dimmer 1CH	level	dimmer		builtin						
+Haze 2CH	level	output fan		builtin						

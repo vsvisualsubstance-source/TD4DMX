@@ -169,6 +169,15 @@ in last_error) | auto (moved to the suggestion).
                           "auto") every time dmx_fixtures replaces the
                           whole patch: the proposal is there when Plancia
                           reads the status after sending its stage.
+
+2026-10-16: selective moving heads (moving_heads/head_programmer,
+GAIA_INTERFACE "TD/Win-PD, 23"): selection by uid / named selection,
+per-head state (global | manual | follow), positions per head, presets.
+heads_list, heads_select, heads_program, heads_mode, heads_selections,
+heads_positions, heads_position_recall / _store, heads_presets,
+heads_preset_store / _recall / _remove (see PROGRAMMER_PARAMS); dmx_matrix
+'heads' gains 'programmer' (order, modes, fields, selections, positions,
+presets). Same commands as Plancia OSC /mh/* (plancia_in).
 """
 import json
 import time
@@ -789,7 +798,95 @@ def _build_heads_matrix():
 		params[name] = {'kind': 'param', 'type': 'enum', 'options': list(par.menuNames), 'default': str(par.default)}
 	params['heads_color'] = {'kind': 'param', 'type': 'color_rgb', 'range': [0.0, 1.0]}
 	services = {name: {'kind': 'service', 'type': kind} for name, kind, _ in HEADS_SERVICES}
-	return {'params': params, 'services': services}
+	for name, access in PROGRAMMER_PARAMS:
+		params[name] = {'kind': 'param', 'type': 'json', 'access': access}
+	hp = _programmer()
+	return {'params': params, 'services': services,
+		'programmer': {
+			'order': [{'unit': x['unit'], 'key': x['key'], 'uid': x['uid'], 'name': x['name']} for x in hp.heads()],
+			'modes': list(hp.MODES), 'fields': list(hp.FIELDS),
+			'selections': hp.selections(),
+			'positions': [{'index': x['index'], 'position': x['position'], 'label': x['label']} for x in hp.positions()],
+			'presets': [{'index': x['index'], 'preset': x['preset'], 'label': x['label']} for x in hp.presets()],
+			'plancia_gobos': list(hp.PLANCIA_GOBOS)}}
+
+
+# Per-head programmer (moving_heads/head_programmer, GAIA_INTERFACE
+# "TD/Win-PD, 23"): selective control of the heads, same as Plancia /mh/*.
+PROGRAMMER_PARAMS = [
+	('heads_list', 'r'),            # [{unit, key, uid, id, name, profile, selected, mode, pan...}]
+	('heads_select', 'w'),          # {all|clear: 1} | {heads|add|remove: [refs]} | {set: name} | {mask: [0/1]}
+	('heads_program', 'w'),         # {<field>: value, ..., mode?, heads?: [refs]} -> selected (or heads)
+	('heads_mode', 'w'),            # {mode: global|manual|follow, heads?: [refs]}
+	('heads_selections', 'rw'),     # [{selection, label, heads: [keys]}]; set = replace
+	('heads_positions', 'rw'),      # [{index, position, label, heads: {key|*: [pan, tilt]}}]; set = replace
+	('heads_position_recall', 'w'), # index or name (or {position, heads?})
+	('heads_position_store', 'w'),  # {position, label?} from the selected heads
+	('heads_presets', 'r'),         # [{index, preset, label, heads: {key: {fields}}}]
+	('heads_preset_store', 'w'),    # {preset, label?} from the selected heads
+	('heads_preset_recall', 'w'),   # index or name (or {preset, heads?})
+	('heads_preset_remove', 'w'),   # name
+]
+
+
+def _programmer():
+	return _heads().op('head_programmer').module
+
+
+def _register_programmer(agent):
+	hp = _programmer
+
+	def arg(v):
+		return _json_arg(v) if isinstance(v, (bytes, str)) and str(v).strip()[:1] in '{["' else v
+
+	def heads_of(d):
+		refs = d.get('heads')
+		if refs is None:
+			return None
+		keys = [hp().resolve(r) for r in refs]
+		if None in keys:
+			raise ValueError('teste non trovate: %s' % [r for r, k in zip(refs, keys) if k is None])
+		return keys
+
+	def program(v):
+		d = dict(arg(v))
+		keys = heads_of(d)
+		d.pop('heads', None)
+		mode = d.pop('mode', None)
+		if mode == 'global':
+			hp().set_mode('global', keys)
+			return
+		hp().program(d, keys, mode=mode)
+
+	def mode(v):
+		d = arg(v)
+		d = d if isinstance(d, dict) else {'mode': d}
+		hp().set_mode(str(d.get('mode')), heads_of(d))
+
+	def recall(kind):
+		def fn(v):
+			d = arg(v)
+			d = d if isinstance(d, dict) else {kind: d}
+			f = hp().recall_position if kind == 'position' else hp().recall_preset
+			f(d.get(kind), heads_of(d))
+		return fn
+
+	agent.register_param('heads_list', get=lambda: hp().heads_list())
+	agent.register_param('heads_select', get=lambda: None, set=lambda v: hp().select(arg(v)))
+	agent.register_param('heads_program', get=lambda: None, set=program)
+	agent.register_param('heads_mode', get=lambda: None, set=mode)
+	agent.register_param('heads_selections', get=lambda: hp().selections(),
+		set=lambda v: hp().set_selections(arg(v)))
+	agent.register_param('heads_positions', get=lambda: hp().positions(),
+		set=lambda v: hp().set_positions(arg(v)))
+	agent.register_param('heads_position_recall', get=lambda: None, set=recall('position'))
+	agent.register_param('heads_position_store', get=lambda: None,
+		set=lambda v: hp().store_position(dict(arg(v)).get('position'), dict(arg(v)).get('label', '')))
+	agent.register_param('heads_presets', get=lambda: hp().presets())
+	agent.register_param('heads_preset_store', get=lambda: None,
+		set=lambda v: hp().store_preset(dict(arg(v)).get('preset'), dict(arg(v)).get('label', '')))
+	agent.register_param('heads_preset_recall', get=lambda: None, set=recall('preset'))
+	agent.register_param('heads_preset_remove', get=lambda: None, set=lambda v: hp().remove_preset(arg(v)))
 
 
 def _build_patch_matrix():
@@ -1168,6 +1265,7 @@ def register_all():
 				status=lambda pn=par_name: bool(_heads().par[pn].eval()))
 
 	_register_ptz(agent)
+	_register_programmer(agent)
 	_register_fixtures(agent)
 	_register_catalog(agent)
 	_register_planning(agent)

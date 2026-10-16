@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.33.toe
-exported_at: '2026-10-16T14:13:37Z'
+source_file: dmx.34.toe
+exported_at: '2026-10-16T16:59:32Z'
 network_path: /
 options:
   include_dat_content: false
@@ -12322,7 +12322,7 @@ operators:
           clampMin: true
           normMax: 64.0
           help: Id of the fixture shown in the inspector (click it on the plan or on the universe map).
-          value: 23
+          value: 34
         - name: Status
           style: Str
           readOnly: true
@@ -12332,7 +12332,6 @@ operators:
           style: Str
           readOnly: true
           help: 'Read-only: last error of an edit (e.g. address out of range); empty when the last edit was applied.'
-          value: 'ANTEPRIMA keep: 38 spostamenti. Prima: U1 186/512 (fino a 271, 19 buchi), U2 44/512 (fino a 268, 10 buchi). Dopo: U1 186/512 (fino a 186, 0 buchi), U2 44/512 (fino a 44, 0 buchi)'
         - name: Fgroup
           style: Menu
           label: Group
@@ -12344,7 +12343,7 @@ operators:
           style: Str
           label: Name
           help: Free label shown on the plan and on the universe map.
-          value: UP8
+          value: PAR11
         - name: Funit
           style: Int
           label: Unit (# nel gruppo)
@@ -12354,7 +12353,7 @@ operators:
           normMin: 1.0
           normMax: 32.0
           help: 'Posizione della luce nel suo gruppo: l''uscita del motore che la pilota (bar3, head11) e l''ordine del chase. NON e'' un universo: l''universo e'' la Output Port.'
-          value: 10
+          value: 11
         - name: Fprofile
           style: Menu
           label: Profile
@@ -12386,21 +12385,21 @@ operators:
           normMin: 1.0
           normMax: 512.0
           help: DMX start address 1..512 on the output port. Overlaps with other fixtures turn red on the universe map.
-          value: 249
+          value: 41
         - name: Fx
           style: Float
           label: Plan X
           normMin: -16.0
           normMax: 16.0
           help: Position on the stage plan, in grid cells (drag on the plan snaps to 0.5).
-          value: 5.2
+          value: -2
         - name: Fy
           style: Float
           label: Plan Y
           normMin: -8.0
           normMax: 8.0
           help: Position on the stage plan, in grid cells, y up (stage front at the bottom).
-          value: 1.05
+          value: 4.5
         - name: Fenabled
           style: Toggle
           label: Enabled
@@ -12769,7 +12768,7 @@ operators:
       Fixture:
         $t: fixture
         Count: 2
-        Startaddress: 12
+        Startaddress: 181
         Profile: Haze 2CH
         Outputport: 2.1.1.2:1
     position: [-200, -3000]
@@ -13112,7 +13111,7 @@ operators:
         file: project1/dmx_patch/fixture_models.tsv
         syncfile: true
         rows: 16
-        cols: 9
+        cols: 11
       position: [0, -2600]
       color: [0.9, 0.3, 0.4]
       tags:
@@ -13451,18 +13450,18 @@ operators:
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: blinder Level=0.79
+        value: preset TestPreset su 3 teste
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /led/mode 0  @ 15:46:10
+        value: /mh/preset/recall 0  @ 18:58:37
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 1989
+        value: 2355
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13527,7 +13526,7 @@ operators:
         $t: fixture_2
         Fixtureprofile: D+RGB 4CH
         Nbars: 12
-        Outputport: 2.1.1.2:2
+        Startaddress: 187
     position: [-600, -3000]
     color: [0.325, 0.8, 0.3]
     children:
@@ -14036,7 +14035,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 16:13:36
+        value: gaia/brain/state @ 18:59:31
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14063,7 +14062,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 24217.5666666667
+      lastmsg_seconds: 34170.7666666667
     children:
     - name: soul
       type: outCHOP
@@ -14289,7 +14288,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 2
+        rows: 14
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -14699,7 +14698,7 @@ operators:
         $t: fixture
         Level: 0.7937303782
         Count: 2
-        Startaddress: 28
+        Startaddress: 185
         Outputport: 2.1.1.2:1
     position: [200, -3000]
     color: [0.67, 0.67, 0.67]
@@ -15433,6 +15432,7 @@ operators:
         normMin: 1.0
         normMax: 512.0
         help: DMX address of head 1 on the output port universe. Head n starts at Start Address + (n-1) x channels.
+        value: 49
       - name: Outputport
         style: StrMenu
         label: Output Port
@@ -15536,6 +15536,48 @@ operators:
         clampMin: true
         clampMax: true
         help: Focus 0-1, for heads with that channel.
+      Programmer:
+      - name: Selection
+        style: Str
+        label: Selezione
+        help: 'Teste selezionate (chiavi: uid Plancia "p-..." o "id:<n>", separate da spazio). I comandi del programmer (Plancia /mh/*, Gaia heads_*) agiscono solo su queste. Vuota = nessuna testa.'
+      - name: Selectall
+        style: Pulse
+        label: Tutte
+        help: Seleziona tutte le teste.
+      - name: Selectclear
+        style: Pulse
+        label: Nessuna
+        help: Svuota la selezione.
+      - name: Selectionname
+        style: Str
+        label: Nome selezione
+        startSection: true
+        help: 'Nome (senza spazi) per salvare o richiamare una selezione: mh_sx, mh_fronte... (tabella head_selections).'
+      - name: Saveselection
+        style: Pulse
+        label: Salva selezione
+        help: Salva la selezione attuale col nome indicato (sostituisce quella con lo stesso nome).
+      - name: Recallselection
+        style: Pulse
+        label: Richiama selezione
+        help: Seleziona le teste della selezione col nome indicato.
+      - name: Follow
+        style: Pulse
+        label: Segui mocap
+        startSection: true
+        help: Le teste selezionate seguono il loro target PTZ (mocap o pad), qualunque sia Control; le altre restano come sono.
+      - name: Release
+        style: Pulse
+        label: Rilascia
+        help: 'Le teste selezionate tornano al look globale (pagine Position e Look): il loro stato del programmer si cancella.'
+      - name: Programmerstatus
+        style: Str
+        label: Stato
+        startSection: true
+        readOnly: true
+        help: 'Teste, selezionate, e quante per modo: global (look globale), manual (programmer), follow (mocap).'
+        value: =me.op('head_programmer').module.status_text() if me.op('head_programmer') else ''
     position: [-600, -2100]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -15548,6 +15590,26 @@ operators:
       position: [800, 0]
       inputs:
       - select_ptz
+    - name: head_state
+      type: tableDAT
+      position: [400, -1400]
+      color: [0.67, 0.67, 0.67]
+      dat_content:
+      - - head
+        - mode
+        - pan
+        - tilt
+        - dimmer
+        - red
+        - green
+        - blue
+        - white
+        - color
+        - gobo
+        - zoom
+        - focus
+        - strobe
+      dat_content_format: table
     - name: select_ptz
       type: selectCHOP
       parameters:
@@ -15566,6 +15628,17 @@ operators:
       color: [0.9, 0.3, 0.4]
       tags:
       - tsv
+    - name: head_presets
+      type: tableDAT
+      parameters:
+        file: project1/moving_heads/head_presets.tsv
+        syncfile: true
+        rows: 1
+        cols: 15
+      position: [1200, -1400]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - tsv
     - name: head_profiles
       type: tableDAT
       parameters:
@@ -15576,11 +15649,44 @@ operators:
       color: [0.9, 0.3, 0.4]
       tags:
       - tsv
+    - name: head_positions
+      type: tableDAT
+      parameters:
+        file: project1/moving_heads/head_positions.tsv
+        syncfile: true
+        rows: 79
+        cols: 5
+      position: [800, -1400]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - tsv
+    - name: head_programmer
+      type: textDAT
+      parameters:
+        file: project1/moving_heads/head_programmer.py
+        syncfile: true
+        language: python
+      position: [0, -1400]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
+    - name: head_selections
+      type: tableDAT
+      parameters:
+        file: project1/moving_heads/head_selections.tsv
+        syncfile: true
+        rows: 1
+        cols: 3
+      position: [1600, -1400]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - tsv
     - name: heads_callbacks
       type: parameterexecuteDAT
       parameters:
         op: ..
-        pars: Home Count Startaddress Profile Outputport
+        pars: Home Count Startaddress Profile Outputport Selectall Selectclear Saveselection Recallselection Follow Release
         file: project1/moving_heads/heads_callbacks.py
         syncfile: true
       position: [0, -600]
@@ -15610,6 +15716,13 @@ operators:
       position: [-70, -670]
       size: [1070, 1030]
       color: [0.85, 0.65, 0.2]
+    - name: annotate2
+      mode: annotate
+      title: Programmer teste
+      text: 'Controllo selettivo: head_programmer (selezione per uid/selezioni con nome, stato per testa global/manual/follow, posizioni per testa, preset). head_state = stato live (non su disco). Plancia OSC /mh/*, Gaia heads_*. Pagina Programmer.'
+      position: [-70, -1470]
+      size: [1870, 330]
+      color: [0.3, 0.55, 0.8]
   - name: config_window
     type: windowCOMP
     parameters:
@@ -15742,7 +15855,6 @@ operators:
         $t: fixture_2
         Fixtureprofile: D+RGB 4CH
         Nbars: 12
-        Startaddress: 65
     position: [0, 50]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -16005,7 +16117,7 @@ operators:
     parameters:
       file: project1/externalizations.tsv
       syncfile: true
-      rows: 387
+      rows: 391
       cols: 11
     position: [-200, 0]
     color: [0.9, 0.3, 0.4]

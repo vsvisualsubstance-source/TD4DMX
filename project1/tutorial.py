@@ -210,6 +210,21 @@ Indice
    con le cue (per cambiarla nel tempo usa le due palette dei rig).
    Le teste mobili hanno il loro colore: tab Teste / PTZ, pagina Look.
 
+ TESTE UNA PER UNA (moving_heads, pagina Programmer)
+   Le pagine Position e Look muovono TUTTE le teste insieme (look globale).
+   Il programmer controlla solo le teste SELEZIONATE:
+     Selezione        le teste scelte (Tutte / Nessuna, oppure una
+                      selezione con nome: mh_sx, mh_dx... Salva/Richiama)
+     Segui mocap      le selezionate seguono la PTZ (mocap o pad), le
+                      altre restano dove sono
+     Rilascia         le selezionate tornano al look globale
+   Dalla Plancia: /mh/select, /mh/pantilt, /mh/color, /mh/dimmer,
+   /mh/gobo, /mh/position (posizioni per testa: Centro, Pubblico, Palco,
+   Cielo, Croce, Ventaglio -- da calibrare sul palco vero, tabella
+   moving_heads/head_positions), /mh/preset/store e /recall, /mh/follow.
+   Ogni testa e' in uno di tre modi: global (look globale), manual (valori
+   suoi; un campo vuoto segue il globale), follow (mocap).
+
  Parametri principali
    Palette            palette preimpostata (Rainbow, Warm, Cool, Fire...),
                       oppure "Custom" = usa i 5 Custom Color
