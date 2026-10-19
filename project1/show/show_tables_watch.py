@@ -2,6 +2,8 @@
 # engine caches and refresh the inspector
 def onTableChange(dat):
 	m = op('show_logic').module
-	m.invalidate()
+	# only cue / automation changes re-apply everything; a scene edit must
+	# not undo live moves (Plancia heads, TD tweaks)
+	m.invalidate(force=dat.name in ('cues', 'keys'))
 	m.load_all()
 	return

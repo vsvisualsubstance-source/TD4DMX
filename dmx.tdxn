@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.39.toe
-exported_at: '2026-10-19T09:16:07Z'
+source_file: dmx.40.toe
+exported_at: '2026-10-19T09:31:27Z'
 network_path: /
 options:
   include_dat_content: false
@@ -55,6 +55,7 @@ type_defaults:
     color: [0.67, 0.67, 0.67]
   constantTOP:
     parameters:
+      colorb: 0
       resolutionh: 200
       resolutionw: 200
     flags:
@@ -962,7 +963,6 @@ operators:
         clampMin: true
         normMax: 300.0
         help: 'Playhead position in seconds. Drag it to scrub: the state at that time is applied.'
-        value: 0.1008533747
       - name: Rewind
         style: Pulse
         help: Back to 0 and re-apply everything.
@@ -979,7 +979,7 @@ operators:
         normMin: 10.0
         normMax: 1800.0
         help: Show length in seconds (end of the timeline).
-        value: 5
+        value: 10
       - name: Active
         style: Toggle
         label: Timeline Drives Output
@@ -1015,7 +1015,7 @@ operators:
         style: Str
         readOnly: true
         help: 'Read-only: transport, current cue, scene and fade progress.'
-        value: STOP 00:00.10  |  prima della prima cue
+        value: STOP 00:00.00  |  cue 1/1    -> TestScene1  (fade 0%)
       - name: Message
         style: Str
         readOnly: true
@@ -1089,7 +1089,6 @@ operators:
         clampMin: true
         normMax: 300.0
         help: When the cue starts, in seconds.
-        value: 0.2
       - name: Cuescene
         style: Menu
         label: Scene
@@ -1173,6 +1172,9 @@ operators:
     color: [0.325, 0.8, 0.3]
     tags:
     - tox
+    storage:
+      timeline_bpm: null
+      timeline_name: ''
     children:
     - name: cues
       type: tableDAT
@@ -12134,7 +12136,6 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
-        value: patch
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -12333,6 +12334,7 @@ operators:
           style: Str
           readOnly: true
           help: 'Read-only: last error of an edit (e.g. address out of range); empty when the last edit was applied.'
+          value: nessun conflitto da risolvere
         - name: Fgroup
           style: Menu
           label: Group
@@ -13464,6 +13466,7 @@ operators:
         style: Toggle
         label: Feedback Show
         help: 'Send the show timeline (/show/play, /show/time 10x/s while playing, /show/cue). Off until Plancia follows TD''s clock: today Plancia runs its own cues (and /dmx/scene) once it sees play=1.'
+        value: true
       - name: Feedbackheads
         style: Toggle
         label: Feedback Heads
@@ -13479,18 +13482,18 @@ operators:
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: blackout off
+        value: pantilt su 2 teste
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /dmx/blackout 0  @ 11:08:22
+        value: /mh/pantilt 0.525618 0.104934  @ 11:31:26
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 5699
+        value: 7453
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13719,9 +13722,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.9046144373
-        colorg: 0
-        colorb: 0.9046144373
+        colorr: 0.0068658657
+        colorg: 0.8454873478
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14083,7 +14085,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: master STOP 00:00.10  seq 7
+        value: master STOP 00:00.00  seq 104
       Status:
       - name: Identitystatus
         style: Str
@@ -14104,7 +14106,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/brain/state @ 11:16:07
+        value: gaia/td/canvas @ 11:31:27
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14131,7 +14133,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 10038.9333333333
+      lastmsg_seconds: 10957.3
     children:
     - name: soul
       type: outCHOP
@@ -14368,7 +14370,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 1
+        rows: 138
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -15685,10 +15687,10 @@ operators:
         - zoom
         - focus
         - strobe
-      - - p-fslozhy
+      - - p-51kr5fl
         - manual
-        - '75.9526'
-        - '-55.7643'
+        - '141.9168'
+        - '-14.1661'
         - '0.5807'
         - '0.0'
         - '1.0'
@@ -15699,10 +15701,10 @@ operators:
         - '0.6548'
         - '0.7165'
         - '0.0'
-      - - p-51kr5fl
+      - - p-fslozhy
         - manual
-        - '75.9526'
-        - '-55.7643'
+        - '141.9168'
+        - '-14.1661'
         - '0.5807'
         - '0.0'
         - '1.0'
@@ -15862,7 +15864,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: topic, sequence number and how many fixtures are being sent, or the last error.'
-        value: 'gaia/devices/td-dmx-win/dmx_output seq 26: 10 fixture, 10 inviate'
+        value: 'gaia/devices/td-dmx-win/dmx_output seq 941: 10 fixture, 10 inviate'
     position: [1000, -430]
     color: [0.325, 0.8, 0.3]
     comment: DMX services registered on gaia_client (op.Gaia) -- project-specific glue, outside the portable client
@@ -15944,7 +15946,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_audio.tsv
         syncfile: true
-        rows: 1
+        rows: 2
         cols: 9
       position: [800, -800]
       color: [0.9, 0.3, 0.4]
@@ -15985,7 +15987,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Warm
+        Palette: Basic
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -16143,9 +16145,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.8918863932
-        colorg: 0.0117498639
-        colorb: 0
+        colorr: 0
+        colorg: 0.0013782298
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -16271,7 +16272,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Warm
+        Palette: Basic
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -16432,9 +16433,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.8913853664
-        colorg: 0.02226163
-        colorb: 0
+        colorr: 0.2281890258
+        colorg: 0.8321365057
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP

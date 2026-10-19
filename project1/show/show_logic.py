@@ -57,7 +57,8 @@ CUE_COLS = ['id', 'time', 'scene', 'fade', 'label']
 KEY_COLS = ['id', 'lane', 'time', 'value', 'interp']
 
 _last = {}        # (target, par) -> last value applied
-_force = [True]   # next tick applies everything
+_force = [False]  # next tick applies everything (seek, rewind, Active on, load)
+_seeded = [False]  # False after a (re)load of this module: see tick()
 _clock = {'secs': None}
 _cache = {}       # memoised table reads; cleared by invalidate()
 _xfade = {}       # live recall in progress: {frm, to, t0, dur} (see recall)
@@ -78,10 +79,13 @@ def _memo(fn):
 	return wrapper
 
 
-def invalidate():
-	"""Tables or COMP pages changed: drop the caches, re-apply everything."""
+def invalidate(force=True):
+	"""Tables or COMP pages changed: drop the caches; force = re-apply
+	everything (cues/keys changed). A scene capture or flag change does not
+	force: it must not undo live moves (Plancia heads, TD tweaks)."""
 	_cache.clear()
-	_force[0] = True
+	if force:
+		_force[0] = True
 
 
 # ---------------------------------------------------------------- basics
@@ -371,7 +375,7 @@ def capture(name, label=None, categories=None):
 	if 'heads' in cats:
 		for t, n, v in _head_rows():
 			vt.appendRow([name, t, n, v])
-	invalidate()
+	invalidate(force=False)
 	return name
 
 
@@ -385,7 +389,7 @@ def set_scene_flags(name, **flags):
 			t[r, c] = 1 if _i(flags[c], 1) else 0
 	if 'label' in flags:
 		t[r, 'label'] = flags['label']
-	invalidate()
+	invalidate(force=False)
 
 
 def delete_scene(name):
@@ -398,7 +402,7 @@ def delete_scene(name):
 	for r in range(vt.numRows - 1, 0, -1):
 		if vt[r, 'scene'].val == name:
 			vt.deleteRow(r)
-	invalidate()
+	invalidate(force=False)
 
 
 def recall(name, fade=0.0):
@@ -762,14 +766,24 @@ def tick():
 		t += dt
 		if t >= length:
 			if p.Loop.eval():
+				# no forced apply at the wrap: only what the timeline changes is
+				# written, so live moves (Plancia /mh/*, TD tweaks) hold
 				t = t % length
-				_force[0] = True
 			else:
 				t = length
 				p.Play = False
 		p.Time = round(t, 4)
 	if p.Active.eval():
-		_apply(state_at(t), force=_force[0])
+		st = state_at(t)
+		if not _seeded[0]:
+			# first tick after a (re)load of this module (project save, file
+			# sync): the outputs already hold the timeline's look, so take it
+			# as applied instead of re-writing it over live changes (a save
+			# used to snap the heads back from where Plancia had moved them)
+			_last.update(st)
+			_seeded[0] = True
+		else:
+			_apply(st, force=_force[0])
 		_force[0] = False
 		idx, cue, _cs = cue_at(t)
 		if cue is not None and _cue_seen[0] != (True, idx):
