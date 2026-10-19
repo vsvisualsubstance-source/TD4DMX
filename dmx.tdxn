@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.34.toe
-exported_at: '2026-10-16T16:59:32Z'
+source_file: dmx.35.toe
+exported_at: '2026-10-19T08:15:39Z'
 network_path: /
 options:
   include_dat_content: false
@@ -962,7 +962,7 @@ operators:
         clampMin: true
         normMax: 300.0
         help: 'Playhead position in seconds. Drag it to scrub: the state at that time is applied.'
-        value: 0.2
+        value: 0.200000003
       - name: Rewind
         style: Pulse
         help: Back to 0 and re-apply everything.
@@ -12134,6 +12134,7 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
+        value: ptz
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -12322,7 +12323,7 @@ operators:
           clampMin: true
           normMax: 64.0
           help: Id of the fixture shown in the inspector (click it on the plan or on the universe map).
-          value: 34
+          value: 1
         - name: Status
           style: Str
           readOnly: true
@@ -12339,11 +12340,12 @@ operators:
           default: rig_a
           menuSource: tdu.TableMenu(parent.Config.parent().op('dmx_patch/groups'))
           help: 'Patch group the fixture belongs to (rig_a, rig_b, heads): sets which generator drives it and which profile library applies.'
+          value: heads
         - name: Fname
           style: Str
           label: Name
           help: Free label shown on the plan and on the universe map.
-          value: PAR11
+          value: MH1
         - name: Funit
           style: Int
           label: Unit (# nel gruppo)
@@ -12353,14 +12355,13 @@ operators:
           normMin: 1.0
           normMax: 32.0
           help: 'Posizione della luce nel suo gruppo: l''uscita del motore che la pilota (bar3, head11) e l''ordine del chase. NON e'' un universo: l''universo e'' la Output Port.'
-          value: 11
         - name: Fprofile
           style: Menu
           label: Profile
-          default: ZQ006018 4CH RGBW
+          default: Generic Spot 9ch
           menuSource: me.op('fixture_ui').module.profile_menu()
           help: 'Fixture profile (channel layout) from the group library. Each fixture can have its own: profiles can be mixed in a group.'
-          value: D+RGB 4CH
+          value: Generic Spot 11ch 16bit
         - name: Fpalette
           style: Menu
           label: Palette
@@ -12368,6 +12369,7 @@ operators:
           menuSource: me.op('fixture_ui').module.palette_menu()
           help: 'Rigs only: palette of THIS light. ''(palette del rig)'' = follow the rig''s Palette (Look Rig tab); another name = this light uses that palette, with the rig''s speed, phase, dimmer and kick.'
           enableExpr: me.par.Fgroup.eval() != 'heads'
+          enable: false
         - name: Fport
           style: Menu
           label: Output Port
@@ -12385,21 +12387,21 @@ operators:
           normMin: 1.0
           normMax: 512.0
           help: DMX start address 1..512 on the output port. Overlaps with other fixtures turn red on the universe map.
-          value: 41
+          value: 17
         - name: Fx
           style: Float
           label: Plan X
           normMin: -16.0
           normMax: 16.0
           help: Position on the stage plan, in grid cells (drag on the plan snaps to 0.5).
-          value: -2
+          value: -4.5
         - name: Fy
           style: Float
           label: Plan Y
           normMin: -8.0
           normMax: 8.0
           help: Position on the stage plan, in grid cells, y up (stage front at the bottom).
-          value: 4.5
+          value: 2.5
         - name: Fenabled
           style: Toggle
           label: Enabled
@@ -12767,8 +12769,8 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
-        Count: 2
-        Startaddress: 181
+        Level: 0.3378582895
+        Startaddress: 43
         Profile: Haze 2CH
         Outputport: 2.1.1.2:1
     position: [-200, -3000]
@@ -12858,7 +12860,7 @@ operators:
         label: Scan Status
         readOnly: true
         help: 'Read-only: result of the last scan (time, nodes, RDM capability).'
-        value: '2026-10-16 09:29:19: 0 nodi, 0 porte online, RDM: nessun nodo RDM'
+        value: '2026-10-19 09:32:20: 0 nodi, 0 porte online, RDM: nessun nodo RDM'
       Output:
       - name: Output
         style: Toggle
@@ -12875,6 +12877,7 @@ operators:
         clampMin: true
         clampMax: true
         help: 'Master generale 0-1 (Plancia /dmx/master): moltiplica i canali di intensita'' di tutti i gruppi.'
+        value: 0.6645617485
       - name: Strobe
         style: Toggle
         help: 'Strobo generale (Plancia /dmx/strobe): i canali di intensita'' lampeggiano a Stroberate Hz.'
@@ -13010,7 +13013,7 @@ operators:
       parameters:
         file: project1/dmx_patch/fixtures.tsv
         syncfile: true
-        rows: 40
+        rows: 11
         cols: 12
       position: [0, -1600]
       color: [0.9, 0.3, 0.4]
@@ -13445,23 +13448,44 @@ operators:
         normMax: 10.0
         help: Crossfade in secondi usato dal prossimo /dmx/scene (aggiornato da /dmx/fade).
         value: 1.5
+      - name: Feedback
+        style: Toggle
+        label: Feedback to Plancia
+        startSection: true
+        help: 'Send the show timeline back to Plancia''s bridge.js (OSC /show/play, /show/time 10x/s while playing, /show/cue). Off by default: today Plancia runs its own cues once it sees play=1, so turn on only when Plancia follows TD''s clock.'
+      - name: Feedbackhost
+        style: Str
+        label: Feedback Host
+        default: 192.168.1.240
+        help: IP of the machine running Plancia's bridge.js (OPS). Feedback goes to its OSC_IN port.
+      - name: Feedbackport
+        style: Int
+        label: Feedback Port
+        default: 9000
+        min: 1.0
+        max: 65535.0
+        clampMin: true
+        clampMax: true
+        normMin: 1.0
+        normMax: 65535.0
+        help: bridge.js OSC_IN port (9000 in the Plancia contract).
       - name: Status
         style: Str
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: preset TestPreset su 3 teste
+        value: pantilt su 2 teste
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /mh/preset/recall 0  @ 18:58:37
+        value: /mh/pantilt -0.00908257 0.0534141  @ 10:07:41
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 2355
+        value: 3520
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13475,6 +13499,23 @@ operators:
         callbacks: osc_plancia_callbacks
         maxlines: 20
       dat_read_only: true
+    - name: osc_feedback
+      type: oscoutDAT
+      parameters:
+        active: =parent().par.Feedback
+        address: =parent().par.Feedbackhost
+        port: =parent().par.Feedbackport
+        fromop: =parent()
+      position: [800, -400]
+      size: [130, 90]
+      color: [0.67, 0.67, 0.67]
+      dat_read_only: true
+    - name: feedback_tick
+      type: executeDAT
+      parameters:
+        framestart: true
+        file: project1/plancia_in/feedback_tick.py
+      position: [400, -400]
     - name: plancia_logic
       type: textDAT
       parameters:
@@ -13504,9 +13545,9 @@ operators:
     - name: annotate1
       mode: annotate
       title: Ricezione Plancia
-      text: 'osc_plancia (porta Port) → plancia_logic.on_osc: smista gli indirizzi, aggiorna Status/Lastmessage.'
-      position: [-70, -190]
-      size: [670, 450]
+      text: 'osc_plancia (porta Port) → plancia_logic.on_osc: smista gli indirizzi, aggiorna Status/Lastmessage. Riga sotto: feedback_tick (ogni frame) → plancia_logic.feedback_tick → osc_feedback (Feedbackhost:Feedbackport, bridge.js OSC_IN 9000): /show/play, /show/time, /show/cue della timeline di TD. Solo con Feedback acceso.'
+      position: [-70, -470]
+      size: [1070, 730]
       color: [0.45, 0.45, 0.45]
   - name: rig_ledbar
     type: baseCOMP
@@ -13524,9 +13565,10 @@ operators:
         Kickthresh: 0.15
       Fixture:
         $t: fixture_2
+        Level: 0.5750207901
         Fixtureprofile: D+RGB 4CH
-        Nbars: 12
-        Startaddress: 187
+        Nbars: 11
+        Startaddress: 39
     position: [-600, -3000]
     color: [0.325, 0.8, 0.3]
     children:
@@ -13672,9 +13714,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.7843137255
+        colorr: 0
         colorg: 0
-        colorb: 0
+        colorb: 0.781754156
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14015,6 +14057,28 @@ operators:
         default: 7010
         help: 'UDP port oscin_mocap listens on for direct mocap OSC. Default 7010 (changed from 7000 on 2026-09-29 to stay clear of a host project''s own channel-1-style OSC In, which often defaults to 7000 too). Guarded: mocap_lifecycle.py bind-tests this port before activating -- if something OUTSIDE this TD process already holds it, ingest stays off and Mocapstatus (Status page) says why. Running multiple gaia_client instances in one project (e.g. one per rig) CAN share one Mocapport -- TD shares a port between its own operators with no error -- but give each instance a distinct Opsdevice or the OSC scope filtering does more redundant work than it needs to; a distinct Mocapport per instance avoids that entirely.'
         value: 7011
+      Clock:
+      - name: Clockrole
+        style: Menu
+        label: Clock Role
+        default: 'off'
+        menuNames:
+        - 'off'
+        - master
+        - follower
+        menuLabels:
+        - 'Off'
+        - Master (publishes the show timeline)
+        - Follower (follows the master)
+        help: 'Role of this device in the shared show clock (gaia/show/clock/*). master: publishes the timeline registered by the project (one per show, DMX Master). follower: follows the master and computes the show position locally. off: not involved.'
+        value: master
+      - name: Clockstatus
+        style: Str
+        label: Clock Status
+        startSection: true
+        readOnly: true
+        help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
+        value: master STOP 00:00.20  seq 592
       Status:
       - name: Identitystatus
         style: Str
@@ -14035,7 +14099,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/brain/state @ 18:59:31
+        value: gaia/brain/state @ 10:15:38
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14062,7 +14126,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 34170.7666666667
+      lastmsg_seconds: 2573.6916666667
     children:
     - name: soul
       type: outCHOP
@@ -14176,6 +14240,17 @@ operators:
       color: [0.67, 0.67, 0.67]
       inputs:
       - oscin_mocap
+    - name: show_clock
+      type: textDAT
+      parameters:
+        file: project1/gaia_client/show_clock.py
+        syncfile: true
+        language: python
+      position: [1600, -3200]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
     - name: dat_thought
       type: scriptDAT
       parameters:
@@ -14288,7 +14363,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 14
+        rows: 138
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -14561,9 +14636,9 @@ operators:
     - name: annotate3
       mode: annotate
       title: Device Registration (this instance as a controllable device)
-      text: 'Publishes gaia/device/{id}/status heartbeat + gaia/devices/{id}/announce+profile, and accepts remote enable/disable/restart/set commands. Register real controls per-project via gaia_device_agent.module.register_service()/register_param() -- see its docstring. Gated by Services > Device Status (logic-level -- connection always stays up). WARNING: device_id defaults to td-{hostname}; do not run two Gaia device agents with the same device_id in the same project/network at once (they will fight over the same MQTT topic). reregister_watch fires the Services > Re-register pulse into gaia_device_agent.reregister() (GAIA_INTERFACE.md section 2) -- retries whatever project registrar was set via register_project_registrar() without restarting TD.'
+      text: 'Publishes gaia/device/{id}/status heartbeat + gaia/devices/{id}/announce+profile, and accepts remote enable/disable/restart/set commands. Register real controls per-project via gaia_device_agent.module.register_service()/register_param() -- see its docstring. Gated by Services > Device Status (logic-level -- connection always stays up). WARNING: device_id defaults to td-{hostname}; do not run two Gaia device agents with the same device_id in the same project/network at once (they will fight over the same MQTT topic). reregister_watch fires the Services > Re-register pulse into gaia_device_agent.reregister() (GAIA_INTERFACE.md section 2) -- retries whatever project registrar was set via register_project_registrar() without restarting TD. show_clock: shared show clock on gaia/show/clock/* (Clock page, Clockrole master/follower) over the same mqtt_device client; the project hands it its timeline with register_source().'
       position: [-70, -3390]
-      size: [1470, 450]
+      size: [1870, 450]
       color: [0.55, 0.45, 0.3]
     - name: annotate4
       mode: annotate
@@ -14696,9 +14771,8 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
-        Level: 0.7937303782
-        Count: 2
-        Startaddress: 185
+        Level: 0.3475383818
+        Startaddress: 45
         Outputport: 2.1.1.2:1
     position: [200, -3000]
     color: [0.67, 0.67, 0.67]
@@ -15420,7 +15494,7 @@ operators:
         normMin: 1.0
         normMax: 16.0
         help: How many identical heads, addressed one after the other from Start Address (each takes the profile channel count).
-        value: 12
+        value: 5
       - name: Startaddress
         style: Int
         label: Start Address
@@ -15432,7 +15506,7 @@ operators:
         normMin: 1.0
         normMax: 512.0
         help: DMX address of head 1 on the output port universe. Head n starts at Start Address + (n-1) x channels.
-        value: 49
+        value: 17
       - name: Outputport
         style: StrMenu
         label: Output Port
@@ -15541,6 +15615,7 @@ operators:
         style: Str
         label: Selezione
         help: 'Teste selezionate (chiavi: uid Plancia "p-..." o "id:<n>", separate da spazio). I comandi del programmer (Plancia /mh/*, Gaia heads_*) agiscono solo su queste. Vuota = nessuna testa.'
+        value: p-fslozhy p-51kr5fl
       - name: Selectall
         style: Pulse
         label: Tutte
@@ -15609,6 +15684,34 @@ operators:
         - zoom
         - focus
         - strobe
+      - - p-fslozhy
+        - manual
+        - '-2.4523'
+        - '-7.2109'
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
+      - - p-51kr5fl
+        - manual
+        - '-2.4523'
+        - '-7.2109'
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
+        - ''
       dat_content_format: table
     - name: select_ptz
       type: selectCHOP
@@ -15804,7 +15907,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_audio.tsv
         syncfile: true
-        rows: 1
+        rows: 2
         cols: 9
       position: [800, -800]
       color: [0.9, 0.3, 0.4]
@@ -15845,7 +15948,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Amber
+        Palette: Warm
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -15853,6 +15956,7 @@ operators:
         Kickthresh: 0.15
       Fixture:
         $t: fixture_2
+        Level: 0.7686228752
         Fixtureprofile: D+RGB 4CH
         Nbars: 12
     position: [0, 50]
@@ -16002,8 +16106,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.7843137255
-        colorg: 0.461361015
+        colorr: 0.9182590859
+        colorg: 0.2939262293
         colorb: 0
       position: [450, 700]
     - name: palette_preview
@@ -16117,7 +16221,7 @@ operators:
     parameters:
       file: project1/externalizations.tsv
       syncfile: true
-      rows: 391
+      rows: 393
       cols: 11
     position: [-200, 0]
     color: [0.9, 0.3, 0.4]
@@ -16130,7 +16234,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Deep Purple
+        Palette: Warm
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -16140,6 +16244,7 @@ operators:
         Kickthresh: 0.15
       Fixture:
         $t: fixture_2
+        Level: 0.7783029675
         Fixtureprofile: D+RGB 4CH
         Nbars: 1
         Startaddress: 5
@@ -16290,9 +16395,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.1811764762
-        colorg: 0
-        colorb: 0.3623529524
+        colorr: 0.9821518244
+        colorg: 0.4189693546
+        colorb: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
