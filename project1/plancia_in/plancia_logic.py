@@ -12,7 +12,13 @@ to on_osc(). Status / Lastmessage / Messages on this COMP show what happened.
   /dmx/fade s           Fade used by the next /dmx/scene
   /dmx/scene i          show scene number i (0-based, show order), crossfade Fade
   /show/go, /show/back  next / previous cue of the show timeline (on press)
-  /dmx/chase i          not implemented yet (no chase modes on the rigs)
+  /show/play 0/1        play / pause the show timeline (TD is the clock master)
+  /show/time s          seek, only while TD is stopped: while playing Plancia
+                        sends its own time 10x/s and TD's clock wins
+  /show/cue n           ignored: it is a cue of Plancia's own widget list,
+                        not of TD's timeline (use /show/go, /show/back or the
+                        show clock command 'cue' on MQTT)
+  /dmx/chase i         not implemented yet (no chase modes on the rigs)
   /mh/*                 moving heads, selective: moving_heads/head_programmer
                         (select mask / select/heads|add|remove|set|all|clear,
                         pantilt, pan, tilt, color, dimmer, zoom, focus,
@@ -20,6 +26,13 @@ to on_osc(). Status / Lastmessage / Messages on this COMP show what happened.
                         position/store, preset/recall, preset/store, home,
                         follow, release) on the selected heads
   /led/*                no LED wall: ignored
+
+Feedback (par Feedback, off by default): feedback_tick() sends the show
+timeline back to bridge.js (Feedbackhost:Feedbackport, OSC_IN 9000) via
+osc_feedback -- /show/play on change, /show/time 10x/s while playing (and on
+change while stopped), /show/cue <n> (1-based, 0 = before the first cue) on
+change. The same clock goes to every other device on MQTT through
+gaia_client/show_clock.
 
 All numbers arrive as OSC floats. Runs on the main thread (OSC In DAT
 callback), so it touches pars directly.
@@ -115,6 +128,14 @@ def handle(address, args):
 		return _cue(1, args)
 	if address == '/show/back':
 		return _cue(-1, args)
+	if address == '/show/play':
+		return _show_logic().clock_command('play', _f(args))
+	if address == '/show/time':
+		if _home().op('show').par.Play.eval():
+			return None
+		return _show_logic().clock_command('seek', _f(args))
+	if address == '/show/cue':
+		return 'cue %d della Plancia ignorata: le cue sono quelle di TD' % int(_f(args))
 	if address == '/dmx/chase':
 		return 'chase %d non implementato (teste/chase rinviati)' % int(_f(args))
 	if address.startswith('/mh/'):
@@ -122,6 +143,32 @@ def handle(address, args):
 	if address.startswith('/led/'):
 		return None
 	return 'indirizzo sconosciuto %s' % address
+
+
+FEEDBACK_TIME_S = 0.1
+_fb = {'play': None, 'cue': None, 'time': None, 'sent': 0.0}
+
+
+def feedback_tick():
+	"""Every frame (feedback_tick Execute DAT): show timeline -> Plancia."""
+	if not parent().par.Feedback.eval():
+		_fb.update(play=None, cue=None, time=None)
+		return
+	out = op('osc_feedback')
+	p = _home().op('show').par
+	playing = bool(p.Play.eval())
+	t = round(float(p.Time.eval()), 2)
+	cue = _show_logic().cue_at(t)[0] + 1
+	now = time.perf_counter()
+	if playing != _fb['play']:
+		_fb['play'] = playing
+		out.sendOSC('/show/play', [1 if playing else 0], useNonStandardTypes=False)
+	if cue != _fb['cue']:
+		_fb['cue'] = cue
+		out.sendOSC('/show/cue', [cue], useNonStandardTypes=False)
+	if (playing and now - _fb['sent'] >= FEEDBACK_TIME_S) or (not playing and t != _fb['time']):
+		_fb.update(time=t, sent=now)
+		out.sendOSC('/show/time', [float(t)], useNonStandardTypes=False)
 
 
 def on_osc(address, args):

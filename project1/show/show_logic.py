@@ -337,12 +337,84 @@ def goto_cue(step):
 	if not cs:
 		raise ValueError('nessun cue nella timeline')
 	j = max(0, min(len(cs) - 1, idx + int(step)))
-	c = cs[j]
+	return _jump_to(cs[j])
+
+
+def goto_cue_number(n):
+	"""Jump to cue number n (1-based, timeline order), same rules as
+	goto_cue. Returns the cue."""
+	cs = cues()
+	n = int(n)
+	if not 1 <= n <= len(cs):
+		raise ValueError('cue %d non esiste (%d cue)' % (n, len(cs)))
+	return _jump_to(cs[n - 1])
+
+
+def _jump_to(c):
+	p = _show().par
 	p.Time = c['time']
 	force_apply()
 	if not p.Active.eval():
 		recall(c['scene'], c['fade'])
 	return c
+
+
+# ---------------------------------------------------------------- show clock
+
+def clock_state():
+	"""State of this timeline for gaia_client/show_clock (master)."""
+	p = _show().par
+	t = float(p.Time.eval())
+	idx, cue, cs = cue_at(t)
+	return {
+		'timeline': 'show',
+		'playing': bool(p.Play.eval()),
+		'pos': round(t, 3),
+		'rate': 1.0,
+		'length': float(p.Length.eval()),
+		'loop': bool(p.Loop.eval()),
+		'active': bool(p.Active.eval()),
+		'cue': {
+			'index': idx + 1,
+			'count': len(cs),
+			'label': (cue or {}).get('label', '') or '',
+			'scene': (cue or {}).get('scene', '') or '',
+			'time': (cue or {}).get('time', 0.0),
+		},
+	}
+
+
+def clock_command(action, value=None):
+	"""Transport command from the show clock (Plancia, other devices):
+	play [0|1], pause, toggle, stop, seek <s>, go, back, cue <n>."""
+	p = _show().par
+	if action == 'play':
+		on = True if value in (None, '') else _f(value) >= 0.5
+		p.Play = on
+		return 'play' if on else 'pause'
+	if action == 'pause':
+		p.Play = False
+		return 'pause'
+	if action == 'toggle':
+		p.Play = not p.Play.eval()
+		return 'play' if p.Play.eval() else 'pause'
+	if action == 'stop':
+		p.Play = False
+		p.Time = 0
+		force_apply()
+		return 'stop'
+	if action == 'seek':
+		t = max(0.0, min(float(p.Length.eval()), _f(value)))
+		p.Time = t
+		force_apply()
+		return 'seek %.2fs' % t
+	if action in ('go', 'back'):
+		c = goto_cue(1 if action == 'go' else -1)
+		return 'cue %s @ %.1fs' % (c.get('label') or c['id'], c['time'])
+	if action == 'cue':
+		c = goto_cue_number(_i(value))
+		return 'cue %s @ %.1fs' % (c.get('label') or c['id'], c['time'])
+	raise ValueError('azione %r sconosciuta' % action)
 
 
 # ---------------------------------------------------------------- cues

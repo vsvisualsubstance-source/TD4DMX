@@ -37,6 +37,23 @@ def _arm(run_now):
 			services.module.register_all()
 		except Exception as e:
 			agent._record_error('register_all', e)
+	_arm_clock()
+
+
+def _show_logic():
+	return op('../show/show_logic').module
+
+
+def _arm_clock():
+	"""The show timeline (/project1/show) is the master of gaia_client's
+	shared show clock. Re-armed like the registrar: show_clock loses its
+	source on every hot-reload of its own file."""
+	dat = op.Gaia.op('show_clock')
+	if dat is None or dat.module.has_source():
+		return
+	dat.module.register_source(
+		state=lambda: _show_logic().clock_state(),
+		command=lambda action, value: _show_logic().clock_command(action, value))
 
 
 def onStart():

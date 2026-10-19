@@ -22,4 +22,7 @@ def onFrameStart(frame: int):
 	"""
 	op('gaia_device_agent').module.tick()
 	op('gaia_device_agent').module.perf_tick()
+	clock = op('show_clock')
+	if clock is not None:
+		clock.module.tick()
 	return

@@ -88,7 +88,9 @@ import time
 # 1.2.2 = status/profile "ip" routes toward the LAN Brokerhost, not 8.8.8.8:
 #         a multi-homed PC published its Wi-Fi IP instead of the Gaia LAN one.
 # 1.2.3 = status publishes mocap_port (= Mocapport): per-instance mocap port.
-SW_VERSION = "1.2.3"
+# 1.3.0 = show_clock: shared show clock (Clockrole master/follower) on
+#         gaia/show/clock/*, routed through this module's MQTT client.
+SW_VERSION = "1.3.0"
 
 _START_TS = time.time()
 _services = {}   # name -> {"start": fn, "stop": fn, "status": fn}
@@ -613,6 +615,14 @@ def on_connect(dat):
 	me.parent().par.Deviceagentstatus = 'connected'
 	_publish_status()
 	_publish_announce(dat, cfg)
+	clock = _show_clock()
+	if clock is not None:
+		clock.on_connect(dat)
+
+
+def _show_clock():
+	dat = me.parent().op('show_clock')
+	return dat.module if dat is not None else None
 
 
 def on_connect_failure(msg):
@@ -628,6 +638,11 @@ def on_connection_lost(msg):
 def on_message(topic, payload):
 	if isinstance(payload, bytes):
 		payload = payload.decode('utf-8', errors='replace')
+	if topic.startswith('gaia/show/clock/'):
+		clock = _show_clock()
+		if clock is not None:
+			clock.on_message(topic, payload)
+		return
 	try:
 		d = json.loads(payload)
 	except Exception as e:
