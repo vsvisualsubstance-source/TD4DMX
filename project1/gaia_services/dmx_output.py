@@ -19,9 +19,12 @@ Topic gaia/devices/<device_id>/dmx_output, retained, QoS 0:
      "intensity" 0-1 (dimmer, or the brightest colour channel without
      one), "rgb_out" [r, g, b] 0-1 = rgb * dimmer: the colour as seen,
      null without colour channels,
-     heads only: "color_wheel", "gobo", "shutter" 0-255 and "pan",
-     "tilt" in degrees from the head programmer (a wheel has no RGB:
-     rgb / rgb_out stay null)}]}
+     heads only: "color_wheel", "gobo", "shutter" 0-255, "pan", "tilt"
+     in degrees and "zoom", "focus" 0-1 from the head programmer; a
+     wheel has no RGB: rgb stays null and rgb_out is the catalog slot
+     colour * intensity, "color_source": "wheel", or white * intensity,
+     "unknown", when the catalog has no colour slots; "rgb" for RGB
+     heads}]}
 A fixture that is not sent has every output field null.
 
 Published when an output value changes, at most Outputrate times per second,
@@ -98,7 +101,27 @@ def _fixture(r, rep, fl, ub, uids, heads):
 		h = heads.get(fid)
 		if h is not None:
 			d['pan'], d['tilt'] = round(h['pan'], 1), round(h['tilt'], 1)
+			d['zoom'], d['focus'] = round(h['zoom'], 3), round(h['focus'], 3)
+		if d['rgb_out'] is None and d['intensity'] is not None:
+			beam, src = _wheel_rgb(prof, vals.get('color'))
+			d['rgb_out'] = [round(x * d['intensity'], 3) for x in beam]
+			d['color_source'] = src
+		elif d['rgb'] is not None:
+			d['color_source'] = 'rgb'
 	return d
+
+
+def _wheel_rgb(profile, value):
+	"""Beam colour of a colour-wheel head: the catalog slot nearest to the
+	DMX value when the slot has 'rgb' ([r, g, b] 0-1) -> 'wheel'; else
+	white (open) -> 'unknown' (catalog without colour slots)."""
+	cat = _home().op('moving_heads/head_programmer')
+	m = (cat.module._cat().model(profile) or {}) if cat is not None else {}
+	slots = [s for s in (m.get('colors') or []) if s.get('rgb')]
+	if value is None or not slots:
+		return [1.0, 1.0, 1.0], 'unknown'
+	s = min(slots, key=lambda s: abs(float(s['value']) - float(value)))
+	return [float(x) for x in s['rgb']], 'wheel'
 
 
 def snapshot():
