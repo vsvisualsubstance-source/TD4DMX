@@ -24,6 +24,11 @@ across re-patching, unlike the unit number.
                   Palco, Cielo, Croce, Ventaglio), to calibrate on stage.
   head_presets    preset, label, head, <state fields>: full look of the
                   heads that were selected when stored.
+  Presets and positions: store (same name = update), recall, rename,
+  remove, by index or name, from OSC /mh/* and Gaia heads_*; every
+  discrete command records its outcome (record / last_result: Gaia
+  heads_last_result, OSC feedback /mh/result) -- GAIA_INTERFACE
+  "TD/Win-PD, 27".
   head_selections selection, label, heads (space-separated keys): named
                   sets ("sub-groups" of the heads: mh_sx, mh_fronte ...),
                   defined by Plancia (heads_selections) or in TD.
@@ -40,6 +45,7 @@ Called by heads_dmx_callbacks (state per head), plancia_in/plancia_logic
 page (heads_callbacks).
 """
 import math
+import time
 
 STATE_COLS = ['head', 'mode', 'pan', 'tilt', 'dimmer', 'red', 'green', 'blue', 'white',
 	'color', 'gobo', 'zoom', 'focus', 'strobe']
@@ -540,16 +546,77 @@ def recall_preset(ref, keys=None):
 	return p['preset'], targets
 
 
-def remove_preset(ref):
-	t = _table('head_presets', PRESET_COLS)
+def _named(rows, ref, kind):
+	"""Name of an existing preset/position: by name, or by index."""
 	s = str(ref).strip()
-	n = 0
+	for x in rows:
+		if x[kind] == s:
+			return s
+	if s.lstrip('-').replace('.', '', 1).isdigit() and 0 <= int(float(s)) < len(rows):
+		return rows[int(float(s))][kind]
+	raise ValueError('%s %r non esiste (%d)' % (kind, ref, len(rows)))
+
+
+def _rename_rows(table, cols, col, name, to, label):
+	to = str(to or '').strip()
+	if not to or to.lstrip('-').isdigit():
+		raise ValueError('nuovo nome %r non valido (serve un nome, non un numero)' % to)
+	t = _table(table, cols)
+	if to != name and any(t[r, col].val == to for r in range(1, t.numRows)):
+		raise ValueError('%s %s esiste gia\'' % (col, to))
+	for r in range(1, t.numRows):
+		if t[r, col].val == name:
+			t[r, col] = to
+			if label is not None or t[r, 'label'].val in ('', name):
+				t[r, 'label'] = label if label is not None else to
+	return to
+
+
+def remove_preset(ref):
+	name = _named(presets(), ref, 'preset')
+	t = _table('head_presets', PRESET_COLS)
 	for r in range(t.numRows - 1, 0, -1):
-		if t[r, 'preset'].val == s:
+		if t[r, 'preset'].val == name:
 			t.deleteRow(r)
-			n += 1
-	if not n:
-		raise ValueError('preset %r non esiste' % ref)
+	return name
+
+
+def rename_preset(ref, to, label=None):
+	"""Rename a preset (index or name); the label follows unless given or
+	already different from the old name."""
+	return _rename_rows('head_presets', PRESET_COLS, 'preset', _named(presets(), ref, 'preset'), to, label)
+
+
+def remove_position(ref):
+	name = _named(positions(), ref, 'position')
+	t = _table('head_positions', POS_COLS)
+	for r in range(t.numRows - 1, 0, -1):
+		if t[r, 'position'].val == name:
+			t.deleteRow(r)
+	return name
+
+
+def rename_position(ref, to, label=None):
+	return _rename_rows('head_positions', POS_COLS, 'position', _named(positions(), ref, 'position'), to, label)
+
+
+# ---------------------------------------------------------------- results
+
+_result = {'seq': 0, 'last': None}
+
+
+def record(source, action, target, ok, message, keys=None):
+	"""Outcome of a programmer command (OSC /mh/* or Gaia heads_*), for the
+	confirmation Plancia reads (heads_last_result, OSC /mh/result)."""
+	_result['seq'] += 1
+	_result['last'] = {'seq': _result['seq'], 'ts': int(time.time() * 1000),
+		'source': source, 'action': action, 'target': '' if target is None else str(target),
+		'ok': bool(ok), 'message': str(message or ''), 'heads': list(keys or [])}
+	return _result['last']
+
+
+def last_result():
+	return _result['last']
 
 
 # ---------------------------------------------------------------- readouts
@@ -607,9 +674,33 @@ def _ref(args, v):
 	return int(round(v))
 
 
+def _store_ref(args, v):
+	"""store: '<name>', '<i> <name>' or '<i>' (the existing one at i)."""
+	if len(args) > 1:
+		return str(args[1])
+	return _ref(args, v)
+
+
+# continuous controls (pad, faders): not recorded as results
+CONTINUOUS = ('pantilt', 'pan', 'tilt', 'color', 'dimmer', 'zoom', 'focus', 'white')
+
+
 def on_osc(address, args):
-	"""Plancia channel 5 /mh/*; returns a status line."""
+	"""Plancia channel 5 /mh/*; returns a status line. Every discrete
+	command (and every error) is recorded as the last result (record())."""
 	a = address[len('/mh/'):] if address.startswith('/mh/') else address
+	target = ' '.join(str(x) for x in args)
+	try:
+		msg = _on_osc(a, address, args)
+	except Exception as e:
+		record('osc', a, target, False, str(e), selection())
+		raise
+	if msg is not None and (a not in CONTINUOUS or msg.startswith('nessuna')):
+		record('osc', a, target, not msg.startswith(('nessuna', 'indirizzo', 'select/')), msg, selection())
+	return msg
+
+
+def _on_osc(a, address, args):
 	v = _f(args[0], 0.0) if args else 0.0
 	if a == 'select':
 		ks = select({'mask': list(args)})
@@ -629,6 +720,19 @@ def on_osc(address, args):
 		else:
 			return 'select/%s sconosciuto' % what
 		return 'teste selezionate: %d' % len(ks)
+	# list management: no selection needed
+	if a == 'preset/remove':
+		return 'preset cancellato: %s' % remove_preset(_ref(args, v))
+	if a == 'preset/rename':
+		if len(args) < 2:
+			raise ValueError('preset/rename: servono <preset> <nuovo nome>')
+		return 'preset rinominato: %s' % rename_preset(_ref(args, v), str(args[1]))
+	if a == 'position/remove':
+		return 'posizione cancellata: %s' % remove_position(_ref(args, v))
+	if a == 'position/rename':
+		if len(args) < 2:
+			raise ValueError('position/rename: servono <posizione> <nuovo nome>')
+		return 'posizione rinominata: %s' % rename_position(_ref(args, v), str(args[1]))
 	sel = selection()
 	if not sel:
 		return 'nessuna testa selezionata (%s ignorato)' % address
@@ -653,13 +757,16 @@ def on_osc(address, args):
 		name, done = recall_position(_ref(args, v))
 		return 'posizione %s su %d teste' % (name, len(done))
 	elif a == 'position/store':
-		return 'posizione salvata: %s' % store_position(str(args[1]) if len(args) > 1 else int(round(v)))
+		return 'posizione salvata: %s' % store_position(_store_ref(args, v))
 	elif a == 'preset/recall':
 		name, done = recall_preset(_ref(args, v))
 		return 'preset %s su %d teste' % (name, len(done))
 	elif a == 'preset/store':
-		name = str(args[1]) if len(args) > 1 else 'P%d' % (int(round(v)) + 1)
-		return 'preset salvato: %s' % store_preset(name)
+		ref = _store_ref(args, v)
+		if isinstance(ref, int):
+			ps = presets()
+			ref = ps[ref]['preset'] if 0 <= ref < len(ps) else 'P%d' % (ref + 1)
+		return 'preset salvato: %s' % store_preset(ref)
 	elif a == 'home':
 		if not _pressed(args):
 			return None

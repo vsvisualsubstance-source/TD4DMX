@@ -24,7 +24,11 @@ to on_osc(). Status / Lastmessage / Messages on this COMP show what happened.
                         pantilt, pan, tilt, color, dimmer, zoom, focus,
                         white, strobe, gobo, colorwheel, position,
                         position/store, preset/recall, preset/store, home,
-                        follow, release) on the selected heads
+                        follow, release) on the selected heads; preset/remove,
+                        preset/rename, position/remove, position/rename
+                        (no selection needed). Store/recall/remove take an
+                        index or a name (string arg); a preset/position list
+                        change is republished to Gaia at once
   /led/*                no LED wall: ignored
 
 Feedback to bridge.js (Feedbackhost:Feedbackport, OSC_IN 9000) via
@@ -37,7 +41,10 @@ then per area:
                  gaia_client/show_clock. Off until Plancia follows TD's clock
                  (today it fires its own cues when it sees play=1).
   Feedbackheads  the moving heads, 10x/s on change: /mh/select (mask in unit
-                 order, as Plancia sends it), the first selected head's
+                 order) and /mh/select/heads <uid...> (Plancia's head
+                 selector), /mh/result <seq> <ok 0|1> <action> <target>
+                 <message> after every discrete /mh/* command (also Gaia
+                 heads_*: the outcome Plancia waits for), the first selected head's
                  /mh/pantilt (pad -1..1), /mh/color, /mh/dimmer, /mh/zoom,
                  /mh/focus, /mh/strobe, /mh/gobo (slot index), and
                  /dmx/group/mh (heads Level). Plancia only updates its
@@ -151,10 +158,28 @@ def handle(address, args):
 	if address == '/dmx/chase':
 		return 'chase %d non implementato (teste/chase rinviati)' % int(_f(args))
 	if address.startswith('/mh/'):
-		return _home().op('moving_heads/head_programmer').module.on_osc(address, args)
+		msg = _home().op('moving_heads/head_programmer').module.on_osc(address, args)
+		if address.startswith(LIST_CHANGES):
+			_lists_changed()
+		return msg
 	if address.startswith('/led/'):
 		return None
 	return 'indirizzo sconosciuto %s' % address
+
+
+LIST_CHANGES = ('/mh/preset/store', '/mh/preset/remove', '/mh/preset/rename',
+	'/mh/position/store', '/mh/position/remove', '/mh/position/rename')
+
+
+def _lists_changed():
+	"""A preset/position list changed from OSC: republish it to Gaia now
+	(status + dmx_matrix) instead of at the next 30 s heartbeat."""
+	dat = _home().op('gaia_services/dmx_services')
+	if dat is not None:
+		try:
+			dat.module.heads_lists_changed()
+		except Exception as e:
+			debug('heads_lists_changed: %s' % e)
 
 
 FEEDBACK_TIME_S = 0.1
@@ -198,6 +223,7 @@ def _heads_feedback(out):
 	hs = hp.heads()
 	sel = set(hp.selection())
 	msgs = {'/mh/select': [1 if h['key'] in sel else 0 for h in hs],
+		'/mh/select/heads': [h['uid'] or h['key'] for h in hs if h['key'] in sel],
 		'/dmx/group/mh': [float(mh.par.Level.eval())]}
 	first = next((h['key'] for h in hs if h['key'] in sel), None)
 	if first is not None:
@@ -209,13 +235,18 @@ def _heads_feedback(out):
 		msgs['/mh/strobe'] = [1 if e['strobe'] >= 0.5 else 0]
 		msgs['/mh/gobo'] = [hp.wheel_index(first, 'gobo', e['gobo'])]
 	for addr, args in msgs.items():
-		args = [x if isinstance(x, int) else round(float(x), 3) for x in args]
+		args = [x if isinstance(x, (int, str)) else round(float(x), 3) for x in args]
 		if _fbh['sent'].get(addr) == args:
 			continue
 		_fbh['sent'][addr] = args
 		if now - _recent.get(addr, -1e9) < ECHO_HOLD_S:
 			continue   # Plancia's own value: never echoed back
 		out.sendOSC(addr, args, useNonStandardTypes=False)
+	res = hp.last_result()
+	if res and res['seq'] != _fbh.get('result'):
+		_fbh['result'] = res['seq']
+		out.sendOSC('/mh/result', [res['seq'], 1 if res['ok'] else 0, res['action'], res['target'], res['message']],
+			useNonStandardTypes=False)
 
 
 def _show_feedback(out):

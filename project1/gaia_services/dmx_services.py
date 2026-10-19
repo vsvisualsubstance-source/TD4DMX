@@ -826,7 +826,11 @@ PROGRAMMER_PARAMS = [
 	('heads_presets', 'r'),         # [{index, preset, label, heads: {key: {fields}}}]
 	('heads_preset_store', 'w'),    # {preset, label?} from the selected heads
 	('heads_preset_recall', 'w'),   # index or name (or {preset, heads?})
-	('heads_preset_remove', 'w'),   # name
+	('heads_preset_remove', 'w'),   # index or name
+	('heads_preset_rename', 'w'),   # {preset: index|name, to, label?}
+	('heads_position_remove', 'w'), # index or name
+	('heads_position_rename', 'w'), # {position: index|name, to, label?}
+	('heads_last_result', 'r'),     # {seq, ts, source osc|gaia, action, target, ok, message, heads}
 ]
 
 
@@ -872,22 +876,59 @@ def _register_programmer(agent):
 			f(d.get(kind), heads_of(d))
 		return fn
 
+	def rename(kind):
+		def fn(v):
+			d = dict(arg(v))
+			f = hp().rename_position if kind == 'position' else hp().rename_preset
+			return f(d.get(kind), d.get('to'), d.get('label'))
+		return fn
+
+	def recorded(name, fn, lists=False):
+		"""Setter that records its outcome (heads_last_result) and, for
+		list changes, republishes the matrix (programmer.presets/positions)."""
+		def wrapper(v):
+			try:
+				out = fn(v)
+			except Exception as e:
+				hp().record('gaia', name, v, False, e, hp().selection())
+				raise
+			hp().record('gaia', name, v, True, out if isinstance(out, str) else 'ok', hp().selection())
+			if lists:
+				run("op('%s').module.publish_matrix()" % me.path, delayFrames=1)
+		return wrapper
+
+	def reg(name, fn, lists=False):
+		agent.register_param(name, get=lambda: None, set=recorded(name, fn, lists))
+
 	agent.register_param('heads_list', get=lambda: hp().heads_list())
-	agent.register_param('heads_select', get=lambda: None, set=lambda v: hp().select(arg(v)))
-	agent.register_param('heads_program', get=lambda: None, set=program)
-	agent.register_param('heads_mode', get=lambda: None, set=mode)
+	reg('heads_select', lambda v: hp().select(arg(v)))
+	reg('heads_program', program)
+	reg('heads_mode', mode)
 	agent.register_param('heads_selections', get=lambda: hp().selections(),
-		set=lambda v: hp().set_selections(arg(v)))
+		set=recorded('heads_selections', lambda v: hp().set_selections(arg(v)), True))
 	agent.register_param('heads_positions', get=lambda: hp().positions(),
-		set=lambda v: hp().set_positions(arg(v)))
-	agent.register_param('heads_position_recall', get=lambda: None, set=recall('position'))
-	agent.register_param('heads_position_store', get=lambda: None,
-		set=lambda v: hp().store_position(dict(arg(v)).get('position'), dict(arg(v)).get('label', '')))
+		set=recorded('heads_positions', lambda v: hp().set_positions(arg(v)), True))
+	reg('heads_position_recall', recall('position'))
+	reg('heads_position_store',
+		lambda v: hp().store_position(dict(arg(v)).get('position'), dict(arg(v)).get('label', '')), True)
+	reg('heads_position_remove', lambda v: hp().remove_position(arg(v)), True)
+	reg('heads_position_rename', rename('position'), True)
 	agent.register_param('heads_presets', get=lambda: hp().presets())
-	agent.register_param('heads_preset_store', get=lambda: None,
-		set=lambda v: hp().store_preset(dict(arg(v)).get('preset'), dict(arg(v)).get('label', '')))
-	agent.register_param('heads_preset_recall', get=lambda: None, set=recall('preset'))
-	agent.register_param('heads_preset_remove', get=lambda: None, set=lambda v: hp().remove_preset(arg(v)))
+	reg('heads_preset_store',
+		lambda v: hp().store_preset(dict(arg(v)).get('preset'), dict(arg(v)).get('label', '')), True)
+	reg('heads_preset_recall', recall('preset'))
+	reg('heads_preset_remove', lambda v: hp().remove_preset(arg(v)), True)
+	reg('heads_preset_rename', rename('preset'), True)
+	agent.register_param('heads_last_result', get=lambda: hp().last_result())
+
+
+def heads_lists_changed():
+	"""Presets/positions changed outside Gaia (Plancia OSC): republish the
+	status (heads_presets, heads_positions, heads_last_result) and the
+	matrix now, instead of at the next heartbeat."""
+	agent = op.Gaia.op('gaia_device_agent').module
+	agent._publish_status()
+	publish_matrix()
 
 
 def _build_patch_matrix():
