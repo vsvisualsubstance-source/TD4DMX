@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.38.toe
-exported_at: '2026-10-19T09:09:07Z'
+source_file: dmx.39.toe
+exported_at: '2026-10-19T09:16:07Z'
 network_path: /
 options:
   include_dat_content: false
@@ -55,7 +55,6 @@ type_defaults:
     color: [0.67, 0.67, 0.67]
   constantTOP:
     parameters:
-      colorg: 0
       resolutionh: 200
       resolutionw: 200
     flags:
@@ -12135,7 +12134,7 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
-        value: ptz
+        value: patch
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -12839,17 +12838,19 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: Art-Net nodes that replied to the last scan.'
+        value: 1
       - name: Portsonline
         style: Int
         label: Output Ports Online
         readOnly: true
         help: 'Read-only: DMX output ports online after the last scan.'
+        value: 2
       - name: Scanstatus
         style: Str
         label: Scan Status
         readOnly: true
         help: 'Read-only: result of the last scan (time, nodes, RDM capability).'
-        value: '2026-10-19 09:32:20: 0 nodi, 0 porte online, RDM: nessun nodo RDM'
+        value: '2026-10-19 11:15:06: 1 nodi, 2 porte online, RDM: nessun nodo RDM'
       Output:
       - name: Output
         style: Toggle
@@ -13718,8 +13719,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.8847458185
-        colorb: 0.8847458185
+        colorr: 0.9046144373
+        colorg: 0
+        colorb: 0.9046144373
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14081,7 +14083,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: master STOP 00:00.10  seq 12
+        value: master STOP 00:00.10  seq 7
       Status:
       - name: Identitystatus
         style: Str
@@ -14102,7 +14104,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/brain/state @ 11:09:06
+        value: gaia/brain/state @ 11:16:07
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14129,7 +14131,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 9618.7
+      lastmsg_seconds: 10038.9333333333
     children:
     - name: soul
       type: outCHOP
@@ -14366,7 +14368,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 91
+        rows: 1
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -15510,6 +15512,7 @@ operators:
         style: Toggle
         label: Patch Enable
         help: Send the heads to DMX. Off until real heads are connected and addressed.
+        value: true
       - name: Level
         style: Float
         startSection: true
@@ -15859,7 +15862,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: topic, sequence number and how many fixtures are being sent, or the last error.'
-        value: 'gaia/devices/td-dmx-win/dmx_output seq 53: 10 fixture, 8 inviate'
+        value: 'gaia/devices/td-dmx-win/dmx_output seq 26: 10 fixture, 10 inviate'
     position: [1000, -430]
     color: [0.325, 0.8, 0.3]
     comment: DMX services registered on gaia_client (op.Gaia) -- project-specific glue, outside the portable client
@@ -15952,7 +15955,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_bands.tsv
         syncfile: true
-        rows: 2
+        rows: 1
         cols: 9
       flags:
       - viewer
@@ -15982,7 +15985,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Basic 2
+        Palette: Warm
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -16140,8 +16143,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.8825963039
-        colorb: 0.8825963039
+        colorr: 0.8918863932
+        colorg: 0.0117498639
+        colorb: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -16267,7 +16271,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Basic 2
+        Palette: Warm
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -16428,8 +16432,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.8747802734
-        colorb: 0.8747802734
+        colorr: 0.8913853664
+        colorg: 0.02226163
+        colorb: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
