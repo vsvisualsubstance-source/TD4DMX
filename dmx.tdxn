@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.40.toe
-exported_at: '2026-10-19T09:31:27Z'
+source_file: dmx.41.toe
+exported_at: '2026-10-19T09:37:08Z'
 network_path: /
 options:
   include_dat_content: false
@@ -196,6 +196,22 @@ type_defaults:
     flags:
     - viewer
     size: [130, 90]
+  sliderCOMP:
+    parameters:
+      bgalpha: 1
+      bgcolorb: 0.16
+      bgcolorg: 0.12
+      bgcolorr: 0.12
+      clone: =op.TDTox.op('defaultCOMPs/slider')
+      colorb: 0.32
+      colorg: 0.25
+      colorr: 0.25
+      label: PTZ pad
+      repocomp: =me
+      resizecomp: =me
+      slidertype: slideruv
+      vmode: fill
+    size: [160, 76]
   switchCHOP:
     parameters:
       autoexportroot: =parent()
@@ -666,7 +682,6 @@ operators:
         - Pad XY (manuale)
         - Mocap (segue il corpo)
         help: Pad = the heads point where the XY pad is. Mocap = the heads follow the chosen body landmark from mediapipe (Gaia channel 7). Effective only while moving_heads Position Source = PTZ.
-        value: mocap
       - name: Padu
         style: Float
         label: Pad X
@@ -675,7 +690,7 @@ operators:
         clampMin: true
         clampMax: true
         help: XY pad position 0-1 (0.5 = center of the calibrated stage area). Bound to the pad in ptz_panel.
-        value: 0.480186
+        value: 0.3682983683
       - name: Padv
         style: Float
         label: Pad Y
@@ -683,7 +698,7 @@ operators:
         clampMin: true
         clampMax: true
         help: XY pad position 0-1 (0.5 = center of the calibrated stage area). Bound to the pad in ptz_panel.
-        value: 0.1959
+        value: 0.437357631
       - name: Home
         style: Pulse
         label: Home (center)
@@ -12136,6 +12151,7 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
+        value: ptz
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -13217,7 +13233,7 @@ operators:
     type: containerCOMP
     parameters:
       w: 1000
-      h: 900
+      h: 1200
       bgcolorr: 0.08
       bgcolorg: 0.08
       bgcolorb: 0.1
@@ -13251,23 +13267,9 @@ operators:
       - name: ptz_pad
         type: sliderCOMP
         parameters:
-          label: PTZ pad
-          slidertype: slideruv
           value0: ~op('../../ptz').par.Padu
           value1: ~op('../../ptz').par.Padv
-          colorr: 0.25
-          colorg: 0.25
-          colorb: 0.32
           w: 430
-          vmode: fill
-          resizecomp: =me
-          repocomp: =me
-          bgcolorr: 0.12
-          bgcolorg: 0.12
-          bgcolorb: 0.16
-          bgalpha: 1
-          clone: =op.TDTox.op('defaultCOMPs/slider')
-        size: [160, 76]
         children:
         - name: knob
           type: containerCOMP
@@ -13382,7 +13384,7 @@ operators:
         bgcolorr: 0.08
         bgcolorg: 0.08
         bgcolorb: 0.1
-      position: [0, -400]
+      position: [0, -800]
       size: [160, 130]
       color: [0.325, 0.8, 0.3]
       tags:
@@ -13406,6 +13408,181 @@ operators:
         text: Parametri teste
         position: [-70, -70]
         size: [300, 370]
+        color: [0.45, 0.45, 0.45]
+    - name: programmer
+      type: containerCOMP
+      parameters:
+        hmode: fill
+        alignorder: 0.5
+        align: horizlr
+      position: [0, -400]
+      size: [160, 130]
+      color: [0.67, 0.67, 0.67]
+      children:
+      - name: pad_exec
+        type: parameterexecuteDAT
+        parameters:
+          op: heads_pad
+          pars: value0 value1
+          file: project1/ptz_panel/programmer/pad_exec.py
+          syncfile: true
+        position: [800, -400]
+        size: [130, 90]
+        color: [0.9, 0.3, 0.4]
+        tags:
+        - py
+      - name: heads_pad
+        type: sliderCOMP
+        parameters:
+          value0: 0.4387
+          value1: 0.49
+          w: 300
+        children:
+        - name: knob
+          type: containerCOMP
+          parameters:
+            x: =(float(op('../../../ptz/targets')['u']) if op('../../../ptz/targets') is not None else parent().par.value0.eval()) * parent().width - 8
+            y: =(float(op('../../../ptz/targets')['v']) if op('../../../ptz/targets') is not None else parent().par.value1.eval()) * parent().height - 8
+            w: =16
+            h: =16
+            layer: 2
+            clickthrough: true
+            bgcolorr: =1.0
+            bgcolorg: =0.65
+            bgcolorb: =0.2
+            bgalpha: 1
+            borderover: false
+          flags:
+          - viewer
+          position: [25, -225]
+          size: [118, 113]
+        - name: out1
+          type: outCHOP
+          parameters:
+            label: =me.name
+          flags:
+          - viewer
+          position: [200, -100]
+          inputs:
+          - par1
+        - name: par1
+          type: parameterCHOP
+          parameters:
+            parameters: ='value0 value1' if parent().par.slidertype == 'slideruv' else 'value0'
+            renameto: v1 v2
+          position: [0, -100]
+        - name: text
+          type: textCOMP
+          parameters:
+            text: Teste sel.
+            type: multiline
+            legacyfontselection: true
+            scaletofit: onlyshrink
+            fontsize: 10
+            fontcolorr: =.2 * parent().par.colorr + .5
+            fontcolorg: =.2 * parent().par.colorg + .5
+            fontcolorb: =.2 * parent().par.colorb + .5
+            textpaddingl: 4
+            textpaddingr: 4
+            textpaddingb: 3
+            textpaddingt: 3
+            alignx: left
+            hmode: fill
+            vmode: fill
+            clickthrough: true
+            bgcolorr: =0.4 * parent().par.colorr
+            bgcolorg: =0.4 * parent().par.colorg
+            bgcolorb: =0.4 * parent().par.colorb
+            bgalpha: 1
+            borderar: =[c/.5 for c in [.23, .4]][parent().panel.rollover] * parent().par.colorr + 0.2
+            borderag: =[c/.5 for c in [.23, .4]][parent().panel.rollover] * parent().par.colorg + 0.2
+            borderab: =[c/.5 for c in [.23, .4]][parent().panel.rollover] * parent().par.colorb + 0.2
+            leftborder: bordera
+            rightborder: bordera
+            bottomborder: bordera
+            topborder: bordera
+            borderover: false
+          flags:
+          - viewer
+          position: [175, -225]
+          size: [160, 76]
+        - name: panelexec1
+          type: panelexecuteDAT
+          parameters:
+            panels: =parent()
+            panelvalue: u v
+            offtoon: false
+            valuechange: true
+            defaultreadencoding: cp1252
+            loadonstart: true
+          flags:
+          - viewer
+          position: [75, -325]
+          size: [124, 51]
+          dat_content: "# panelValue - the PanelValue object that changed\n# Make sure the corresponding toggle is enabled in the Panel Execute DAT.\n\ndef onValueChange(panelValue, prev):\n\tppar = parent().par\n\tppanel = parent().panel\n \n\tval0 = tdu.remap(panelValue.val, 0., 1., ppar.valuerange0l.eval(), ppar.valuerange0h.eval())\n\t\n\tif ppar.slidertype == 'slideru' and panelValue.name == 'u':\n\t\tppar.value0 = val0\n\telif ppar.slidertype == 'sliderv' and panelValue.name == 'v':\n\t\tppar.value0 = val0\n\telif ppar.slidertype == 'slideruv' :\n\t\tif panelValue.name == 'u':\n\t\t\tppar.value0 = val0\n\t\tif panelValue.name == 'v':\n\t\t\tppar.value1 =tdu.remap(panelValue.val, 0., 1., ppar.valuerange1l.eval(), ppar.valuerange1h.eval())\n\t\t\t\t\n\treturn"
+          dat_content_format: text
+      - name: view_tick
+        type: executeDAT
+        parameters:
+          framestart: true
+          file: project1/ptz_panel/programmer/view_tick.py
+        position: [400, -400]
+      - name: heads_text
+        type: textCOMP
+        parameters:
+          text: |-
+            Programmer teste: 2 teste, 2 selezionate  |  pad: MH1
+            * MH1    manual  pan  -33.1  tilt   -2.7  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
+            * MH6    manual  pan  -33.1  tilt   -2.7  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
+          type: multiline
+          callbacks: heads_text_callbacks
+          font: Consolas
+          fontsize: 13
+          textpaddingl: 10
+          textpaddingt: 8
+          alignx: left
+          aligny: top
+          hmode: fill
+          vmode: fill
+          alignorder: 1
+          bgcolorr: 0.11
+          bgcolorg: 0.11
+          bgcolorb: 0.13
+          bgalpha: 1
+        position: [400, 0]
+        size: [160, 130]
+        color: [0.67, 0.67, 0.67]
+      - name: programmer_view
+        type: textDAT
+        parameters:
+          file: project1/ptz_panel/programmer/programmer_view.py
+          syncfile: true
+          language: python
+        position: [0, -400]
+        size: [130, 90]
+        color: [0.9, 0.3, 0.4]
+        tags:
+        - py
+      - name: heads_text_callbacks
+        type: textDAT
+        parameters:
+          language: python
+        flags:
+        - viewer
+        - -showDocked
+        position: [400, -160]
+        size: [160, 130]
+        color: [0.67, 0.67, 0.67]
+        dock: heads_text
+        dat_content: "# Text Component callbacks\n\nfrom typing import Any, Dict\n\ndef onValueChange(comp: textCOMP, value: str, prevValue: str):\n\t\"\"\"\n\tCalled whenever the text component's value parameter changes for any reason\n\tincluding typing in the text window or changing the parameter directly. The\n\tcallback is equivalent to the onValueChange in the parameter exectute DAT.\n\t\n\tArgs:\n\t\tcomp: the text component\n\t\tvalue: the new value\n\t\tprevValue: the previous value\n\t\"\"\"\n\t#debug('\\nonValueChange comp:', comp.path, '- new value: ', value,\n\t#\t  ', prev value: ', prevValue )\n\treturn\n\t\ndef onFocus(comp: textCOMP):\n\t\"\"\"\n\tCalled when one of the text components viewers gets keyboard focus. \n\t\n\tArgs:\n\t\tcomp: the text component\n\t\"\"\"\n\t#debug('\\nonFocus comp:', comp.path)\n\treturn\n\ndef onFocusEnd(comp: textCOMP, info: Dict[str, str]):\n\t\"\"\"\n\tCalled when one of the text component's viewers loses keyboard focus. In\n\tregular editing mode this is right after the contents are saved back to the\n\tvalue parameter. This function is called everytime the viewer loses focus,\n\teven if the text does not change.\n\t\n\tArgs:\n\t\tcomp: the text component\n\t\tinfo: a dictionary containing information about the event including:\n\t\t\treason: a string indicating what caused the viewer to lose focus\n\t\t\t\te.g. 'enter', 'escape', 'tab', 'unknown'\n\t\n\t\"\"\"\n\t#debug('\\nonFocusEnd comp:', comp.path, '- info:\\n', info)\n\treturn\n\t\ndef onTextEdit(comp: textCOMP):\n\t\"\"\"\n\tCalled each time the contents of the text component viewer change i.e. when\n\ttyping a character, deleting text, cutting or pasting. \n\t\n\tArgs:\n\t\tcomp: the text component\n\t\"\"\"\n\t#debug('\\nonTextEdit comp:', comp.path, '- text: ', comp.editText)\n\treturn\n\t\ndef onTextEditEnd(comp: textCOMP, value: str, prevValue: str):\n\t\"\"\"\n\tCalled when the user finishes editing and the value has been changed. Not\n\tcalled in 'Continuous Edit' mode. Use onTextEdit and onFocusEnd when using\n\tcontinuous editing.\n\n\tNote: Any Python undo blocks created by this callback will be included in\n\tthe undo step for the change to the text field.\n\t\n\tArgs:\n\t\tcomp: the text component\n\t\tvalue: the new value\n\t\tprevValue: the previous value\n\t\"\"\"\n\t#debug('\\nonTextEditEnd comp:', comp.path, '- new value: ', value,\n\t#\t  ', prev value: ', prevValue )\n\treturn\n"
+        dat_content_format: text
+      annotations:
+      - name: annotate1
+        mode: annotate
+        title: Programmer teste nella UI
+        text: Mostra in TD lo stato per testa (moving_heads/head_programmer) mosso da Plancia /mh/* o da Gaia. heads_pad = pan/tilt della prima testa selezionata (come il pad della Plancia, -1..1 sull'escursione del modello); trascinarlo muove le teste selezionate. heads_text = una riga per testa. view_tick -> programmer_view.sync() (10/s, non scrive il pad mentre lo trascini); pad_exec -> on_pad().
+        position: [-70, -470]
+        size: [1070, 770]
         color: [0.45, 0.45, 0.45]
     annotations:
     - name: annotate1
@@ -13488,12 +13665,12 @@ operators:
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /mh/pantilt 0.525618 0.104934  @ 11:31:26
+        value: /mh/pantilt -0.122504 0.0200777  @ 11:36:54
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 7453
+        value: 7959
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13722,8 +13899,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.0068658657
-        colorg: 0.8454873478
+        colorr: 0.7868188951
+        colorg: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14085,7 +14262,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: master STOP 00:00.00  seq 104
+        value: master STOP 00:00.00  seq 15
       Status:
       - name: Identitystatus
         style: Str
@@ -14106,7 +14283,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 11:31:27
+        value: gaia/brain/state @ 11:37:07
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14133,7 +14310,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 10957.3
+      lastmsg_seconds: 11296.3833333333
     children:
     - name: soul
       type: outCHOP
@@ -14370,7 +14547,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 138
+        rows: 91
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -15689,8 +15866,8 @@ operators:
         - strobe
       - - p-51kr5fl
         - manual
-        - '141.9168'
-        - '-14.1661'
+        - '-33.076'
+        - '-2.7105'
         - '0.5807'
         - '0.0'
         - '1.0'
@@ -15703,8 +15880,8 @@ operators:
         - '0.0'
       - - p-fslozhy
         - manual
-        - '141.9168'
-        - '-14.1661'
+        - '-33.076'
+        - '-2.7105'
         - '0.5807'
         - '0.0'
         - '1.0'
@@ -15864,7 +16041,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: topic, sequence number and how many fixtures are being sent, or the last error.'
-        value: 'gaia/devices/td-dmx-win/dmx_output seq 941: 10 fixture, 10 inviate'
+        value: 'gaia/devices/td-dmx-win/dmx_output seq 64: 10 fixture, 10 inviate'
     position: [1000, -430]
     color: [0.325, 0.8, 0.3]
     comment: DMX services registered on gaia_client (op.Gaia) -- project-specific glue, outside the portable client
@@ -15946,7 +16123,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_audio.tsv
         syncfile: true
-        rows: 2
+        rows: 1
         cols: 9
       position: [800, -800]
       color: [0.9, 0.3, 0.4]
@@ -15957,7 +16134,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_bands.tsv
         syncfile: true
-        rows: 1
+        rows: 2
         cols: 9
       flags:
       - viewer
@@ -15987,7 +16164,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Basic
+        Palette: Warm
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -16145,8 +16322,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0
-        colorg: 0.0013782298
+        colorr: 0.9889222987
+        colorg: 0.2176885146
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -16259,7 +16436,7 @@ operators:
     parameters:
       file: project1/externalizations.tsv
       syncfile: true
-      rows: 394
+      rows: 397
       cols: 11
     position: [-200, 0]
     color: [0.9, 0.3, 0.4]
@@ -16272,7 +16449,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Basic
+        Palette: Warm
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -16433,8 +16610,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.2281890258
-        colorg: 0.8321365057
+        colorr: 0.9482180726
+        colorg: 0.4349621771
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
