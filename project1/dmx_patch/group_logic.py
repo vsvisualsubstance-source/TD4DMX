@@ -136,6 +136,11 @@ def _build_level_rig(name):
 	cb.nodeX, cb.nodeY = 0, -200
 
 	out = comp.create(scriptCHOP, 'level_out')
+	# TD docks its own default callbacks DAT to a new Script CHOP (here
+	# 'level_out_callbacks1', the name is taken): drop it, ours is cb
+	for d in list(out.docked):
+		if d != cb:
+			d.destroy()
 	out.par.callbacks = 'level_out_callbacks'
 	out.nodeX, out.nodeY = 400, 0
 	cb.dock = out

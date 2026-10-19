@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.35.toe
-exported_at: '2026-10-19T08:15:39Z'
+source_file: dmx.36.toe
+exported_at: '2026-10-19T08:19:28Z'
 network_path: /
 options:
   include_dat_content: false
@@ -12794,23 +12794,11 @@ operators:
       dat_content_format: table
     - name: level_out_callbacks
       type: textDAT
-      position: [0, -200]
+      position: [400, -120]
       size: [130, 90]
       color: [0.67, 0.67, 0.67]
       dock: level_out
       dat_content: "\"\"\"level_out -- one channel per unit attribute (unit<u>_<attr>, DMX order of\nthe unit's profile, see dmx_patch/group_logic). Intensity channels (dimmer*\nand colour/output) at full scale (255): Level/Master/Strobe are applied in\ndmx_patch/universe_build. 'fan' follows the Fan par; any other role\n(strobe, mode, placeholder ch<N> of a catalog model with only its channel\ncount) is 0. Cooks on change only (tables + pars).\"\"\"\nFULL = 255.0\nINTENSITY = ('red', 'green', 'blue', 'white', 'amber', 'uv', 'output')\n\n\ndef onSetupParameters(scriptOp):\n\treturn\n\n\ndef onCook(scriptOp):\n\tscriptOp.clear()\n\tscriptOp.numSamples = 1\n\tcomp = parent()\n\tfl = comp.parent().op('dmx_patch/fixture_logic').module\n\tgroup = fl.group_of(comp)\n\tif group is None:\n\t\treturn\n\tfan = float(comp.par.Fan.eval()) * FULL\n\tfor u, prof in enumerate(fl.unit_profiles(comp, cached=False), 1):\n\t\tfor attr in fl.profile_channels(group, prof) or []:\n\t\t\tc = scriptOp.appendChan('unit%d_%s' % (u, attr))\n\t\t\tc[0] = fan if attr == 'fan' else \t\t\t\tFULL if attr.startswith('dimmer') or attr in INTENSITY else 0.0\n\treturn\n"
-      dat_content_format: text
-    - name: level_out_callbacks1
-      type: textDAT
-      parameters:
-        language: python
-      flags:
-      - viewer
-      position: [0, -120]
-      size: [130, 90]
-      color: [0.67, 0.67, 0.67]
-      dock: level_out
-      dat_content: "\"\"\"\nScript CHOP Callbacks\n\nme - this DAT\n\nscriptOp - the OP which is cooking\n\"\"\"\n\nfrom typing import Any\n\n# press 'Setup Parameters' in the OP to call this function to re-create the\n# parameters.\ndef onSetupParameters(scriptOp: scriptCHOP):\n\t\"\"\"\n\tCalled to setup custom parameters for the Script CHOP.\n\t\"\"\"\n\tpage = scriptOp.appendCustomPage('Custom')\n\tp = page.appendFloat('Valuea', label='Value A')\n\tp = page.appendFloat('Valueb', label='Value B')\n\treturn\n\ndef onPulse(par: Any):\n\t\"\"\"\n\tCalled when a custom pulse parameter is pushed.\n\t\n\tArgs:\n\t\tpar: The parameter that was pulsed\n\t\"\"\"\n\treturn\n\ndef onCook(scriptOp: scriptCHOP):\n\t\"\"\"\n\tCalled when the Script CHOP needs to cook.\n\t\"\"\"\n\tscriptOp.clear()\n\treturn\n\ndef onGetCookLevel(scriptOp: scriptCHOP) -> CookLevel:\n\t\"\"\"\n\tSets the scriptOp's cook level, the conditions necessary to cause a cook.\n\n\tReturn one of the following:\n\t\tCookLevel.AUTOMATIC - inputs changed and output being used. TD default\n\t\t\t\t\t\t\t  behavior.\n\t\tCookLevel.ON_CHANGE - inputs changed, output used or not.\n\t\tCookLevel.WHEN_USED - every frame when output is being used\n\t\tCookLevel.ALWAYS - every frame\n\t\"\"\"\n\n\treturn CookLevel.AUTOMATIC\n"
       dat_content_format: text
   - name: tutorial
     type: textDAT
@@ -13714,9 +13702,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0
-        colorg: 0
-        colorb: 0.781754156
+        colorr: 0.806755581
+        colorg: 0.8070203594
+        colorb: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14078,7 +14066,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: master STOP 00:00.20  seq 592
+        value: master STOP 00:00.20  seq 16
       Status:
       - name: Identitystatus
         style: Str
@@ -14099,7 +14087,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/brain/state @ 10:15:38
+        value: gaia/brain/state @ 10:19:27
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14126,7 +14114,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 2573.6916666667
+      lastmsg_seconds: 2776.3666666667
     children:
     - name: soul
       type: outCHOP
@@ -14363,7 +14351,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 138
+        rows: 106
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -14795,23 +14783,11 @@ operators:
       dat_content_format: table
     - name: level_out_callbacks
       type: textDAT
-      position: [0, -200]
+      position: [400, -120]
       size: [130, 90]
       color: [0.67, 0.67, 0.67]
       dock: level_out
       dat_content: "\"\"\"level_out -- one channel per unit attribute (unit<u>_<attr>, DMX order of\nthe unit's profile, see dmx_patch/group_logic). Intensity channels (dimmer*\nand colour/output) at full scale (255): Level/Master/Strobe are applied in\ndmx_patch/universe_build. 'fan' follows the Fan par; any other role\n(strobe, mode, placeholder ch<N> of a catalog model with only its channel\ncount) is 0. Cooks on change only (tables + pars).\"\"\"\nFULL = 255.0\nINTENSITY = ('red', 'green', 'blue', 'white', 'amber', 'uv', 'output')\n\n\ndef onSetupParameters(scriptOp):\n\treturn\n\n\ndef onCook(scriptOp):\n\tscriptOp.clear()\n\tscriptOp.numSamples = 1\n\tcomp = parent()\n\tfl = comp.parent().op('dmx_patch/fixture_logic').module\n\tgroup = fl.group_of(comp)\n\tif group is None:\n\t\treturn\n\tfan = float(comp.par.Fan.eval()) * FULL\n\tfor u, prof in enumerate(fl.unit_profiles(comp, cached=False), 1):\n\t\tfor attr in fl.profile_channels(group, prof) or []:\n\t\t\tc = scriptOp.appendChan('unit%d_%s' % (u, attr))\n\t\t\tc[0] = fan if attr == 'fan' else \t\t\t\tFULL if attr.startswith('dimmer') or attr in INTENSITY else 0.0\n\treturn\n"
-      dat_content_format: text
-    - name: level_out_callbacks1
-      type: textDAT
-      parameters:
-        language: python
-      flags:
-      - viewer
-      position: [0, -120]
-      size: [130, 90]
-      color: [0.67, 0.67, 0.67]
-      dock: level_out
-      dat_content: "\"\"\"\nScript CHOP Callbacks\n\nme - this DAT\n\nscriptOp - the OP which is cooking\n\"\"\"\n\nfrom typing import Any\n\n# press 'Setup Parameters' in the OP to call this function to re-create the\n# parameters.\ndef onSetupParameters(scriptOp: scriptCHOP):\n\t\"\"\"\n\tCalled to setup custom parameters for the Script CHOP.\n\t\"\"\"\n\tpage = scriptOp.appendCustomPage('Custom')\n\tp = page.appendFloat('Valuea', label='Value A')\n\tp = page.appendFloat('Valueb', label='Value B')\n\treturn\n\ndef onPulse(par: Any):\n\t\"\"\"\n\tCalled when a custom pulse parameter is pushed.\n\t\n\tArgs:\n\t\tpar: The parameter that was pulsed\n\t\"\"\"\n\treturn\n\ndef onCook(scriptOp: scriptCHOP):\n\t\"\"\"\n\tCalled when the Script CHOP needs to cook.\n\t\"\"\"\n\tscriptOp.clear()\n\treturn\n\ndef onGetCookLevel(scriptOp: scriptCHOP) -> CookLevel:\n\t\"\"\"\n\tSets the scriptOp's cook level, the conditions necessary to cause a cook.\n\n\tReturn one of the following:\n\t\tCookLevel.AUTOMATIC - inputs changed and output being used. TD default\n\t\t\t\t\t\t\t  behavior.\n\t\tCookLevel.ON_CHANGE - inputs changed, output used or not.\n\t\tCookLevel.WHEN_USED - every frame when output is being used\n\t\tCookLevel.ALWAYS - every frame\n\t\"\"\"\n\n\treturn CookLevel.AUTOMATIC\n"
       dat_content_format: text
   - name: audio_engine
     type: baseCOMP
@@ -15948,7 +15924,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Warm
+        Palette: Amber
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -16106,8 +16082,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.9182590859
-        colorg: 0.2939262293
+        colorr: 0.7983194389
+        colorg: 0.4695996699
         colorb: 0
       position: [450, 700]
     - name: palette_preview
@@ -16234,7 +16210,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Warm
+        Palette: Deep Purple
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -16395,9 +16371,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.9821518244
-        colorg: 0.4189693546
-        colorb: 0
+        colorr: 0.4438233015
+        colorg: 0
+        colorb: 0.616664359
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
