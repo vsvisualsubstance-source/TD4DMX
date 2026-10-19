@@ -936,6 +936,32 @@ def _register_programmer(agent):
 	agent.register_param('heads_last_result', get=lambda: hp().last_result())
 
 
+_timeline_pub = {'rev': None, 'check': 0.0, 'pub': 0.0}
+TIMELINE_CHECK_S = 0.5      # how often the rev is compared
+TIMELINE_REPUBLISH_S = 60.0  # retained anyway, refreshed now and then
+
+
+def timeline_tick():
+	"""From lifecycle onFrameStart: publish the show timeline on
+	gaia/devices/<id>/show_timeline (retained) as soon as its rev changes,
+	whoever changed it -- Plancia/Gaia (show_timeline set) or TD (show
+	inspector, show_cues). GAIA_INTERFACE "TD/Win-PD, 31"."""
+	now = time.time()
+	if now - _timeline_pub['check'] < TIMELINE_CHECK_S:
+		return
+	_timeline_pub['check'] = now
+	doc = _show_logic().timeline()
+	if doc['rev'] == _timeline_pub['rev'] and now - _timeline_pub['pub'] < TIMELINE_REPUBLISH_S:
+		return
+	dat = op.Gaia.op('mqtt_device')
+	if not dat or not dat.isConnected:
+		return
+	device_id = op.Gaia.par.Deviceid.eval()
+	doc.update(device_id=device_id, ts=int(now * 1000))
+	dat.publish('gaia/devices/%s/show_timeline' % device_id, json.dumps(doc).encode('utf-8'), retain=True)
+	_timeline_pub.update(rev=doc['rev'], pub=now)
+
+
 def heads_lists_changed():
 	"""Presets/positions changed outside Gaia (Plancia OSC): republish the
 	status (heads_presets, heads_positions, heads_last_result) and the

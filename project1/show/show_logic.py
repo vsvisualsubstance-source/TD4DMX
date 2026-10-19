@@ -895,14 +895,29 @@ def _seconds(v):
 		raise ValueError('tempo %r non valido (secondi o m:ss)' % v)
 
 
+TIMELINE_FIELDS = ('name', 'bpm', 'length', 'loop', 'cues', 'keys')
+
+
+def timeline_rev(doc):
+	"""Content revision of a timeline document: the same timeline has the
+	same rev on every machine, whoever made it (TD or Plancia)."""
+	import hashlib
+	canon = {k: doc.get(k) for k in TIMELINE_FIELDS}
+	return hashlib.sha1(json.dumps(canon, sort_keys=True).encode('utf-8')).hexdigest()[:12]
+
+
 def timeline():
-	"""The current timeline, in the shape load_timeline() takes."""
+	"""The current timeline, in the shape load_timeline() takes, plus its
+	rev and who changed it last ('td' = edited in TD after the last load)."""
 	p = _show().par
-	return {'v': 1, 'name': _meta('name', ''), 'bpm': _meta('bpm'),
+	doc = {'v': 1, 'name': _meta('name', ''), 'bpm': _meta('bpm'),
 		'length': float(p.Length.eval()), 'loop': bool(p.Loop.eval()),
 		'cues': [{'time': c['time'], 'scene': c['scene'] or None, 'fade': c['fade'], 'label': c['label']}
 			for c in cues()],
 		'keys': [{k: x[k] for k in ('lane', 'time', 'value', 'interp')} for x in keys()]}
+	doc['rev'] = timeline_rev(doc)
+	doc['source'] = _meta('source', 'td') if doc['rev'] == _meta('loaded_rev') else 'td'
+	return doc
 
 
 def load_timeline(doc, source='gaia'):
@@ -913,6 +928,20 @@ def load_timeline(doc, source='gaia'):
 	errors, warnings, clean = [], [], []
 	names = scene_names()
 	dfade = _f(doc.get('default_fade', 2.0), 2.0)
+	missing = str(doc.get('missing_scenes') or 'error')
+	if missing not in ('error', 'marker'):
+		errors.append('missing_scenes %r (error | marker)' % missing)
+		missing = 'error'
+
+	def no_scene(i, what):
+		"""A cue whose scene TD does not have: error, or a marker that keeps
+		the label (missing_scenes: marker), so a Plancia timeline can be
+		loaded before its scenes exist in TD."""
+		if missing == 'marker':
+			warnings.append('cue %d: %s -> marker' % (i, what))
+			return ''
+		errors.append('cue %d: %s' % (i, what))
+		return None
 	items = doc.get('cues')
 	if not isinstance(items, list):
 		errors.append('cues: serve una lista')
@@ -936,12 +965,15 @@ def load_timeline(doc, source='gaia'):
 			continue
 		elif isinstance(sc, (int, float)):
 			if not (float(sc).is_integer() and 0 <= int(sc) < len(names)):
-				errors.append('cue %d: scena indice %r non esiste (%d scene)' % (i, sc, len(names)))
-				continue
-			sc = names[int(sc)]
+				sc = no_scene(i, 'scena indice %r non esiste (%d scene)' % (sc, len(names)))
+				if sc is None:
+					continue
+			else:
+				sc = names[int(sc)]
 		elif str(sc) not in names:
-			errors.append('cue %d: scena %r non esiste' % (i, sc))
-			continue
+			sc = no_scene(i, 'scena %r non esiste' % sc)
+			if sc is None:
+				continue
 		fade = _f(it.get('fade', dfade), -1)
 		if fade < 0:
 			errors.append('cue %d: fade %r non valido' % (i, it.get('fade')))
@@ -976,6 +1008,13 @@ def load_timeline(doc, source='gaia'):
 		errors.append('bpm %r non valido' % bpm)
 	dry = bool(doc.get('dry_run'))
 	name = str(doc.get('name') or '').strip()
+	origin = str(doc.get('source') or source)
+	prev_rev = timeline()['rev']
+	base = doc.get('base_rev')
+	conflict = base is not None and str(base) != prev_rev and not doc.get('force')
+	if conflict:
+		errors.append('conflitto: la timeline di TD è cambiata (rev %s, il documento parte da %s); '
+			'rileggere show_timeline e rifare, oppure force: true' % (prev_rev, base))
 	ok = not errors
 	if ok and not dry:
 		set_cues(clean)
@@ -989,9 +1028,12 @@ def load_timeline(doc, source='gaia'):
 			p.Time = 0
 		_show().store('timeline_name', name)
 		_show().store('timeline_bpm', None if bpm is None else float(bpm))
+		_show().store('timeline_source', origin)
+		_show().store('timeline_loaded_rev', timeline_rev(timeline()))
 		force_apply()
 	_tl['seq'] += 1
-	_tl['last'] = {'seq': _tl['seq'], 'ts': int(time.time() * 1000), 'source': source, 'ok': ok,
+	_tl['last'] = {'seq': _tl['seq'], 'ts': int(time.time() * 1000), 'source': origin, 'ok': ok,
+		'conflict': conflict, 'previous_rev': prev_rev, 'rev': timeline()['rev'],
 		'dry_run': dry, 'loaded': ok and not dry, 'name': name, 'cues': len(clean),
 		'markers': sum(1 for c in clean if not c['scene']), 'length': round(float(length), 3) if ok else None,
 		'errors': errors, 'warnings': warnings}

@@ -78,6 +78,12 @@ def onFrameStart(frame: int):
 			disc.module.tick()
 		except Exception as e:
 			debug('touch_discovery.tick failed:', e)
+	svc = op('dmx_services')
+	if svc is not None:
+		try:
+			svc.module.timeline_tick()
+		except Exception as e:
+			debug('timeline_tick failed:', e)
 	out = op('dmx_output')
 	if out is not None:
 		try:
