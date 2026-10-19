@@ -15,6 +15,19 @@ to those pages later are captured automatically):
   groups  Patchenable of rig_a / rig_b / heads, dmx_patch Blackout
   audio   Audiobus of rig_a / rig_b (which audio source drives the rig)
 
+Per-head state (category heads; see GAIA_INTERFACE "TD/Win-PD, 25"): besides
+the global look of moving_heads, a scene stores every head of the
+programmer (moving_heads/head_programmer) as target 'head:<key>' (key = the
+head's uid) with par 'mode' (global | manual | follow) and one row per
+field (pan, tilt, dimmer, red, green, blue, white, color, gobo, zoom,
+focus, strobe: its EFFECTIVE value at capture, so every field can fade).
+Applying it: a global head is released (back to the global look), a
+manual/follow head gets its fields and mode. Crossfade: numbers
+interpolate; a head going manual/follow changes mode at once, a head going
+global is released only at the END of the fade (no pan/tilt jump halfway).
+Scenes captured before this have no head rows: they leave the per-head
+state alone.
+
 State at time t is STATELESS (scrub / seek / loop always land right):
   cue = last cue with time <= t (none -> the timeline does not drive);
   crossfade from the previous cue's scene over cue.fade seconds: numbers
@@ -160,6 +173,89 @@ def _par(target, name):
 	return getattr(c.par, name) if c is not None and hasattr(c.par, name) else None
 
 
+# ---------------------------------------------------------------- per-head state
+
+HEAD_PREFIX = 'head:'
+
+
+def _is_head(target):
+	return target.startswith(HEAD_PREFIX)
+
+
+def _hp():
+	c = target_comp('heads')
+	dat = c.op('head_programmer') if c is not None else None
+	return dat.module if dat is not None else None
+
+
+def _head_rows():
+	"""[(target, par, value)] of every head's current state, for capture."""
+	hp = _hp()
+	if hp is None:
+		return []
+	out = []
+	for h in hp.heads():
+		t = HEAD_PREFIX + h['key']
+		e = hp.effective(h['key'])
+		out.append((t, 'mode', e['mode']))
+		for f in hp.FIELDS:
+			out.append((t, f, round(float(e[f]), 6)))
+	return out
+
+
+def _current(k):
+	"""Live value of a scene key (a par or a head field), None if gone."""
+	if _is_head(k[0]):
+		hp = _hp()
+		key = k[0][len(HEAD_PREFIX):]
+		if hp is None or key not in hp.keys_by_unit().values():
+			return None
+		v = hp.effective(key)[k[1]]
+		return v if k[1] == 'mode' else float(v)
+	p = _par(*k)
+	return _read(p) if p is not None else None
+
+
+def _blend(k, a, v, x):
+	"""Value of key k at fade position x (0..1) from a to v: numbers
+	interpolate, other values switch at half fade; a head's mode switches at
+	once, except back to global, which waits for the end of the fade."""
+	if x >= 1.0 or a is None:
+		return v
+	if k[1] == 'mode' and _is_head(k[0]):
+		return a if v == 'global' else v
+	if isinstance(v, float) and isinstance(a, float):
+		return a + (v - a) * x
+	return a if x < 0.5 else v
+
+
+def _apply_heads(changed, state, force):
+	"""Write the head keys of `changed` ({(target, field): value}) to the
+	programmer, one call per head. A head whose mode in `state` is global is
+	released (only when its mode changed, or on a forced apply)."""
+	hp = _hp()
+	if hp is None:
+		return
+	known = set(hp.keys_by_unit().values())
+	per = {}
+	for (t, f), v in changed.items():
+		per.setdefault(t, {})[f] = v
+	for t, fields in per.items():
+		key = t[len(HEAD_PREFIX):]
+		if key not in known:
+			continue
+		mode = state.get((t, 'mode'))
+		try:
+			if mode == 'global':
+				if force or 'mode' in fields:
+					hp.set_mode('global', [key])
+				continue
+			vals = {f: v for f, v in fields.items() if f != 'mode'}
+			hp.program(vals, [key], mode=mode if mode in ('manual', 'follow') else None)
+		except Exception as e:
+			debug('show apply %s: %s' % (t, e))
+
+
 def _is_number(p):
 	return p.style in ('Float', 'Int', 'RGB', 'RGBA', 'XY', 'XYZ', 'UV', 'UVW', 'WH')
 
@@ -226,6 +322,10 @@ def scene_values(name):
 		if r['scene'] != name:
 			continue
 		k = (r['target'], r['par'])
+		if _is_head(k[0]):
+			if sc.get('heads', 0):
+				out[k] = r['value'] if k[1] == 'mode' else _f(r['value'])
+			continue
 		if not sc.get(cat.get(k, ''), 0):
 			continue
 		p = _par(*k)
@@ -257,6 +357,8 @@ def capture(name, label=None):
 			if p is not None:
 				v = _read(p)
 				vt.appendRow([name, t, n, round(v, 6) if isinstance(v, float) else v])
+	for t, n, v in _head_rows():
+		vt.appendRow([name, t, n, v])
 	invalidate()
 	return name
 
@@ -303,9 +405,9 @@ def recall(name, fade=0.0):
 		return
 	frm = {}
 	for k in vals:
-		p = _par(*k)
-		if p is not None:
-			frm[k] = _read(p)
+		v = _current(k)
+		if v is not None:
+			frm[k] = v
 	_xfade.update(frm=frm, to=dict(vals), t0=absTime.seconds, dur=fade)
 
 
@@ -314,15 +416,7 @@ def _xfade_step():
 	if not _xfade:
 		return
 	x = min(1.0, (absTime.seconds - _xfade['t0']) / _xfade['dur'])
-	state = {}
-	for k, v in _xfade['to'].items():
-		a = _xfade['frm'].get(k)
-		if x < 1.0 and a is not None:
-			if isinstance(v, float) and isinstance(a, float):
-				v = a + (v - a) * x
-			elif x < 0.5:
-				v = a
-		state[k] = v
+	state = {k: _blend(k, _xfade['frm'].get(k), v, x) for k, v in _xfade['to'].items()}
 	_apply(state, force=True)
 	if x >= 1.0:
 		_xfade.clear()
@@ -564,13 +658,7 @@ def state_at(t):
 		prev = scene_values(cs[idx - 1]['scene']) if idx > 0 else {}
 		x = 1.0 if cue['fade'] <= 0 else max(0.0, min(1.0, (t - cue['time']) / cue['fade']))
 		for k, v in cur.items():
-			if x < 1.0 and k in prev:
-				a = prev[k]
-				if isinstance(v, float) and isinstance(a, float):
-					v = a + (v - a) * x
-				elif x < 0.5:
-					v = a
-			out[k] = v
+			out[k] = _blend(k, prev.get(k), v, x)
 	for lane, ks in lanes().items():
 		v = _lane_value(ks, t)
 		if v is None:
@@ -584,12 +672,16 @@ def state_at(t):
 
 
 def _apply(state, force=False):
+	heads = {}
 	for k, v in state.items():
 		old = _last.get(k)
 		if not force and old is not None and (old == v or (
 				isinstance(v, float) and isinstance(old, float) and abs(old - v) < 1e-6)):
 			continue
 		_last[k] = v
+		if _is_head(k[0]):
+			heads[k] = v
+			continue
 		p = _par(*k)
 		if p is None:
 			continue
@@ -604,6 +696,8 @@ def _apply(state, force=False):
 				p.val = v
 		except Exception as e:
 			debug('show apply %s.%s=%r: %s' % (k[0], k[1], v, e))
+	if heads:
+		_apply_heads(heads, state, force)
 
 
 # ---------------------------------------------------------------- clock
