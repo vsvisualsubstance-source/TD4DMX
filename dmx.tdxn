@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.37.toe
-exported_at: '2026-10-19T08:41:01Z'
+source_file: dmx.38.toe
+exported_at: '2026-10-19T09:09:07Z'
 network_path: /
 options:
   include_dat_content: false
@@ -55,6 +55,7 @@ type_defaults:
     color: [0.67, 0.67, 0.67]
   constantTOP:
     parameters:
+      colorg: 0
       resolutionh: 200
       resolutionw: 200
     flags:
@@ -962,7 +963,7 @@ operators:
         clampMin: true
         normMax: 300.0
         help: 'Playhead position in seconds. Drag it to scrub: the state at that time is applied.'
-        value: 0.200000003
+        value: 0.1008533747
       - name: Rewind
         style: Pulse
         help: Back to 0 and re-apply everything.
@@ -1015,7 +1016,7 @@ operators:
         style: Str
         readOnly: true
         help: 'Read-only: transport, current cue, scene and fade progress.'
-        value: STOP 00:00.20  |  cue 1/1    -> TestScene1  (fade 0%)
+        value: STOP 00:00.10  |  prima della prima cue
       - name: Message
         style: Str
         readOnly: true
@@ -1228,7 +1229,7 @@ operators:
       parameters:
         file: project1/show/scene_values.tsv
         syncfile: true
-        rows: 92
+        rows: 118
       position: [0, -200]
       color: [0.9, 0.3, 0.4]
       tags:
@@ -12134,6 +12135,7 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
+        value: ptz
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -13466,23 +13468,28 @@ operators:
         label: Feedback Heads
         default: true
         help: 'Send the moving heads state: /mh/select (mask in unit order), the values of the first selected head (/mh/pantilt, /mh/color, /mh/dimmer, /mh/zoom, /mh/focus, /mh/strobe, /mh/gobo) and /dmx/group/mh. An address Plancia sent in the last 0.5 s is never echoed back.'
+      - name: Feedbackdmx
+        style: Toggle
+        label: Feedback DMX
+        default: true
+        help: Send /dmx/scene <index of the active scene> (after a recall or a timeline cue), /dmx/master, /dmx/blackout and /dmx/group/<alias or group> <Level> of every group with a Level. Same echo/refresh rules as the heads.
       - name: Status
         style: Str
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: color su 2 teste
+        value: blackout off
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /mh/color 0 0.85 1  @ 10:40:17
+        value: /dmx/blackout 0  @ 11:08:22
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 4703
+        value: 5699
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13711,9 +13718,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.8689368753
-        colorg: 0
-        colorb: 0.8689368753
+        colorr: 0.8847458185
+        colorb: 0.8847458185
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14075,7 +14081,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: master STOP 00:00.20  seq 11
+        value: master STOP 00:00.10  seq 12
       Status:
       - name: Identitystatus
         style: Str
@@ -14096,7 +14102,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/brain/state @ 10:41:01
+        value: gaia/brain/state @ 11:09:06
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14123,7 +14129,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 7939.9
+      lastmsg_seconds: 9618.7
     children:
     - name: soul
       type: outCHOP
@@ -14360,7 +14366,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 7
+        rows: 91
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -15678,32 +15684,32 @@ operators:
         - strobe
       - - p-fslozhy
         - manual
-        - '86.4'
-        - '83.7'
-        - '0.6202'
+        - '75.9526'
+        - '-55.7643'
+        - '0.5807'
         - '0.0'
-        - '0.85'
         - '1.0'
-        - ''
-        - ''
-        - ''
+        - '0.7375'
+        - '0.0'
+        - '0.0'
+        - '96.0'
         - '0.6548'
         - '0.7165'
-        - ''
+        - '0.0'
       - - p-51kr5fl
         - manual
-        - '23.6'
-        - '83.7'
-        - '0.6202'
+        - '75.9526'
+        - '-55.7643'
+        - '0.5807'
         - '0.0'
-        - '0.85'
         - '1.0'
-        - ''
-        - ''
-        - ''
+        - '0.7375'
+        - '0.0'
+        - '0.0'
+        - '96.0'
         - '0.6548'
         - '0.7165'
-        - ''
+        - '0.0'
       dat_content_format: table
     - name: select_ptz
       type: selectCHOP
@@ -15829,6 +15835,31 @@ operators:
     size: [160, 130]
   - name: gaia_services
     type: baseCOMP
+    custom_pars:
+      Output:
+      - name: Outputenable
+        style: Toggle
+        label: Output Enable
+        default: true
+        help: 'Publish what DMX Master is actually sending, per fixture (gaia/devices/<id>/dmx_output, retained): RGB, dimmer and intensity read from dmx_patch/universe_build, plus the active scene.'
+      - name: Outputrate
+        style: Float
+        label: Output Rate (Hz)
+        default: 10
+        min: 0.5
+        max: 30.0
+        clampMin: true
+        clampMax: true
+        normMin: 1.0
+        normMax: 30.0
+        help: Maximum publishes per second when the output changes (a heartbeat goes out every 2 s anyway).
+      - name: Outputstatus
+        style: Str
+        label: Output Status
+        startSection: true
+        readOnly: true
+        help: 'Read-only: topic, sequence number and how many fixtures are being sent, or the last error.'
+        value: 'gaia/devices/td-dmx-win/dmx_output seq 53: 10 fixture, 8 inviate'
     position: [1000, -430]
     color: [0.325, 0.8, 0.3]
     comment: DMX services registered on gaia_client (op.Gaia) -- project-specific glue, outside the portable client
@@ -15845,6 +15876,17 @@ operators:
       flags:
       - viewer
       position: [400, 0]
+    - name: dmx_output
+      type: textDAT
+      parameters:
+        file: project1/gaia_services/dmx_output.py
+        syncfile: true
+        language: python
+      position: [800, 0]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
     - name: dmx_services
       type: textDAT
       parameters:
@@ -15899,7 +15941,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_audio.tsv
         syncfile: true
-        rows: 2
+        rows: 1
         cols: 9
       position: [800, -800]
       color: [0.9, 0.3, 0.4]
@@ -15922,9 +15964,9 @@ operators:
     - name: annotate1
       mode: annotate
       title: Gaia Services
-      text: 'dmx_services: registra rig, audio e patch su gaia_client (op.Gaia) e pubblica dmx_matrix. lifecycle: registrazione + tick discovery.'
+      text: 'dmx_services: registra rig, audio e patch su gaia_client (op.Gaia) e pubblica dmx_matrix. lifecycle: registrazione + tick discovery + tick dmx_output. dmx_output: uscita effettiva per fixture (da universe_build) su gaia/devices/<id>/dmx_output, retained (pagina Output).'
       position: [-70, -70]
-      size: [670, 330]
+      size: [1070, 330]
       color: [0.9, 0.5, 0.2]
     - name: annotate2
       mode: annotate
@@ -15940,7 +15982,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Amber
+        Palette: Basic 2
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -16098,9 +16140,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.9737809723
-        colorg: 0.5728123367
-        colorb: 0
+        colorr: 0.8825963039
+        colorb: 0.8825963039
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -16213,7 +16254,7 @@ operators:
     parameters:
       file: project1/externalizations.tsv
       syncfile: true
-      rows: 393
+      rows: 394
       cols: 11
     position: [-200, 0]
     color: [0.9, 0.3, 0.4]
@@ -16226,7 +16267,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Deep Purple
+        Palette: Basic 2
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -16387,9 +16428,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.2709499778
-        colorg: 0
-        colorb: 0.7745156752
+        colorr: 0.8747802734
+        colorb: 0.8747802734
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP

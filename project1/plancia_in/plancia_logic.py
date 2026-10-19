@@ -197,9 +197,8 @@ def feedback_tick():
 	on = c.Feedback.eval()
 	if not (on and c.Feedbackshow.eval()):
 		_fb.update(play=None, cue=None, time=None)
-	if not (on and c.Feedbackheads.eval()):
-		_fbh['sent'].clear()
 	if not on:
+		_fbh['sent'].clear()
 		return
 	if c.Feedbackshow.eval():
 		_show_feedback(op('osc_feedback'))
@@ -208,6 +207,11 @@ def feedback_tick():
 			_heads_feedback(op('osc_feedback'))
 		except Exception as e:
 			c.Status = 'feedback teste: %s' % e
+	if c.Feedbackdmx.eval():
+		try:
+			_dmx_feedback(op('osc_feedback'))
+		except Exception as e:
+			c.Status = 'feedback dmx: %s' % e
 
 
 def _heads_feedback(out):
@@ -223,8 +227,7 @@ def _heads_feedback(out):
 	hs = hp.heads()
 	sel = set(hp.selection())
 	msgs = {'/mh/select': [1 if h['key'] in sel else 0 for h in hs],
-		'/mh/select/heads': [h['uid'] or h['key'] for h in hs if h['key'] in sel],
-		'/dmx/group/mh': [float(mh.par.Level.eval())]}
+		'/mh/select/heads': [h['uid'] or h['key'] for h in hs if h['key'] in sel]}
 	first = next((h['key'] for h in hs if h['key'] in sel), None)
 	if first is not None:
 		e = hp.effective(first)
@@ -234,6 +237,17 @@ def _heads_feedback(out):
 			msgs['/mh/' + f] = [e[f]]
 		msgs['/mh/strobe'] = [1 if e['strobe'] >= 0.5 else 0]
 		msgs['/mh/gobo'] = [hp.wheel_index(first, 'gobo', e['gobo'])]
+	_send_changed(out, msgs, now)
+	res = hp.last_result()
+	if res and res['seq'] != _fbh.get('result'):
+		_fbh['result'] = res['seq']
+		out.sendOSC('/mh/result', [res['seq'], 1 if res['ok'] else 0, res['action'], res['target'], res['message']],
+			useNonStandardTypes=False)
+
+
+def _send_changed(out, msgs, now):
+	"""Send the addresses whose args changed since the last send, never an
+	address Plancia itself sent in the last ECHO_HOLD_S."""
 	for addr, args in msgs.items():
 		args = [x if isinstance(x, (int, str)) else round(float(x), 3) for x in args]
 		if _fbh['sent'].get(addr) == args:
@@ -242,11 +256,28 @@ def _heads_feedback(out):
 		if now - _recent.get(addr, -1e9) < ECHO_HOLD_S:
 			continue   # Plancia's own value: never echoed back
 		out.sendOSC(addr, args, useNonStandardTypes=False)
-	res = hp.last_result()
-	if res and res['seq'] != _fbh.get('result'):
-		_fbh['result'] = res['seq']
-		out.sendOSC('/mh/result', [res['seq'], 1 if res['ok'] else 0, res['action'], res['target'], res['message']],
-			useNonStandardTypes=False)
+
+
+def _dmx_feedback(out):
+	"""/dmx/scene <index of the active scene>, /dmx/master, /dmx/blackout,
+	/dmx/group/<alias or group> <Level>: same throttle/refresh/echo rules as
+	the heads (shares _fbh)."""
+	now = time.perf_counter()
+	if now - _fbh.get('t_dmx', 0.0) < FEEDBACK_HEADS_S:
+		return
+	_fbh['t_dmx'] = now
+	pp = _patch().par
+	msgs = {'/dmx/master': [float(pp.Master.eval())], '/dmx/blackout': [1 if pp.Blackout.eval() else 0]}
+	act = _show_logic().active_scene()
+	if act and act.get('index', -1) >= 0:
+		msgs['/dmx/scene'] = [int(act['index'])]
+	fl = _fl()
+	for g in fl.groups():
+		comp = fl.group_comp(g['group'])
+		lp = comp.par['Level'] if comp is not None else None
+		if lp is not None:
+			msgs['/dmx/group/' + (g.get('alias') or g['group'])] = [float(lp.eval())]
+	_send_changed(out, msgs, now)
 
 
 def _show_feedback(out):

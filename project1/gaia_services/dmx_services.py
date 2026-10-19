@@ -582,6 +582,10 @@ def _register_show(agent):
 	agent.register_param('show_scene_recall', get=lambda: None, set=recall)
 	agent.register_param('show_scene_capture', get=lambda: None, set=lambda v: sl().capture(str(v)))
 	agent.register_param('show_scenes', get=lambda: sl().scenes())
+	# catalog with stable id (= name) / index (= /dmx/scene i), categories,
+	# per-head state, cues using it; active = last scene applied (recall/cue)
+	agent.register_param('show_scene_catalog', get=lambda: sl().scene_catalog())
+	agent.register_param('show_active_scene', get=lambda: sl().active_scene())
 	agent.register_param('show_cues', get=lambda: sl().cues(), set=lambda v: sl().set_cues(_json_arg(v)))
 	agent.register_param('show_keys', get=lambda: sl().keys(), set=lambda v: sl().set_keys(_json_arg(v)))
 
@@ -596,6 +600,8 @@ def _build_show_matrix():
 		'show_scene_recall': {'kind': 'param', 'type': 'enum', 'options': sl.scene_names(), 'access': 'w'},
 		'show_scene_capture': {'kind': 'param', 'type': 'str', 'access': 'w'},
 		'show_scenes': {'kind': 'param', 'type': 'json', 'access': 'r'},
+		'show_scene_catalog': {'kind': 'param', 'type': 'json', 'access': 'r'},
+		'show_active_scene': {'kind': 'param', 'type': 'json', 'access': 'r'},
 		'show_cues': {'kind': 'param', 'type': 'json', 'access': 'rw'},
 		'show_keys': {'kind': 'param', 'type': 'json', 'access': 'rw'},
 	}

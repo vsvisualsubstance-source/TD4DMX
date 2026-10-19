@@ -78,6 +78,12 @@ def onFrameStart(frame: int):
 			disc.module.tick()
 		except Exception as e:
 			debug('touch_discovery.tick failed:', e)
+	out = op('dmx_output')
+	if out is not None:
+		try:
+			out.module.tick()
+		except Exception as e:
+			debug('dmx_output.tick failed:', e)
 	now = time.time()
 	if (now - _last_rearm) >= _REARM_INTERVAL_S:
 		_last_rearm = now

@@ -61,6 +61,8 @@ _force = [True]   # next tick applies everything
 _clock = {'secs': None}
 _cache = {}       # memoised table reads; cleared by invalidate()
 _xfade = {}       # live recall in progress: {frm, to, t0, dur} (see recall)
+_active = {}      # last scene applied: see active_scene()
+_cue_seen = [None]   # (Active, cue index) of the last tick, for the cue -> active scene
 
 
 def _memo(fn):
@@ -409,6 +411,7 @@ def recall(name, fade=0.0):
 	if not vals:
 		raise ValueError('scena %r vuota o inesistente' % name)
 	fade = max(0.0, _f(fade))
+	_set_active(name, 'recall', fade)
 	_xfade.clear()
 	if fade <= 0:
 		_apply(vals, force=True)
@@ -710,6 +713,35 @@ def _apply(state, force=False):
 		_apply_heads(heads, state, force)
 
 
+# ---------------------------------------------------------------- catalog / active
+
+def _set_active(name, source, fade=0.0, cue=None):
+	import time
+	_active.clear()
+	_active.update(scene=name, index=(scene_names().index(name) if name in scene_names() else -1),
+		source=source, fade=float(fade or 0.0), cue=cue, ts=int(time.time() * 1000))
+
+
+def active_scene():
+	"""The last scene applied: {scene, index, source 'recall' (live: TD,
+	Plancia /dmx/scene, Gaia) | 'cue' (timeline), fade, cue id, ts epoch
+	ms}; None before the first one. Live tweaks after it do not clear it."""
+	return dict(_active) if _active else None
+
+
+def scene_catalog():
+	"""[{id, index, label, categories, per_head, cues}] -- id = the scene
+	name (unique, stable until renamed); index = position in the list, the
+	number /dmx/scene takes (it shifts when a scene before it is deleted)."""
+	heads = {r['scene'] for r in _rows('scene_values', VALUE_COLS) if _is_head(r['target'])}
+	used = {}
+	for c in cues():
+		used.setdefault(c['scene'], []).append(c['id'])
+	return [{'id': s['name'], 'index': i, 'label': s['label'],
+		'categories': [c for c in CATEGORIES if s[c]], 'per_head': s['name'] in heads,
+		'cues': used.get(s['name'], [])} for i, s in enumerate(scenes())]
+
+
 # ---------------------------------------------------------------- clock
 
 def tick():
@@ -734,6 +766,12 @@ def tick():
 	if p.Active.eval():
 		_apply(state_at(t), force=_force[0])
 		_force[0] = False
+		idx, cue, _cs = cue_at(t)
+		if cue is not None and _cue_seen[0] != (True, idx):
+			_set_active(cue['scene'], 'cue', cue['fade'], cue['id'])
+		_cue_seen[0] = (True, idx)
+	else:
+		_cue_seen[0] = None
 	_xfade_step()
 	status = status_text(t)
 	if p.Status.eval() != status:
