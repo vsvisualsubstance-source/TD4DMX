@@ -588,6 +588,12 @@ def _register_show(agent):
 	agent.register_param('show_active_scene', get=lambda: sl().active_scene())
 	agent.register_param('show_cues', get=lambda: sl().cues(), set=lambda v: sl().set_cues(_json_arg(v)))
 	agent.register_param('show_keys', get=lambda: sl().keys(), set=lambda v: sl().set_keys(_json_arg(v)))
+	# whole timeline document (GAIA_INTERFACE "TD/Win-PD, 29"): get = the
+	# loaded one, set = validate + load (dry_run: validate only); the outcome
+	# (ok, errors, warnings) in show_timeline_result -- set never raises
+	agent.register_param('show_timeline', get=lambda: sl().timeline(),
+		set=lambda v: sl().load_timeline(_json_arg(v), source='gaia'))
+	agent.register_param('show_timeline_result', get=lambda: sl().timeline_result())
 
 
 def _build_show_matrix():
@@ -604,6 +610,8 @@ def _build_show_matrix():
 		'show_active_scene': {'kind': 'param', 'type': 'json', 'access': 'r'},
 		'show_cues': {'kind': 'param', 'type': 'json', 'access': 'rw'},
 		'show_keys': {'kind': 'param', 'type': 'json', 'access': 'rw'},
+		'show_timeline': {'kind': 'param', 'type': 'json', 'access': 'rw'},
+		'show_timeline_result': {'kind': 'param', 'type': 'json', 'access': 'r'},
 	}
 	services = {name: {'kind': 'service', 'type': kind} for name, kind, _ in SHOW_SERVICES}
 	services['show_rewind'] = {'kind': 'service', 'type': 'action'}

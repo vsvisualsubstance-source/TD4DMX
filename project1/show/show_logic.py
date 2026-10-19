@@ -475,6 +475,8 @@ def clock_state():
 	idx, cue, cs = cue_at(t)
 	return {
 		'timeline': 'show',
+		'name': _meta('name', ''),
+		'bpm': _meta('bpm'),
 		'playing': bool(p.Play.eval()),
 		'pos': round(t, 3),
 		'rate': 1.0,
@@ -536,7 +538,8 @@ def cues():
 
 
 def _check_cue(d):
-	if 'scene' in d and d['scene'] not in scene_names():
+	# scene '' = a MARKER: a named point of the timeline that changes nothing
+	if d.get('scene') and d['scene'] not in scene_names():
 		raise ValueError('scena %r non esiste' % d['scene'])
 	if 'time' in d:
 		d['time'] = round(max(0.0, _f(d['time'])), 3)
@@ -717,6 +720,8 @@ def _apply(state, force=False):
 
 def _set_active(name, source, fade=0.0, cue=None):
 	import time
+	if not name:
+		return   # a marker cue changes nothing
 	_active.clear()
 	_active.update(scene=name, index=(scene_names().index(name) if name in scene_names() else -1),
 		source=source, fade=float(fade or 0.0), cue=cue, ts=int(time.time() * 1000))
@@ -792,6 +797,8 @@ def status_text(t=None):
 		return head + '  |  timeline NON attiva (live)'
 	if cue is None:
 		return head + '  |  prima della prima cue'
+	if not cue['scene']:
+		return '%s  |  cue %d/%d  %s  (marker)' % (head, idx + 1, len(cs), cue['label'] or '')
 	x = 1.0 if cue['fade'] <= 0 else min(1.0, (t - cue['time']) / cue['fade'])
 	s = '%s  |  cue %d/%d  %s  -> %s' % (head, idx + 1, len(cs), cue['label'] or '', cue['scene'])
 	if x < 1.0:
@@ -842,6 +849,145 @@ def set_keys(items):
 	invalidate()
 
 
+# ---------------------------------------------------------------- timeline document
+# Load a whole timeline designed elsewhere (Plancia), GAIA_INTERFACE
+# "TD/Win-PD, 29". One document, validated as a whole: on any error nothing
+# is written and the errors come back in the result.
+#   {"v": 1, "name": str, "bpm": number|null, "length": s, "loop": bool,
+#    "default_fade": s (2.0), "rewind": bool (false),
+#    "cues": [{"time": s | "m:ss.s", "scene": id (name) | index (int, as
+#              /dmx/scene) | null (marker), "fade": s, "label": str}],
+#    "keys": [...]   (optional: absent = TD's automation lanes untouched,
+#                     [] = cleared; same rows as show_keys)}
+
+_tl = {'seq': 0, 'last': None}
+
+
+def _meta(k, d=None):
+	return _show().fetch('timeline_' + k, d, search=False)
+
+
+def _seconds(v):
+	"""Seconds from a number or 'm:ss(.s)' / 'h:mm:ss'."""
+	if isinstance(v, (int, float)):
+		return float(v)
+	parts = str(v).strip().split(':')
+	try:
+		out = 0.0
+		for x in parts:
+			out = out * 60 + float(x)
+		return out
+	except ValueError:
+		raise ValueError('tempo %r non valido (secondi o m:ss)' % v)
+
+
+def timeline():
+	"""The current timeline, in the shape load_timeline() takes."""
+	p = _show().par
+	return {'v': 1, 'name': _meta('name', ''), 'bpm': _meta('bpm'),
+		'length': float(p.Length.eval()), 'loop': bool(p.Loop.eval()),
+		'cues': [{'time': c['time'], 'scene': c['scene'] or None, 'fade': c['fade'], 'label': c['label']}
+			for c in cues()],
+		'keys': [{k: x[k] for k in ('lane', 'time', 'value', 'interp')} for x in keys()]}
+
+
+def load_timeline(doc, source='gaia'):
+	"""Validate and load a timeline document (see above). doc['dry_run']:
+	validate only. Returns the result (also timeline_result())."""
+	import time
+	doc = json.loads(doc) if isinstance(doc, (str, bytes)) else dict(doc or {})
+	errors, warnings, clean = [], [], []
+	names = scene_names()
+	dfade = _f(doc.get('default_fade', 2.0), 2.0)
+	items = doc.get('cues')
+	if not isinstance(items, list):
+		errors.append('cues: serve una lista')
+		items = []
+	for i, it in enumerate(items, 1):
+		if not isinstance(it, dict):
+			errors.append('cue %d: serve un oggetto' % i)
+			continue
+		try:
+			t = _seconds(it.get('time'))
+			if t < 0:
+				raise ValueError('tempo negativo')
+		except (ValueError, TypeError) as e:
+			errors.append('cue %d: %s' % (i, e))
+			continue
+		sc = it.get('scene')
+		if sc is None or sc == '':
+			sc = ''
+		elif isinstance(sc, bool):
+			errors.append('cue %d: scena %r non valida' % (i, sc))
+			continue
+		elif isinstance(sc, (int, float)):
+			if not (float(sc).is_integer() and 0 <= int(sc) < len(names)):
+				errors.append('cue %d: scena indice %r non esiste (%d scene)' % (i, sc, len(names)))
+				continue
+			sc = names[int(sc)]
+		elif str(sc) not in names:
+			errors.append('cue %d: scena %r non esiste' % (i, sc))
+			continue
+		fade = _f(it.get('fade', dfade), -1)
+		if fade < 0:
+			errors.append('cue %d: fade %r non valido' % (i, it.get('fade')))
+			continue
+		clean.append({'time': round(t, 3), 'scene': str(sc), 'fade': round(fade, 3),
+			'label': str(it.get('label') or it.get('name') or '').replace('\t', ' ')})
+	clean.sort(key=lambda c: c['time'])
+	end = max([c['time'] + c['fade'] for c in clean] + [0.0])
+	length = doc.get('length')
+	if length is None:
+		length = max(float(_show().par.Length.eval()), end, 1.0)
+		if end > float(_show().par.Length.eval()):
+			warnings.append('length non data: portata a %.3f s (fine dell\'ultima cue)' % length)
+	else:
+		length = _f(length, -1)
+		if length <= 0:
+			errors.append('length %r non valida' % doc.get('length'))
+		elif clean and clean[-1]['time'] > length:
+			errors.append('length %.3f s: c\'e\' una cue a %.3f s' % (length, clean[-1]['time']))
+	keys_in = doc.get('keys')
+	if keys_in is not None:
+		if not isinstance(keys_in, list):
+			errors.append('keys: serve una lista')
+		else:
+			for i, k in enumerate(keys_in, 1):
+				try:
+					_check_key(dict(k))
+				except (ValueError, TypeError) as e:
+					errors.append('key %d: %s' % (i, e))
+	bpm = doc.get('bpm')
+	if bpm is not None and _f(bpm, -1) <= 0:
+		errors.append('bpm %r non valido' % bpm)
+	dry = bool(doc.get('dry_run'))
+	name = str(doc.get('name') or '').strip()
+	ok = not errors
+	if ok and not dry:
+		set_cues(clean)
+		if keys_in is not None:
+			set_keys(keys_in)
+		p = _show().par
+		p.Length = round(float(length), 3)
+		if 'loop' in doc:
+			p.Loop = bool(doc['loop'])
+		if doc.get('rewind'):
+			p.Time = 0
+		_show().store('timeline_name', name)
+		_show().store('timeline_bpm', None if bpm is None else float(bpm))
+		force_apply()
+	_tl['seq'] += 1
+	_tl['last'] = {'seq': _tl['seq'], 'ts': int(time.time() * 1000), 'source': source, 'ok': ok,
+		'dry_run': dry, 'loaded': ok and not dry, 'name': name, 'cues': len(clean),
+		'markers': sum(1 for c in clean if not c['scene']), 'length': round(float(length), 3) if ok else None,
+		'errors': errors, 'warnings': warnings}
+	return _tl['last']
+
+
+def timeline_result():
+	return _tl['last']
+
+
 # ---------------------------------------------------------------- inspector
 # The show COMP's Scene / Cue / Automation pages edit the selected scene, cue
 # and keyframe in place. Loading writes the table's values into the pars;
@@ -883,7 +1029,8 @@ def load_cue():
 		return
 	c = c[0]
 	_set(p.Cuetime, c['time'])
-	_set(p.Cuescene, c['scene'])
+	if c['scene']:   # a marker has no scene: leave the menu alone (no write-back)
+		_set(p.Cuescene, c['scene'])
 	_set(p.Cuefade, c['fade'])
 	_set(p.Cuelabel, c['label'])
 
