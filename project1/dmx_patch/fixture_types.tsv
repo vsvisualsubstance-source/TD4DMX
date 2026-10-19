@@ -1,8 +1,8 @@
 type	label	group	kind	model	source
-mh	Testa mobile	mh	heads	Generic Spot 11ch 16bit	builtin
-par	PAR / Wash	front	chase	D+RGB 4CH	builtin
-bar	Barra LED	ledbar	chase	D+RGB 4CH	builtin
-blinder	Blinder	blinder	level	Dimmer 1CH	builtin
-haze	Haze	haze	level	Haze 2CH	builtin
-wall	LED wall	ledwall	none		builtin
-speaker	Cassa		none		builtin
+mh	Testa mobile	mh	heads	Generic Spot 11ch 16bit	plancia
+par	PAR / Wash	front	chase	D+RGB 4CH	plancia
+bar	Barra LED	ledbar	chase	D+RGB 4CH	plancia
+wall	LED wall	ledwall	none		plancia
+blinder	Blinder	blinder	level	Dimmer 1CH	plancia
+haze	Haze	haze	level	Haze 2CH	plancia
+speaker	Cassa		none		plancia
