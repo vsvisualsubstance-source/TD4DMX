@@ -669,6 +669,7 @@ HEADS_FLOAT_PARAMS = [
 	('heads_tilt', 'Tilt'),
 	('heads_speed', 'Speed'),
 	('heads_dimmer', 'Dimmer'),
+	('heads_level', 'Level'),      # group level (universe_build), Plancia /dmx/group/mh
 	('heads_white', 'White'),
 	('heads_zoom', 'Zoom'),
 	('heads_focus', 'Focus'),

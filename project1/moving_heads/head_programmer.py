@@ -356,6 +356,25 @@ def wheel_value(key, kind, index):
 	return max(0, min(255, int(index) * 32))
 
 
+def wheel_index(key, kind, value):
+	"""Inverse of wheel_value: slot index of a gobo/color wheel DMX value
+	(nearest slot; without slots in the catalog: value / 32)."""
+	v = float(value or 0)
+	for h in heads():
+		if h['key'] == key:
+			m = _cat().model(h['profile']) or {}
+			slots = m.get('gobos' if kind == 'gobo' else 'colors') or []
+			if slots:
+				return min(range(len(slots)), key=lambda i: abs(float(slots[i]['value']) - v))
+	return int(round(v / 32.0))
+
+
+def pantilt_to_norm(key, pan, tilt):
+	"""Inverse of pantilt_norm: degrees -> Plancia pad x, y (-1..1)."""
+	pr, tr = _ranges(key)
+	return (max(-1.0, min(1.0, pan / (pr / 2.0))), max(-1.0, min(1.0, -tilt / (tr / 2.0))))
+
+
 def home(keys=None):
 	keys = list(keys) if keys is not None else selection()
 	for k in keys:
@@ -580,6 +599,14 @@ def _pressed(args):
 	return not args or (_f(args[0], 0) or 0) >= 0.5
 
 
+def _ref(args, v):
+	"""Position / preset reference of an OSC message: a string argument is
+	a name, a number an index."""
+	if args and isinstance(args[0], str) and _f(args[0]) is None:
+		return args[0]
+	return int(round(v))
+
+
 def on_osc(address, args):
 	"""Plancia channel 5 /mh/*; returns a status line."""
 	a = address[len('/mh/'):] if address.startswith('/mh/') else address
@@ -623,12 +650,12 @@ def on_osc(address, args):
 		for k in sel:
 			program({kind: wheel_value(k, kind, int(round(v)))}, [k])
 	elif a == 'position':
-		name, done = recall_position(int(round(v)))
+		name, done = recall_position(_ref(args, v))
 		return 'posizione %s su %d teste' % (name, len(done))
 	elif a == 'position/store':
 		return 'posizione salvata: %s' % store_position(str(args[1]) if len(args) > 1 else int(round(v)))
 	elif a == 'preset/recall':
-		name, done = recall_preset(int(round(v)))
+		name, done = recall_preset(_ref(args, v))
 		return 'preset %s su %d teste' % (name, len(done))
 	elif a == 'preset/store':
 		name = str(args[1]) if len(args) > 1 else 'P%d' % (int(round(v)) + 1)

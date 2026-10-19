@@ -27,12 +27,24 @@ to on_osc(). Status / Lastmessage / Messages on this COMP show what happened.
                         follow, release) on the selected heads
   /led/*                no LED wall: ignored
 
-Feedback (par Feedback, off by default): feedback_tick() sends the show
-timeline back to bridge.js (Feedbackhost:Feedbackport, OSC_IN 9000) via
-osc_feedback -- /show/play on change, /show/time 10x/s while playing (and on
-change while stopped), /show/cue <n> (1-based, 0 = before the first cue) on
-change. The same clock goes to every other device on MQTT through
-gaia_client/show_clock.
+Feedback to bridge.js (Feedbackhost:Feedbackport, OSC_IN 9000) via
+osc_feedback, every frame from feedback_tick(); par Feedback = master switch,
+then per area:
+  Feedbackshow   the show timeline -- /show/play on change, /show/time 10x/s
+                 while playing (and on change while stopped), /show/cue <n>
+                 (1-based, 0 = before the first cue) on change. The same
+                 clock goes to every other device on MQTT through
+                 gaia_client/show_clock. Off until Plancia follows TD's clock
+                 (today it fires its own cues when it sees play=1).
+  Feedbackheads  the moving heads, 10x/s on change: /mh/select (mask in unit
+                 order, as Plancia sends it), the first selected head's
+                 /mh/pantilt (pad -1..1), /mh/color, /mh/dimmer, /mh/zoom,
+                 /mh/focus, /mh/strobe, /mh/gobo (slot index), and
+                 /dmx/group/mh (heads Level). Plancia only updates its
+                 widgets with what it receives (no re-send), so there is no
+                 loop. An address Plancia sent in the last ECHO_HOLD_S is not
+                 echoed back (a pad being dragged never jumps); everything is
+                 re-sent every FEEDBACK_REFRESH_S for tablets opened later.
 
 All numbers arrive as OSC floats. Runs on the main thread (OSC In DAT
 callback), so it touches pars directly.
@@ -146,15 +158,67 @@ def handle(address, args):
 
 
 FEEDBACK_TIME_S = 0.1
+FEEDBACK_HEADS_S = 0.1
+FEEDBACK_REFRESH_S = 5.0
+ECHO_HOLD_S = 0.5
 _fb = {'play': None, 'cue': None, 'time': None, 'sent': 0.0}
+_fbh = {'sent': {}, 't': 0.0, 'refresh': 0.0}
+_recent = {}   # address -> perf_counter of the last message from Plancia
 
 
 def feedback_tick():
-	"""Every frame (feedback_tick Execute DAT): show timeline -> Plancia."""
-	if not parent().par.Feedback.eval():
+	"""Every frame (feedback_tick Execute DAT): TD state -> Plancia."""
+	c = parent().par
+	on = c.Feedback.eval()
+	if not (on and c.Feedbackshow.eval()):
 		_fb.update(play=None, cue=None, time=None)
+	if not (on and c.Feedbackheads.eval()):
+		_fbh['sent'].clear()
+	if not on:
 		return
-	out = op('osc_feedback')
+	if c.Feedbackshow.eval():
+		_show_feedback(op('osc_feedback'))
+	if c.Feedbackheads.eval():
+		try:
+			_heads_feedback(op('osc_feedback'))
+		except Exception as e:
+			c.Status = 'feedback teste: %s' % e
+
+
+def _heads_feedback(out):
+	now = time.perf_counter()
+	if now - _fbh['t'] < FEEDBACK_HEADS_S:
+		return
+	_fbh['t'] = now
+	if now - _fbh['refresh'] >= FEEDBACK_REFRESH_S:
+		_fbh['refresh'] = now
+		_fbh['sent'].clear()
+	mh = _home().op('moving_heads')
+	hp = mh.op('head_programmer').module
+	hs = hp.heads()
+	sel = set(hp.selection())
+	msgs = {'/mh/select': [1 if h['key'] in sel else 0 for h in hs],
+		'/dmx/group/mh': [float(mh.par.Level.eval())]}
+	first = next((h['key'] for h in hs if h['key'] in sel), None)
+	if first is not None:
+		e = hp.effective(first)
+		msgs['/mh/pantilt'] = list(hp.pantilt_to_norm(first, e['pan'], e['tilt']))
+		msgs['/mh/color'] = [e['red'], e['green'], e['blue']]
+		for f in ('dimmer', 'zoom', 'focus'):
+			msgs['/mh/' + f] = [e[f]]
+		msgs['/mh/strobe'] = [1 if e['strobe'] >= 0.5 else 0]
+		msgs['/mh/gobo'] = [hp.wheel_index(first, 'gobo', e['gobo'])]
+	for addr, args in msgs.items():
+		args = [x if isinstance(x, int) else round(float(x), 3) for x in args]
+		if _fbh['sent'].get(addr) == args:
+			continue
+		_fbh['sent'][addr] = args
+		if now - _recent.get(addr, -1e9) < ECHO_HOLD_S:
+			continue   # Plancia's own value: never echoed back
+		out.sendOSC(addr, args, useNonStandardTypes=False)
+
+
+def _show_feedback(out):
 	p = _home().op('show').par
 	playing = bool(p.Play.eval())
 	t = round(float(p.Time.eval()), 2)
@@ -172,6 +236,7 @@ def feedback_tick():
 
 
 def on_osc(address, args):
+	_recent[address] = time.perf_counter()
 	c = parent()
 	c.par.Messages = int(c.par.Messages.eval()) + 1
 	c.par.Lastmessage = '%s %s  @ %s' % (address, ' '.join('%g' % a if isinstance(a, float) else str(a) for a in args),

@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.36.toe
-exported_at: '2026-10-19T08:19:28Z'
+source_file: dmx.37.toe
+exported_at: '2026-10-19T08:41:01Z'
 network_path: /
 options:
   include_dat_content: false
@@ -12134,7 +12134,6 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
-        value: ptz
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -13440,7 +13439,8 @@ operators:
         style: Toggle
         label: Feedback to Plancia
         startSection: true
-        help: 'Send the show timeline back to Plancia''s bridge.js (OSC /show/play, /show/time 10x/s while playing, /show/cue). Off by default: today Plancia runs its own cues once it sees play=1, so turn on only when Plancia follows TD''s clock.'
+        help: Master switch of the feedback to Plancia's bridge.js (Feedbackhost:Feedbackport, OSC_IN 9000). What is sent is chosen by Feedback Show and Feedback Heads.
+        value: true
       - name: Feedbackhost
         style: Str
         label: Feedback Host
@@ -13457,23 +13457,32 @@ operators:
         normMin: 1.0
         normMax: 65535.0
         help: bridge.js OSC_IN port (9000 in the Plancia contract).
+      - name: Feedbackshow
+        style: Toggle
+        label: Feedback Show
+        help: 'Send the show timeline (/show/play, /show/time 10x/s while playing, /show/cue). Off until Plancia follows TD''s clock: today Plancia runs its own cues (and /dmx/scene) once it sees play=1.'
+      - name: Feedbackheads
+        style: Toggle
+        label: Feedback Heads
+        default: true
+        help: 'Send the moving heads state: /mh/select (mask in unit order), the values of the first selected head (/mh/pantilt, /mh/color, /mh/dimmer, /mh/zoom, /mh/focus, /mh/strobe, /mh/gobo) and /dmx/group/mh. An address Plancia sent in the last 0.5 s is never echoed back.'
       - name: Status
         style: Str
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: pantilt su 2 teste
+        value: color su 2 teste
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /mh/pantilt -0.00908257 0.0534141  @ 10:07:41
+        value: /mh/color 0 0.85 1  @ 10:40:17
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 3520
+        value: 4703
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13533,7 +13542,7 @@ operators:
     - name: annotate1
       mode: annotate
       title: Ricezione Plancia
-      text: 'osc_plancia (porta Port) → plancia_logic.on_osc: smista gli indirizzi, aggiorna Status/Lastmessage. Riga sotto: feedback_tick (ogni frame) → plancia_logic.feedback_tick → osc_feedback (Feedbackhost:Feedbackport, bridge.js OSC_IN 9000): /show/play, /show/time, /show/cue della timeline di TD. Solo con Feedback acceso.'
+      text: 'osc_plancia (porta Port) → plancia_logic.on_osc: smista gli indirizzi, aggiorna Status/Lastmessage. Riga sotto: feedback_tick (ogni frame) → plancia_logic.feedback_tick → osc_feedback (Feedbackhost:Feedbackport, bridge.js OSC_IN 9000). Feedback = interruttore generale; Feedbackheads: /mh/select, valori della prima testa selezionata, /dmx/group/mh (senza eco di ciò che la Plancia ha appena mandato); Feedbackshow: /show/play, /show/time, /show/cue.'
       position: [-70, -470]
       size: [1070, 730]
       color: [0.45, 0.45, 0.45]
@@ -13702,9 +13711,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.806755581
-        colorg: 0.8070203594
-        colorb: 0
+        colorr: 0.8689368753
+        colorg: 0
+        colorb: 0.8689368753
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14066,7 +14075,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: master STOP 00:00.20  seq 16
+        value: master STOP 00:00.20  seq 11
       Status:
       - name: Identitystatus
         style: Str
@@ -14087,7 +14096,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/brain/state @ 10:19:27
+        value: gaia/brain/state @ 10:41:01
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14114,7 +14123,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 2776.3666666667
+      lastmsg_seconds: 7939.9
     children:
     - name: soul
       type: outCHOP
@@ -14351,7 +14360,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 106
+        rows: 7
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -15495,6 +15504,13 @@ operators:
         style: Toggle
         label: Patch Enable
         help: Send the heads to DMX. Off until real heads are connected and addressed.
+      - name: Level
+        style: Float
+        startSection: true
+        default: 1
+        clampMin: true
+        clampMax: true
+        help: 'Group level of the moving heads (0-1): scales their dimmer channel in dmx_patch/universe_build, with Master and Strobe, like the Level of the other groups. Plancia /dmx/group/mh.'
       - name: Addresses
         style: Str
         label: Head Addresses
@@ -15662,31 +15678,31 @@ operators:
         - strobe
       - - p-fslozhy
         - manual
-        - '-2.4523'
-        - '-7.2109'
+        - '86.4'
+        - '83.7'
+        - '0.6202'
+        - '0.0'
+        - '0.85'
+        - '1.0'
         - ''
         - ''
         - ''
-        - ''
-        - ''
-        - ''
-        - ''
-        - ''
-        - ''
+        - '0.6548'
+        - '0.7165'
         - ''
       - - p-51kr5fl
         - manual
-        - '-2.4523'
-        - '-7.2109'
+        - '23.6'
+        - '83.7'
+        - '0.6202'
+        - '0.0'
+        - '0.85'
+        - '1.0'
         - ''
         - ''
         - ''
-        - ''
-        - ''
-        - ''
-        - ''
-        - ''
-        - ''
+        - '0.6548'
+        - '0.7165'
         - ''
       dat_content_format: table
     - name: select_ptz
@@ -15894,7 +15910,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_bands.tsv
         syncfile: true
-        rows: 1
+        rows: 2
         cols: 9
       flags:
       - viewer
@@ -16082,8 +16098,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.7983194389
-        colorg: 0.4695996699
+        colorr: 0.9737809723
+        colorg: 0.5728123367
         colorb: 0
       position: [450, 700]
     - name: palette_preview
@@ -16371,9 +16387,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.4438233015
+        colorr: 0.2709499778
         colorg: 0
-        colorb: 0.616664359
+        colorb: 0.7745156752
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
