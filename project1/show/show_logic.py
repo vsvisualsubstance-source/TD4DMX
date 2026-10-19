@@ -336,12 +336,17 @@ def scene_values(name):
 	return out
 
 
-def capture(name, label=None):
+def capture(name, label=None, categories=None):
 	"""Store the current live values of every category into scene `name`
-	(created if new; existing values replaced, category flags kept)."""
+	(created if new; existing values replaced, category flags kept).
+	categories: only those (e.g. ['heads']); the scene's other values stay."""
 	name = str(name).strip()
 	if not name:
 		raise ValueError('nome scena vuoto')
+	cats = list(CATEGORIES) if categories is None else [c for c in CATEGORIES if c in categories]
+	if categories is not None and not cats:
+		raise ValueError('categorie %r sconosciute (%s)' % (categories, ', '.join(CATEGORIES)))
+	owned = _category_of()
 	st = _table('scenes', SCENE_COLS)
 	if _row_index('scenes', SCENE_COLS, 'name', name) is None:
 		st.appendRow([name, label or name] + [1] * len(CATEGORIES))
@@ -349,16 +354,21 @@ def capture(name, label=None):
 		st[_row_index('scenes', SCENE_COLS, 'name', name), 'label'] = label
 	vt = _table('scene_values', VALUE_COLS)
 	for r in range(vt.numRows - 1, 0, -1):
-		if vt[r, 'scene'].val == name:
+		if vt[r, 'scene'].val != name:
+			continue
+		k = (vt[r, 'target'].val, vt[r, 'par'].val)
+		cat = 'heads' if _is_head(k[0]) else owned.get(k)
+		if categories is None or cat in cats:
 			vt.deleteRow(r)
-	for cat in CATEGORIES:
+	for cat in cats:
 		for t, n in category_pars(cat):
 			p = _par(t, n)
 			if p is not None:
 				v = _read(p)
 				vt.appendRow([name, t, n, round(v, 6) if isinstance(v, float) else v])
-	for t, n, v in _head_rows():
-		vt.appendRow([name, t, n, v])
+	if 'heads' in cats:
+		for t, n, v in _head_rows():
+			vt.appendRow([name, t, n, v])
 	invalidate()
 	return name
 
