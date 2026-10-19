@@ -18,6 +18,8 @@ to on_osc(). Status / Lastmessage / Messages on this COMP show what happened.
   /show/cue n           ignored: it is a cue of Plancia's own widget list,
                         not of TD's timeline (use /show/go, /show/back or the
                         show clock command 'cue' on MQTT)
+  /dmx/output/osc 0/1   Plancia's MQTT is down: send the per-fixture
+                        output over OSC too (valid OSC_WANT_S, repeat it)
   /dmx/chase i         not implemented yet (no chase modes on the rigs)
   /mh/*                 moving heads, selective: moving_heads/head_programmer
                         (select mask / select/heads|add|remove|set|all|clear,
@@ -52,6 +54,10 @@ then per area:
                  loop. An address Plancia sent in the last ECHO_HOLD_S is not
                  echoed back (a pad being dragged never jumps); everything is
                  re-sent every FEEDBACK_REFRESH_S for tablets opened later.
+  Feedbackdmx    /dmx/master, /dmx/blackout, /dmx/strobe, /dmx/strobe/rate,
+                 /dmx/fade, /dmx/scene, /dmx/group/<alias> (same rules), and
+                 the per-fixture OSC backup (Feedbackfixtures, see
+                 _fixtures_feedback): the main channel is MQTT dmx_output.
 
 All numbers arrive as OSC floats. Runs on the main thread (OSC In DAT
 callback), so it touches pars directly.
@@ -143,6 +149,9 @@ def handle(address, args):
 		return 'fade %.1fs' % parent().par.Fade.eval()
 	if address == '/dmx/scene':
 		return _scene(args)
+	if address == '/dmx/output/osc':
+		_fx['want'] = time.perf_counter() + OSC_WANT_S if _f(args) >= 0.5 else 0.0
+		return 'feedback fixture OSC %s dalla Plancia' % ('richiesto' if _fx['want'] else 'non richiesto')
 	if address == '/show/go':
 		return _cue(1, args)
 	if address == '/show/back':
@@ -186,8 +195,10 @@ FEEDBACK_TIME_S = 0.1
 FEEDBACK_HEADS_S = 0.1
 FEEDBACK_REFRESH_S = 5.0
 ECHO_HOLD_S = 0.5
+OSC_WANT_S = 15.0
 _fb = {'play': None, 'cue': None, 'time': None, 'sent': 0.0}
 _fbh = {'sent': {}, 't': 0.0, 'refresh': 0.0}
+_fx = {'sent': {}, 't': 0.0, 'refresh': 0.0, 'want': 0.0, 'source': None}
 _recent = {}   # address -> perf_counter of the last message from Plancia
 
 
@@ -267,7 +278,9 @@ def _dmx_feedback(out):
 		return
 	_fbh['t_dmx'] = now
 	pp = _patch().par
-	msgs = {'/dmx/master': [float(pp.Master.eval())], '/dmx/blackout': [1 if pp.Blackout.eval() else 0]}
+	msgs = {'/dmx/master': [float(pp.Master.eval())], '/dmx/blackout': [1 if pp.Blackout.eval() else 0],
+		'/dmx/strobe': [1 if pp.Strobe.eval() else 0], '/dmx/strobe/rate': [float(pp.Stroberate.eval())],
+		'/dmx/fade': [float(parent().par.Fade.eval())]}
 	act = _show_logic().active_scene()
 	if act and act.get('index', -1) >= 0:
 		msgs['/dmx/scene'] = [int(act['index'])]
@@ -278,6 +291,52 @@ def _dmx_feedback(out):
 		if lp is not None:
 			msgs['/dmx/group/' + (g.get('alias') or g['group'])] = [float(lp.eval())]
 	_send_changed(out, msgs, now)
+	_fixtures_feedback(out, now)
+
+
+def _fixtures_source(now):
+	"""'mqtt' or 'osc': where Plancia should read the per-fixture output."""
+	mode = parent().par.Feedbackfixtures.eval()
+	if mode == 'off':
+		return 'mqtt'
+	if mode == 'always' or now < _fx['want']:
+		return 'osc'
+	out_dat = _home().op('gaia_services/dmx_output')
+	return 'mqtt' if out_dat is not None and out_dat.module.mqtt_ok() else 'osc'
+
+
+def _fixtures_feedback(out, now):
+	"""OSC backup of MQTT dmx_output (same values, see TD/Win-PD 28):
+	/dmx/output/source mqtt|osc on change and every FEEDBACK_REFRESH_S;
+	while the source is osc, per fixture on change (10/s, all every
+	FEEDBACK_REFRESH_S): /dmx/fixture/<uid> sent intensity r g b (rgb_out
+	0-1, -1 = no such channel) and, heads only, /dmx/fixture/<uid>/head
+	pan tilt (degrees) gobo color_wheel shutter (0-255, -1 = none)."""
+	src = _fixtures_source(now)
+	refresh = now - _fx['refresh'] >= FEEDBACK_REFRESH_S
+	if refresh:
+		_fx['refresh'] = now
+		_fx['sent'].clear()
+	if src != _fx['source'] or refresh:
+		_fx['source'] = src
+		out.sendOSC('/dmx/output/source', [src], useNonStandardTypes=False)
+	if src != 'osc':
+		_fx['sent'].clear()
+		return
+	snap = _home().op('gaia_services/dmx_output').module.snapshot()
+	n = lambda v: -1 if v is None else v
+	for f in snap['fixtures']:
+		key = f['uid'] or 'id%d' % f['id']
+		rgb = f['rgb_out'] or [None, None, None]
+		msgs = {'/dmx/fixture/' + key: [1 if f['sent'] else 0, round(float(n(f['intensity'])), 3)]
+			+ [round(float(n(x)), 3) for x in rgb]}
+		if f['group'] == 'heads':
+			msgs['/dmx/fixture/%s/head' % key] = [round(float(n(f['pan'])), 1), round(float(n(f['tilt'])), 1),
+				int(n(f['gobo'])), int(n(f['color_wheel'])), int(n(f['shutter']))]
+		for addr, args in msgs.items():
+			if _fx['sent'].get(addr) != args:
+				_fx['sent'][addr] = args
+				out.sendOSC(addr, args, useNonStandardTypes=False)
 
 
 def _show_feedback(out):

@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.41.toe
-exported_at: '2026-10-19T09:37:08Z'
+source_file: dmx.42.toe
+exported_at: '2026-10-19T14:25:38Z'
 network_path: /
 options:
   include_dat_content: false
@@ -55,7 +55,7 @@ type_defaults:
     color: [0.67, 0.67, 0.67]
   constantTOP:
     parameters:
-      colorb: 0
+      colorg: 0
       resolutionh: 200
       resolutionw: 200
     flags:
@@ -682,6 +682,7 @@ operators:
         - Pad XY (manuale)
         - Mocap (segue il corpo)
         help: Pad = the heads point where the XY pad is. Mocap = the heads follow the chosen body landmark from mediapipe (Gaia channel 7). Effective only while moving_heads Position Source = PTZ.
+        value: mocap
       - name: Padu
         style: Float
         label: Pad X
@@ -690,7 +691,7 @@ operators:
         clampMin: true
         clampMax: true
         help: XY pad position 0-1 (0.5 = center of the calibrated stage area). Bound to the pad in ptz_panel.
-        value: 0.3682983683
+        value: 0.480186
       - name: Padv
         style: Float
         label: Pad Y
@@ -698,7 +699,7 @@ operators:
         clampMin: true
         clampMax: true
         help: XY pad position 0-1 (0.5 = center of the calibrated stage area). Bound to the pad in ptz_panel.
-        value: 0.437357631
+        value: 0.1959
       - name: Home
         style: Pulse
         label: Home (center)
@@ -1030,7 +1031,7 @@ operators:
         style: Str
         readOnly: true
         help: 'Read-only: transport, current cue, scene and fade progress.'
-        value: STOP 00:00.00  |  cue 1/1    -> TestScene1  (fade 0%)
+        value: STOP 00:00.00  |  cue 1/2    -> TestScene1  (fade 0%)
       - name: Message
         style: Str
         readOnly: true
@@ -1097,13 +1098,14 @@ operators:
         clampMin: true
         normMax: 50.0
         help: Id of the cue being edited (click a cue on the timeline).
-        value: 1
+        value: 3
       - name: Cuetime
         style: Float
         label: Time (s)
         clampMin: true
         normMax: 300.0
         help: When the cue starts, in seconds.
+        value: 10
       - name: Cuescene
         style: Menu
         label: Scene
@@ -1142,7 +1144,7 @@ operators:
         default: rig_a.Custompalette1r
         menuSource: me.op('show_logic').module.lane_menu() if me.op('show_logic') else None
         help: 'Parameter of the lane: a new key goes on this lane.'
-        value: rig_a.Agcrelease
+        value: rig_b.Mindimmer
       - name: Addkey
         style: Pulse
         label: Add Key At Playhead
@@ -1154,18 +1156,19 @@ operators:
         clampMin: true
         normMax: 100.0
         help: Id of the keyframe being edited (click a key on the timeline).
+        value: 3
       - name: Keytime
         style: Float
         label: Time (s)
         clampMin: true
         normMax: 300.0
         help: Keyframe time in seconds.
-        value: 32
+        value: 4.5
       - name: Keyvalue
         style: Float
         label: Value
         help: Parameter value at this keyframe.
-        value: 127.5
+        value: 124.9042
       - name: Keyinterp
         style: Menu
         label: Interpolation
@@ -1189,14 +1192,15 @@ operators:
     - tox
     storage:
       timeline_bpm: null
+      timeline_loaded_rev: d3e3e7303aed
       timeline_name: ''
+      timeline_source: td
     children:
     - name: cues
       type: tableDAT
       parameters:
         file: project1/show/cues.tsv
         syncfile: true
-        rows: 2
         cols: 5
       position: [0, -400]
       color: [0.9, 0.3, 0.4]
@@ -1207,7 +1211,7 @@ operators:
       parameters:
         file: project1/show/keys.tsv
         syncfile: true
-        rows: 1
+        rows: 4
         cols: 5
       position: [0, -600]
       color: [0.9, 0.3, 0.4]
@@ -12151,7 +12155,7 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
-        value: ptz
+        value: timeline
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -12900,7 +12904,6 @@ operators:
         normMin: 0.5
         normMax: 20.0
         help: Frequenza dello strobo generale in Hz (Plancia /dmx/strobe/rate). Acceso il 22% di ogni periodo.
-        value: 2
       - name: Rate
         style: Int
         label: Send Rate (Hz)
@@ -13434,8 +13437,8 @@ operators:
       - name: heads_pad
         type: sliderCOMP
         parameters:
-          value0: 0.4387
-          value1: 0.49
+          value0: 0.6407
+          value1: 0.7065
           w: 300
         children:
         - name: knob
@@ -13532,8 +13535,8 @@ operators:
         parameters:
           text: |-
             Programmer teste: 2 teste, 2 selezionate  |  pad: MH1
-            * MH1    manual  pan  -33.1  tilt   -2.7  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
-            * MH6    manual  pan  -33.1  tilt   -2.7  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
+            * MH1    manual  pan   76.0  tilt  -55.8  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
+            * MH6    manual  pan   76.0  tilt  -55.8  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
           type: multiline
           callbacks: heads_text_callbacks
           font: Consolas
@@ -13616,7 +13619,7 @@ operators:
         clampMin: true
         normMax: 10.0
         help: Crossfade in secondi usato dal prossimo /dmx/scene (aggiornato da /dmx/fade).
-        value: 1.5
+        value: 4.8290596008
       - name: Feedback
         style: Toggle
         label: Feedback to Plancia
@@ -13654,23 +13657,36 @@ operators:
         label: Feedback DMX
         default: true
         help: Send /dmx/scene <index of the active scene> (after a recall or a timeline cue), /dmx/master, /dmx/blackout and /dmx/group/<alias or group> <Level> of every group with a Level. Same echo/refresh rules as the heads.
+      - name: Feedbackfixtures
+        style: Menu
+        label: Feedback fixture OSC
+        default: auto
+        menuNames:
+        - 'off'
+        - auto
+        - always
+        menuLabels:
+        - Spento
+        - Auto (riserva di MQTT)
+        - Sempre
+        help: 'OSC backup of the per-fixture output (MQTT dmx_output is the main channel): /dmx/fixture/<uid> sent intensity r g b and /dmx/fixture/<uid>/head pan tilt gobo color_wheel shutter. auto = only while dmx_output is not reaching the broker or Plancia asked for it with /dmx/output/osc 1 in the last 15 s; always = every time; off = never. Needs Feedback on.'
       - name: Status
         style: Str
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: pantilt su 2 teste
+        value: feedback fixture OSC non richiesto dalla Plancia
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /mh/pantilt -0.122504 0.0200777  @ 11:36:54
+        value: /dmx/output/osc 0  @ 16:24:42
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 7959
+        value: 9483
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13899,8 +13915,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.7868188951
-        colorg: 0
+        colorr: 0.0081073462
+        colorb: 0.9918926164
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14262,7 +14278,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: master STOP 00:00.00  seq 15
+        value: master STOP 00:00.00  seq 35
       Status:
       - name: Identitystatus
         style: Str
@@ -14283,7 +14299,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/brain/state @ 11:37:07
+        value: gaia/td/canvas @ 16:25:38
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14310,7 +14326,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 11296.3833333333
+      lastmsg_seconds: 28603.1833333333
     children:
     - name: soul
       type: outCHOP
@@ -14547,7 +14563,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 91
+        rows: 138
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -15699,6 +15715,7 @@ operators:
         clampMin: true
         clampMax: true
         help: 'Group level of the moving heads (0-1): scales their dimmer channel in dmx_patch/universe_build, with Master and Strobe, like the Level of the other groups. Plancia /dmx/group/mh.'
+        value: 0.7276940942
       - name: Addresses
         style: Str
         label: Head Addresses
@@ -15864,10 +15881,10 @@ operators:
         - zoom
         - focus
         - strobe
-      - - p-51kr5fl
+      - - p-fslozhy
         - manual
-        - '-33.076'
-        - '-2.7105'
+        - '75.9526'
+        - '-55.7643'
         - '0.5807'
         - '0.0'
         - '1.0'
@@ -15878,10 +15895,10 @@ operators:
         - '0.6548'
         - '0.7165'
         - '0.0'
-      - - p-fslozhy
+      - - p-51kr5fl
         - manual
-        - '-33.076'
-        - '-2.7105'
+        - '75.9526'
+        - '-55.7643'
         - '0.5807'
         - '0.0'
         - '1.0'
@@ -16041,7 +16058,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: topic, sequence number and how many fixtures are being sent, or the last error.'
-        value: 'gaia/devices/td-dmx-win/dmx_output seq 64: 10 fixture, 10 inviate'
+        value: 'gaia/devices/td-dmx-win/dmx_output seq 105: 10 fixture, 10 inviate'
     position: [1000, -430]
     color: [0.325, 0.8, 0.3]
     comment: DMX services registered on gaia_client (op.Gaia) -- project-specific glue, outside the portable client
@@ -16123,7 +16140,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_audio.tsv
         syncfile: true
-        rows: 1
+        rows: 2
         cols: 9
       position: [800, -800]
       color: [0.9, 0.3, 0.4]
@@ -16134,7 +16151,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_bands.tsv
         syncfile: true
-        rows: 2
+        rows: 1
         cols: 9
       flags:
       - viewer
@@ -16164,7 +16181,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Warm
+        Palette: Basic 2
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -16322,8 +16339,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.9889222987
-        colorg: 0.2176885146
+        colorr: 0
+        colorb: 0.7683497301
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -16449,7 +16466,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Warm
+        Palette: Basic 2
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -16610,8 +16627,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.9482180726
-        colorg: 0.4349621771
+        colorr: 0
+        colorb: 0.8237214119
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP

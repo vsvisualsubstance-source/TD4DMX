@@ -160,6 +160,18 @@ def tick():
 	_status('%s seq %d: %d fixture, %d inviate' % (topic, _st['seq'], len(snap['fixtures']), sent))
 
 
+def mqtt_ok():
+	"""True while dmx_output reaches the broker: enabled, connected, last
+	publish within 3 heartbeats (plancia_in's OSC backup reads this)."""
+	if not parent().par.Outputenable.eval():
+		return False
+	g = op.Gaia
+	dat = g.op('mqtt_device') if g is not None else None
+	if dat is None or not dat.isConnected:
+		return False
+	return time.perf_counter() - _st['pub'] < 3 * HEARTBEAT_S
+
+
 def _status(text):
 	p = parent().par.Outputstatus
 	if p.eval() != text:
