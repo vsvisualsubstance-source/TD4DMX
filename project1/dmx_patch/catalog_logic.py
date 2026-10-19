@@ -15,7 +15,20 @@ Plancia (GAIA_INTERFACE "TD/Win-PD, 19"). Two sibling tables:
     pan_range, tilt_range, defaults   heads only (degrees, "shutter=255")
     notes         free text
     gobos, colors heads only: wheel slots in order, "Open=0 Dots=16 ..."
-                  (name=DMX value); /mh/gobo i picks slot i
+                  (name=DMX value); /mh/gobo i picks slot i. A colour slot
+                  may carry its colour, "Red=16#ff0000"; without it the
+                  colour comes from the name (NAMED_COLORS: Red, Rosso,
+                  CTO, UV ...), else it is unknown
+    beam          colour of the lamp, hex ("ffd8a0" tungsten); blank =
+                  white. The colour of a model without colour mixing
+                  (dimmer / white only), and the light that CMY and the
+                  wheel filter
+  Derived, not stored: color_mix = how the model makes colour, from its
+  roles: rgb (red green blue [+ white amber lime uv]), cmy (cyan magenta
+  yellow), wheel (color), lamp (none of them: the beam colour), [] = no
+  light (haze). beam_color() gives the resulting colour from DMX values
+  (gaia_services/dmx_output); nearest_color_slot() picks the wheel slot
+  for a requested RGB (head_programmer: /mh/color on a wheel head).
 
   fixture_types    the stage TAXONOMY, defined by Plancia while building the
                    stage (par, wash, bar, mh, blinder, haze, wall, ...):
@@ -46,7 +59,7 @@ gaia_services/dmx_services (dmx_models, dmx_types, ...).
 import re
 
 MODEL_COLUMNS = ['model', 'kind', 'channels', 'manufacturer', 'source',
-	'pan_range', 'tilt_range', 'defaults', 'notes', 'gobos', 'colors']
+	'pan_range', 'tilt_range', 'defaults', 'notes', 'gobos', 'colors', 'beam']
 TYPE_COLUMNS = ['type', 'label', 'group', 'kind', 'model', 'source']
 
 KINDS = ('chase', 'level', 'heads')
@@ -59,7 +72,7 @@ ROLES = {
 	'chase': ['dimmer', 'red', 'green', 'blue'],
 	'level': ['dimmer', 'red', 'green', 'blue', 'white', 'amber', 'uv', 'output', 'fan'],
 	'heads': ['pan', 'pan_fine', 'tilt', 'tilt_fine', 'dimmer', 'shutter', 'red', 'green',
-		'blue', 'white', 'color', 'gobo', 'zoom', 'focus', 'speed'],
+		'blue', 'white', 'cyan', 'magenta', 'yellow', 'color', 'gobo', 'zoom', 'focus', 'speed'],
 }
 
 # first run only: Plancia's FIX_TYPES of 2026-10-16 (gaia plancia/index.html),
@@ -192,6 +205,7 @@ def _model_dict(d):
 		'complete': bool(chans) and not any(_PLACEHOLDER.match(c) for c in chans),
 		'manufacturer': d['manufacturer'], 'source': d['source'] or 'manual',
 		'notes': d['notes'],
+		'beam': _hex_rgb(d.get('beam')) or [1.0, 1.0, 1.0],
 	}
 	if d['kind'] == 'heads':
 		out['pan_range'] = _num(d['pan_range'], 540.0)
@@ -199,33 +213,176 @@ def _model_dict(d):
 		out['defaults'] = d['defaults']
 		out['gobos'] = parse_slots(d.get('gobos', ''))
 		out['colors'] = parse_slots(d.get('colors', ''))
+		for s in out['colors']:
+			if 'rgb' not in s:
+				s['rgb'] = named_rgb(s['name'])
+	out['color_mix'] = color_mix(chans, out.get('colors'))
 	return out
 
 
+def _hex_rgb(h):
+	"""'ff8000' / '#ff8000' -> [1.0, 0.502, 0.0]; None if not a hex colour."""
+	h = str(h or '').strip().lstrip('#')
+	if not re.match(r'^[0-9a-fA-F]{6}$', h):
+		return None
+	return [round(int(h[i:i + 2], 16) / 255.0, 3) for i in (0, 2, 4)]
+
+
+def _rgb_hex(rgb):
+	return ''.join('%02x' % int(round(max(0.0, min(1.0, float(x))) * 255)) for x in rgb)
+
+
+def _rgb_list(v):
+	"""[r, g, b] 0-1 (or 0-255) list / hex string -> [r, g, b] 0-1, or None."""
+	if isinstance(v, str):
+		return _hex_rgb(v)
+	try:
+		x = [float(c) for c in v][:3]
+	except (TypeError, ValueError):
+		return None
+	if len(x) != 3:
+		return None
+	if max(x) > 1.0:
+		x = [c / 255.0 for c in x]
+	return [round(max(0.0, min(1.0, c)), 3) for c in x]
+
+
 def parse_slots(text):
-	"""'Open=0 Dots=16' -> [{'name': 'Open', 'value': 0}, ...]; a list of
-	such dicts (or [name, value] pairs) passes through cleaned."""
+	"""'Open=0 Dots=16' -> [{'name': 'Open', 'value': 0}, ...]; a colour
+	slot may carry its colour: 'Red=16#ff0000' -> ..., 'rgb': [1, 0, 0].
+	A list of such dicts ('rgb' list or 'hex') or [name, value] pairs
+	passes through cleaned."""
 	out = []
 	items = text if isinstance(text, (list, tuple)) else str(text or '').split()
 	for it in items:
+		rgb = None
 		if isinstance(it, dict):
 			name, val = it.get('name'), it.get('value')
+			rgb = _rgb_list(it.get('rgb') if it.get('rgb') is not None else it.get('hex'))
 		elif isinstance(it, (list, tuple)) and len(it) == 2:
 			name, val = it
 		elif '=' in str(it):
 			name, val = str(it).split('=', 1)
+			if '#' in val:
+				val, h = val.split('#', 1)
+				rgb = _hex_rgb(h)
 		else:
 			continue
 		try:
 			v = max(0, min(255, int(float(val))))
 		except (TypeError, ValueError):
 			continue
-		out.append({'name': str(name).strip().replace(' ', '_'), 'value': v})
+		s = {'name': str(name).strip().replace(' ', '_'), 'value': v}
+		if rgb is not None:
+			s['rgb'] = rgb
+		out.append(s)
 	return out
 
 
 def _slots_text(v):
-	return ' '.join('%s=%d' % (s['name'], s['value']) for s in parse_slots(v))
+	return ' '.join('%s=%d%s' % (s['name'], s['value'], ('#' + _rgb_hex(s['rgb'])) if s.get('rgb') else '')
+		for s in parse_slots(v))
+
+
+# ---------------------------------------------------------------- colour
+
+# colour of a wheel slot by its name when the slot has no '#rrggbb'
+# (english and italian, case and punctuation ignored)
+NAMED_COLORS = {
+	'open': (1, 1, 1), 'white': (1, 1, 1), 'bianco': (1, 1, 1), 'aperto': (1, 1, 1),
+	'red': (1, 0, 0), 'rosso': (1, 0, 0), 'deepred': (.7, 0, 0), 'congo': (.35, 0, .8),
+	'orange': (1, .5, 0), 'arancio': (1, .5, 0), 'arancione': (1, .5, 0),
+	'amber': (1, .75, 0), 'ambra': (1, .75, 0),
+	'yellow': (1, 1, 0), 'giallo': (1, 1, 0),
+	'lime': (.6, 1, 0), 'lightgreen': (.5, 1, .5), 'green': (0, 1, 0), 'verde': (0, 1, 0),
+	'cyan': (0, 1, 1), 'ciano': (0, 1, 1), 'turquoise': (0, .9, .8),
+	'lightblue': (.45, .75, 1), 'azzurro': (.45, .75, 1),
+	'blue': (0, 0, 1), 'blu': (0, 0, 1), 'darkblue': (0, 0, .6), 'deepblue': (0, 0, .6),
+	'magenta': (1, 0, 1), 'pink': (1, .45, .75), 'rosa': (1, .45, .75),
+	'purple': (.6, 0, 1), 'violet': (.6, 0, 1), 'viola': (.6, 0, 1), 'lavender': (.75, .6, 1),
+	'uv': (.4, 0, 1), 'cto': (1, .8, .6), 'warm': (1, .8, .6), 'ctb': (.8, .9, 1), 'cold': (.8, .9, 1),
+}
+_COLOR_ROLES = {'red', 'green', 'blue', 'white', 'amber', 'uv', 'lime',
+	'cyan', 'magenta', 'yellow', 'color', 'dimmer', 'output'}
+
+
+def named_rgb(name):
+	k = re.sub(r'[^a-z]', '', str(name or '').lower())
+	if k in NAMED_COLORS:
+		return [float(x) for x in NAMED_COLORS[k]]
+	for n, c in NAMED_COLORS.items():   # 'Red2', 'CTO_3200' ...
+		if len(n) > 2 and k.startswith(n):
+			return [float(x) for x in c]
+	return None
+
+
+def color_mix(chans, colors=None):
+	"""How a model makes colour, from its roles: subset of ['rgb', 'cmy',
+	'wheel'] ('wheel' only with colour slots that have a colour), or
+	['lamp'] (fixed colour = 'beam'), [] when it emits no light (haze)."""
+	ch = set(chans)
+	mix = []
+	if {'red', 'green', 'blue'} <= ch:
+		mix.append('rgb')
+	if {'cyan', 'magenta', 'yellow'} & ch:
+		mix.append('cmy')
+	if 'color' in ch:
+		mix.append('wheel')
+	if not mix and ch & {'dimmer', 'white'}:
+		mix.append('lamp')
+	return mix
+
+
+def beam_color(m, vals):
+	"""Colour of the beam BEFORE the dimmer, from DMX values {role: 0-255}
+	of model dict m. Returns ([r, g, b] 0-1, source); source = 'rgb' |
+	'cmy' | 'wheel' | 'cmy+wheel' | 'lamp' | 'unknown' (a wheel whose
+	slots have no colour) | None (no light: rgb None)."""
+	mix = m.get('color_mix') or color_mix(m.get('channels') or [])
+	if not mix:
+		return None, None
+	lamp = m.get('beam') or [1.0, 1.0, 1.0]
+	if 'rgb' in mix:
+		v = lambda k: float(vals.get(k) or 0.0) / 255.0
+		c = [v('red'), v('green'), v('blue')]
+		for k, tint in (('white', (1, 1, 1)), ('amber', (1, .75, 0)), ('lime', (.6, 1, 0)), ('uv', (.25, 0, .6))):
+			if k in vals:
+				c = [a + v(k) * t for a, t in zip(c, tint)]
+		return [round(min(1.0, x), 3) for x in c], 'rgb'
+	c = list(lamp)
+	src = []
+	if 'cmy' in mix:
+		f = [1.0 - float(vals.get(k) or 0.0) / 255.0 for k in ('cyan', 'magenta', 'yellow')]
+		c = [a * b for a, b in zip(c, f)]
+		src.append('cmy')
+	if 'wheel' in mix:
+		slot = slot_at(m, vals.get('color'))
+		if slot is not None and slot.get('rgb'):
+			c = [a * b for a, b in zip(c, slot['rgb'])]
+			src.append('wheel')
+		elif not src:
+			return [round(x, 3) for x in c], 'unknown'
+	return [round(x, 3) for x in c], '+'.join(src) or 'lamp'
+
+
+def slot_at(m, value):
+	"""Colour slot of model m nearest to the DMX value (None: no slots)."""
+	slots = m.get('colors') or []
+	if value is None or not slots:
+		return None
+	return min(slots, key=lambda s: abs(float(s['value']) - float(value)))
+
+
+def nearest_color_slot(m, rgb):
+	"""Colour slot of model m whose colour is closest to [r, g, b] 0-1
+	(hue/saturation: both normalized by their brightest channel); None
+	without coloured slots."""
+	slots = [s for s in (m.get('colors') or []) if s.get('rgb')]
+	if not slots:
+		return None
+	norm = lambda c: [x / (max(c) or 1.0) for x in c]
+	t = norm([float(x) for x in rgb])
+	return min(slots, key=lambda s: sum((a - b) ** 2 for a, b in zip(norm(s['rgb']), t)))
 
 
 def models(kind=None):
@@ -267,6 +424,9 @@ def _clean_model(raw, source, cur=None):
 		row[k] = str(v if v is not None else '').replace('\t', ' ').replace('\n', ' ').strip()
 	for k in ('gobos', 'colors'):
 		row[k] = _slots_text(d.get(k, cur.get(k, '')))
+	b = d.get('beam', cur.get('beam', ''))
+	b = _rgb_list(b) if b not in (None, '') else None
+	row['beam'] = _rgb_hex(b) if b else ''
 	for k in ('pan_range', 'tilt_range'):
 		v = d.get(k, cur.get(k, ''))
 		row[k] = _fmt(_num(v, 0.0)) if str(v).strip() else ''

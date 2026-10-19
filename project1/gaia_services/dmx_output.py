@@ -16,15 +16,16 @@ Topic gaia/devices/<device_id>/dmx_output, retained, QoS 0:
      "sent" bool,
      "dimmer" 0-255 | null, "rgb" [r, g, b] 0-255 | null (raw colour
      channels), "white", "amber", "uv" 0-255 | null,
-     "intensity" 0-1 (dimmer, or the brightest colour channel without
-     one), "rgb_out" [r, g, b] 0-1 = rgb * dimmer: the colour as seen,
-     null without colour channels,
+     "intensity" 0-1 (dimmer; without one: the brightest colour, or the
+     white channel), "rgb_out" [r, g, b] 0-1 = the colour as seen,
+     "color_source" = how it is made (dmx_patch/catalog_logic
+     beam_color, from the model's roles and colour slots): rgb (red
+     green blue + white/amber/lime/uv) | cmy | wheel | cmy+wheel | lamp
+     (no colour mixing: the model's 'beam' colour, white by default) |
+     unknown (a wheel whose slots have no colour: white) | null = no
+     light (haze: rgb_out null, intensity = output),
      heads only: "color_wheel", "gobo", "shutter" 0-255, "pan", "tilt"
-     in degrees and "zoom", "focus" 0-1 from the head programmer; a
-     wheel has no RGB: rgb stays null and rgb_out is the catalog slot
-     colour * intensity, "color_source": "wheel", or white * intensity,
-     "unknown", when the catalog has no colour slots; "rgb" for RGB
-     heads}]}
+     in degrees and "zoom", "focus" 0-1 from the head programmer}]}
 A fixture that is not sent has every output field null.
 
 Published when an output value changes, at most Outputrate times per second,
@@ -51,7 +52,7 @@ def _round(v):
 	return None if v is None else int(round(v))
 
 
-def _fixture(r, rep, fl, ub, uids, heads):
+def _fixture(r, rep, fl, ub, uids, heads, models):
 	g = rep[r, 'group'].val
 	prof = rep[r, 'profile'].val
 	status = rep[r, 'status'].val
@@ -84,14 +85,18 @@ def _fixture(r, rep, fl, ub, uids, heads):
 	d['dimmer'] = _round(dim)
 	for k in ('white', 'amber', 'uv'):
 		d[k] = _round(vals.get(k))
-	if all(c in vals for c in ('red', 'green', 'blue')):
-		rgb = [vals['red'], vals['green'], vals['blue']]
-		d['rgb'] = [_round(x) for x in rgb]
-		k = 1.0 if dim is None else dim / 255.0
-		d['rgb_out'] = [round(x / 255.0 * k, 3) for x in rgb]
-		d['intensity'] = round((dim if dim is not None else max(rgb)) / 255.0, 3)
-	elif dim is not None:
-		d['intensity'] = round(dim / 255.0, 3)
+	m = models.get(prof) or {'channels': chans}
+	beam, src = _cat().beam_color(m, vals)
+	d['color_source'] = src
+	dim01 = None if dim is None else dim / 255.0
+	if src == 'rgb':
+		d['rgb'] = [_round(vals[c]) for c in ('red', 'green', 'blue')]
+		d['intensity'] = round(dim01 if dim01 is not None else max(beam), 3)
+		d['rgb_out'] = [round(x * (dim01 if dim01 is not None else 1.0), 3) for x in beam]
+	elif src:
+		lvl = dim01 if dim01 is not None else float(vals.get('white', 255.0)) / 255.0
+		d['intensity'] = round(lvl, 3)
+		d['rgb_out'] = [round(x * lvl, 3) for x in beam]
 	elif 'output' in vals:
 		d['intensity'] = round(vals['output'] / 255.0, 3)
 	if g == 'heads':
@@ -102,26 +107,11 @@ def _fixture(r, rep, fl, ub, uids, heads):
 		if h is not None:
 			d['pan'], d['tilt'] = round(h['pan'], 1), round(h['tilt'], 1)
 			d['zoom'], d['focus'] = round(h['zoom'], 3), round(h['focus'], 3)
-		if d['rgb_out'] is None and d['intensity'] is not None:
-			beam, src = _wheel_rgb(prof, vals.get('color'))
-			d['rgb_out'] = [round(x * d['intensity'], 3) for x in beam]
-			d['color_source'] = src
-		elif d['rgb'] is not None:
-			d['color_source'] = 'rgb'
 	return d
 
 
-def _wheel_rgb(profile, value):
-	"""Beam colour of a colour-wheel head: the catalog slot nearest to the
-	DMX value when the slot has 'rgb' ([r, g, b] 0-1) -> 'wheel'; else
-	white (open) -> 'unknown' (catalog without colour slots)."""
-	cat = _home().op('moving_heads/head_programmer')
-	m = (cat.module._cat().model(profile) or {}) if cat is not None else {}
-	slots = [s for s in (m.get('colors') or []) if s.get('rgb')]
-	if value is None or not slots:
-		return [1.0, 1.0, 1.0], 'unknown'
-	s = min(slots, key=lambda s: abs(float(s['value']) - float(value)))
-	return [float(x) for x in s['rgb']], 'wheel'
+def _cat():
+	return _home().op('dmx_patch/catalog_logic').module
 
 
 def snapshot():
@@ -141,7 +131,8 @@ def snapshot():
 			key = by_unit.get(f['unit'])
 			if key is not None:
 				heads[f['id']] = hp.effective(key)
-	fixtures = [_fixture(r, rep, fl, ub, uids, heads) for r in range(1, rep.numRows)]
+	models = {m['model']: m for m in _cat().models()}
+	fixtures = [_fixture(r, rep, fl, ub, uids, heads, models) for r in range(1, rep.numRows)]
 	pp = patch.par
 	sl = home.op('show/show_logic')
 	return {'v': 1, 'master': round(float(pp.Master.eval()), 3), 'blackout': bool(pp.Blackout.eval()),

@@ -304,7 +304,7 @@ def program(fields, keys=None, mode=None):
 	t = _state_table()
 	for k in keys:
 		r = _row(t, k)
-		for c, v in fields.items():
+		for c, v in _wheel_link(k, fields).items():
 			if c not in FIELDS:
 				raise ValueError('campo %r sconosciuto (%s)' % (c, ', '.join(FIELDS)))
 			if v is None or v == '':
@@ -321,6 +321,35 @@ def program(fields, keys=None, mode=None):
 		elif t[r, 'mode'].val == 'follow' and ('pan' in fields or 'tilt' in fields):
 			t[r, 'mode'] = 'manual'
 	return keys
+
+
+def _wheel_link(key, fields):
+	"""Colour on a colour-WHEEL head (no red/green/blue channels, coloured
+	slots in the catalog): an RGB request also sets the nearest slot, a
+	slot request also sets red/green/blue to the slot colour, so /mh/color
+	works on every head and its feedback shows the colour that comes out.
+	Both in `fields` (scene / preset recall): unchanged."""
+	has_rgb = any(c in fields for c in ('red', 'green', 'blue'))
+	if has_rgb == ('color' in fields):
+		return fields
+	prof = next((h['profile'] for h in heads() if h['key'] == key), None)
+	m = _cat().model(prof) if prof else None
+	if not m or 'wheel' not in (m.get('color_mix') or []) or 'rgb' in m['color_mix']:
+		return fields
+	out = dict(fields)
+	if has_rgb:
+		if any(fields.get(c) in (None, '') for c in ('red', 'green', 'blue') if c in fields):
+			return fields
+		e = effective(key)
+		rgb = [float(fields.get(c, e[c])) for c in ('red', 'green', 'blue')]
+		s = _cat().nearest_color_slot(m, rgb)
+		if s is not None:
+			out['color'] = s['value']
+	elif fields['color'] not in (None, ''):
+		s = _cat().slot_at(m, float(fields['color']))
+		if s is not None and s.get('rgb'):
+			out.update(red=s['rgb'][0], green=s['rgb'][1], blue=s['rgb'][2])
+	return out
 
 
 def set_mode(mode, keys=None):

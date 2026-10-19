@@ -147,6 +147,10 @@ def onCook(scriptOp):
 			for f in ('color', 'gobo'):
 				if st[f] is not None:
 					values[f] = st[f]
+		# CMY heads: the requested colour as subtractive filters
+		for c, k in (('red', 'cyan'), ('green', 'magenta'), ('blue', 'yellow')):
+			if k in chans:
+				values[k] = 255.0 - float(values.get(c, 255.0))
 		values['pan'] = (pan16 >> 8) if has_pan_fine else round(pan16 / 257.0)
 		values['pan_fine'] = pan16 & 0xFF
 		values['tilt'] = (tilt16 >> 8) if has_tilt_fine else round(tilt16 / 257.0)
