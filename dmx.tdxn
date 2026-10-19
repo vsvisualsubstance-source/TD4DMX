@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.42.toe
-exported_at: '2026-10-19T14:25:38Z'
+source_file: dmx.43.toe
+exported_at: '2026-10-19T17:32:49Z'
 network_path: /
 options:
   include_dat_content: false
@@ -55,7 +55,6 @@ type_defaults:
     color: [0.67, 0.67, 0.67]
   constantTOP:
     parameters:
-      colorg: 0
       resolutionh: 200
       resolutionw: 200
     flags:
@@ -691,7 +690,7 @@ operators:
         clampMin: true
         clampMax: true
         help: XY pad position 0-1 (0.5 = center of the calibrated stage area). Bound to the pad in ptz_panel.
-        value: 0.480186
+        value: 0.993006993
       - name: Padv
         style: Float
         label: Pad Y
@@ -699,7 +698,7 @@ operators:
         clampMin: true
         clampMax: true
         help: XY pad position 0-1 (0.5 = center of the calibrated stage area). Bound to the pad in ptz_panel.
-        value: 0.1959
+        value: 0.7425968109
       - name: Home
         style: Pulse
         label: Home (center)
@@ -12155,7 +12154,7 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
-        value: timeline
+        value: ptz
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -13125,7 +13124,7 @@ operators:
         file: project1/dmx_patch/fixture_models.tsv
         syncfile: true
         rows: 16
-        cols: 11
+        cols: 12
       position: [0, -2600]
       color: [0.9, 0.3, 0.4]
       tags:
@@ -13437,8 +13436,8 @@ operators:
       - name: heads_pad
         type: sliderCOMP
         parameters:
-          value0: 0.6407
-          value1: 0.7065
+          value0: 0.7826086957
+          value1: 0.9364548495
           w: 300
         children:
         - name: knob
@@ -13535,8 +13534,8 @@ operators:
         parameters:
           text: |-
             Programmer teste: 2 teste, 2 selezionate  |  pad: MH1
-            * MH1    manual  pan   76.0  tilt  -55.8  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
-            * MH6    manual  pan   76.0  tilt  -55.8  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
+            * MH1    manual  pan  152.6  tilt -117.9  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
+            * MH6    manual  pan  152.6  tilt -117.9  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
           type: multiline
           callbacks: heads_text_callbacks
           font: Consolas
@@ -13675,18 +13674,18 @@ operators:
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: feedback fixture OSC non richiesto dalla Plancia
+        value: feedback fixture OSC richiesto dalla Plancia
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /dmx/output/osc 0  @ 16:24:42
+        value: /dmx/output/osc 1  @ 19:26:08
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 9483
+        value: 10623
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13915,8 +13914,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.0081073462
-        colorb: 0.9918926164
+        colorr: 0
+        colorg: 0
+        colorb: 0.7912996778
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14239,10 +14239,7 @@ operators:
       - name: Opsdevice
         style: StrMenu
         label: OPS Device ID
-        menuNames:
-        - ops-silvermini2
-        menuLabels:
-        - ops-silvermini2 (soggiorno)
+        menuNames: []
         help: 'Device id of the Gaia OPS node whose mediapipe_node.py sends direct mocap OSC (/gaia/mocap/{Opsdevice}/pose|hand|face/{person}). Now a menu: suggestions are populated live from gaia/device/+/status senders currently reporting osc_landmarks=true (see Mocap Senders Available below) -- still free text, type a value not in the list if you know it''s correct but hasn''t been seen recently. Must match the ACTUAL sender exactly or Mocap Status will say ''listening'' with zero data arriving (found live 2026-09-29).'
         value: ops-silvermini2
       - name: Mocapsenders
@@ -14250,7 +14247,7 @@ operators:
         label: Mocap Senders Available
         readOnly: true
         help: 'Read-only: device_id list of every Gaia device currently reporting osc_landmarks=true in its gaia/device/{id}/status heartbeat (same 30s-heartbeat freshness as Device Fleet Control''s devices_table -- a sender missing for 90s drops off this list). Populated regardless of the Device Fleet Control toggle above (most single-purpose mocap installs run with that off). Pick one of these for Opsdevice above; ''none seen recently'' means no Gaia device is currently advertising mocap capability on this broker.'
-        value: ops-silvermini2
+        value: none seen recently
       - name: Mocapport
         style: Int
         label: Mocap OSC Port
@@ -14278,7 +14275,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: master STOP 00:00.00  seq 35
+        value: master STOP 00:00.00  seq 242
       Status:
       - name: Identitystatus
         style: Str
@@ -14293,20 +14290,20 @@ operators:
         default: not connected
         readOnly: true
         help: Live MQTT connection state of the ingest client (mqtt_ingest), updated by mqtt_ingest_callbacks.
-        value: connected
+        value: 'connection lost: '
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 16:25:38
+        value: gaia/td/canvas @ 19:31:30
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
         default: not connected
         readOnly: true
         help: Live MQTT connection state of the device-agent client (mqtt_device), updated by mqtt_device_callbacks. Separate from Connectionstatus above.
-        value: connected
+        value: 'connection lost: '
       - name: Beaconstatus
         style: Str
         label: Beacon Status
@@ -14326,7 +14323,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 28603.1833333333
+      lastmsg_seconds: 39755.4166666667
     children:
     - name: soul
       type: outCHOP
@@ -14563,7 +14560,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 138
+        rows: 1
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -14971,7 +14968,7 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
-        Level: 0.3475383818
+        Level: 0.5159446597
         Startaddress: 45
         Outputport: 2.1.1.2:1
     position: [200, -3000]
@@ -15883,8 +15880,8 @@ operators:
         - strobe
       - - p-fslozhy
         - manual
-        - '75.9526'
-        - '-55.7643'
+        - '152.604'
+        - '-117.855'
         - '0.5807'
         - '0.0'
         - '1.0'
@@ -15897,8 +15894,8 @@ operators:
         - '0.0'
       - - p-51kr5fl
         - manual
-        - '75.9526'
-        - '-55.7643'
+        - '152.604'
+        - '-117.855'
         - '0.5807'
         - '0.0'
         - '1.0'
@@ -16058,7 +16055,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: topic, sequence number and how many fixtures are being sent, or the last error.'
-        value: 'gaia/devices/td-dmx-win/dmx_output seq 105: 10 fixture, 10 inviate'
+        value: MQTT non connesso
     position: [1000, -430]
     color: [0.325, 0.8, 0.3]
     comment: DMX services registered on gaia_client (op.Gaia) -- project-specific glue, outside the portable client
@@ -16140,7 +16137,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_audio.tsv
         syncfile: true
-        rows: 2
+        rows: 1
         cols: 9
       position: [800, -800]
       color: [0.9, 0.3, 0.4]
@@ -16151,7 +16148,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_bands.tsv
         syncfile: true
-        rows: 1
+        rows: 2
         cols: 9
       flags:
       - viewer
@@ -16181,7 +16178,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Basic 2
+        Palette: Warm
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -16339,8 +16336,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0
-        colorb: 0.7683497301
+        colorr: 0.8748310164
+        colorg: 0.1047269259
+        colorb: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -16466,7 +16464,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Basic 2
+        Palette: Warm
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -16627,8 +16625,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0
-        colorb: 0.8237214119
+        colorr: 0.7787930358
+        colorg: 0.2028109194
+        colorb: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
