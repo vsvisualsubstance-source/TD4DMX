@@ -3,8 +3,10 @@ in the TD UI, so what Plancia (/mh/*) or Gaia do to the heads is visible
 here too. The PTZ pad above drives the PTZ TARGET and the Teste page shows
 the GLOBAL look: neither moves when Plancia moves single heads.
 
-  heads_pad   XY pad of the FIRST selected head (same as Plancia's pad):
-              x = pan, y = tilt, -1..1 over the model's mechanical range.
+  heads_pad   XY pad of the FIRST selected head, same values AND orientation
+              as Plancia's pad: x = pan (right = +1), y up = +1, -1..1 over
+              the model's mechanical range (tilt = -y * range / 2, the
+              engine's /mh/pantilt mapping).
               Dragging it moves every selected head (pantilt_norm, like
               /mh/pantilt).
   heads_text  one line per head: selected, mode, pan, tilt, dimmer, rgb,
@@ -47,7 +49,8 @@ def sync():
 	if first is not None and pad is not None and not pad.panel.lselect:
 		e = hp.effective(first['key'])
 		x, y = hp.pantilt_to_norm(first['key'], e['pan'], e['tilt'])
-		u, v = round((x + 1) / 2.0, 4), round((-y + 1) / 2.0, 4)
+		# same orientation as Plancia's pad: top = y +1 (GAIA_INTERFACE 30)
+		u, v = round((x + 1) / 2.0, 4), round((y + 1) / 2.0, 4)
 		if _st['wrote'] != (u, v) or abs(pad.par.value0.eval() - u) > 1e-4 or abs(pad.par.value1.eval() - v) > 1e-4:
 			_st['wrote'] = (u, v)
 			pad.par.value0 = u
@@ -82,5 +85,5 @@ def on_pad(par):
 	hp = _hp()
 	if not hp.selection():
 		return
-	hp.pantilt_norm(u * 2.0 - 1.0, -(v * 2.0 - 1.0))
+	hp.pantilt_norm(u * 2.0 - 1.0, v * 2.0 - 1.0)
 	_st['wrote'] = (u, v)

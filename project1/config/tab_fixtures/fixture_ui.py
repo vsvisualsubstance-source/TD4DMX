@@ -180,11 +180,14 @@ def render_plan(scriptOp):
 		y0, y1 = c - 3, c + 3
 	s = min(w / (x1 - x0), (h - 24) / (y1 - y0))
 	ox = (w - (x1 - x0) * s) / 2 - x0 * s
-	oy = 24 + ((h - 24) - (y1 - y0) * s) / 2 + y1 * s   # image row of world y=0
+	# Plancia's plan convention (GAIA_INTERFACE "TD/Win-PD, 30"): y = metres
+	# from the back of the stage towards the audience, drawn DOWNWARD (the
+	# audience at the bottom), x = left -> right seen from the audience
+	oy = 24 + ((h - 24) - (y1 - y0) * s) / 2 - y0 * s   # image row of world y=0
 	_view.update(ox=ox, oy=oy, s=s, w=w, h=h)
 
 	def to_px(x, y):
-		return ox + x * s, oy - y * s
+		return ox + x * s, oy + y * s
 
 	# grid: 1 cell minor, 4 cells major
 	for gx in range(int(np.floor(x0)), int(np.ceil(x1)) + 1):
@@ -193,8 +196,8 @@ def render_plan(scriptOp):
 	for gy in range(int(np.floor(y0)), int(np.ceil(y1)) + 1):
 		_, py = to_px(0, gy)
 		_line(img, (0, int(py)), (w, int(py)), GRID_MAJOR if gy % 4 == 0 else GRID, 1)
-	# stage front marker
-	_, py0 = to_px(0, y0 + 0.3)
+	# stage front marker: the audience side is the bottom (largest y)
+	_, py0 = to_px(0, y1 - 0.3)
 	_text(img, 'FRONTE PALCO / PUBBLICO', 10, min(h - 6, int(py0)), DIM, 0.4)
 
 	half = max(10, s * 0.42)
@@ -312,7 +315,7 @@ def render_umap(scriptOp):
 def _plan_world(u, v):
 	px, py = u * _view.get('w', 1), (1.0 - v) * _view.get('h', 1)
 	s = _view.get('s', 1.0) or 1.0
-	return (px - _view.get('ox', 0)) / s, (_view.get('oy', 0) - py) / s
+	return (px - _view.get('ox', 0)) / s, (py - _view.get('oy', 0)) / s
 
 
 def _plan_hit(u, v):
