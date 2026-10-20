@@ -748,7 +748,60 @@ def scene_catalog():
 		used.setdefault(c['scene'], []).append(c['id'])
 	return [{'id': s['name'], 'index': i, 'label': s['label'],
 		'categories': [c for c in CATEGORIES if s[c]], 'per_head': s['name'] in heads,
-		'cues': used.get(s['name'], [])} for i, s in enumerate(scenes())]
+		'cues': used.get(s['name'], []), 'preview': scene_preview(s['name'])}
+		for i, s in enumerate(scenes())]
+
+
+def scene_preview(name):
+	"""The colours a scene sets, for UIs to paint scene buttons and cues:
+	{'rig_a': {'palette', 'colors': [[r, g, b] 0-1]}, 'rig_b': ...,
+	'heads': [{'uid', 'name', 'rgb', 'source', 'dimmer'}]} -- only what the
+	scene's enabled categories hold. Head rgb = the beam colour before the
+	dimmer (dmx_patch/catalog_logic.beam_color), as dmx_output reports it.
+	GAIA_INTERFACE "OPS, 2" / "TD/Win-PD, 37"."""
+	v = scene_values(name)
+	out = {}
+	for t in ('rig_a', 'rig_b'):
+		pal = v.get((t, 'Palette'))
+		comp = target_comp(t)
+		if pal is None or comp is None:
+			continue
+		if pal == 'Custom':
+			cols = []
+			for i in range(1, 6):
+				rgb = []
+				for c in 'rgb':
+					k = (t, 'Custompalette%d%s' % (i, c))
+					x = v[k] if k in v else _current(k)
+					rgb.append(round(float(x or 0.0), 3))
+				cols.append(rgb)
+		else:
+			gen = comp.op('dmx_generator_callbacks1')
+			pals = getattr(gen.module, 'ALL_PALETTES', {}) if gen else {}
+			cols = [[round(c / 255.0, 3) for c in rgb] for rgb in pals.get(pal, [])]
+			if len(cols) > 1 and cols[-1] == cols[0]:
+				cols = cols[:-1]
+		out[t] = {'palette': pal, 'colors': cols}
+	hp = _hp()
+	if hp is not None and any(_is_head(k[0]) for k in v):
+		cat = target_comp('patch').op('catalog_logic').module
+		heads = []
+		for h in hp.heads():
+			t = HEAD_PREFIX + h['key']
+			if (t, 'mode') not in v:
+				continue
+			f = lambda n: float(v.get((t, n)) or 0.0)
+			m = cat.model(h['profile']) or {}
+			chans = set(m.get('channels') or [])
+			# only the model's own roles: beam_color adds white/amber/... when present
+			vals = {c: f(c) * 255.0 for c in ('red', 'green', 'blue', 'white') if c in chans}
+			if 'color' in chans:
+				vals['color'] = f('color')
+			rgb, src = cat.beam_color(m, vals) if m else (None, None)
+			heads.append({'uid': h['uid'], 'name': h['name'], 'rgb': rgb, 'source': src,
+				'dimmer': round(f('dimmer'), 3)})
+		out['heads'] = heads
+	return out
 
 
 # ---------------------------------------------------------------- clock

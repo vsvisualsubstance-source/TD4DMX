@@ -1206,6 +1206,8 @@ def _build_matrix_for_rig(rig_name):
 			'options': list(par.menuNames),
 			'default': str(par.default),
 		}
+	if 'dmx_palette' in params:
+		params['dmx_palette'].update(_palette_colors(rig))
 
 	for name, base_par in COLOR_PARAMS:
 		params[name] = {
@@ -1217,6 +1219,24 @@ def _build_matrix_for_rig(rig_name):
 	services = {name: {'kind': 'service', 'type': kind} for name, kind in SERVICES}
 
 	return {'params': params, 'services': services}
+
+
+def _palette_colors(rig):
+	"""{'colors': {palette: [[r, g, b] 0-1, ...]}, 'stepped': [...]} from the
+	rig's generator, in the order the rig cycles them (the closing repeat of
+	the first colour dropped). 'Custom' is absent: its colours are live, in
+	dmx_<rig>_custom_color1..5. GAIA_INTERFACE "OPS, 2" / "TD/Win-PD, 37"."""
+	gen = rig.op('dmx_generator_callbacks1')
+	pals = getattr(gen.module, 'ALL_PALETTES', None) if gen else None
+	if not pals:
+		return {}
+	colors = {}
+	for name, cols in pals.items():
+		cols = list(cols)
+		if len(cols) > 1 and cols[-1] == cols[0]:
+			cols = cols[:-1]
+		colors[name] = [[round(c / 255.0, 3) for c in rgb] for rgb in cols]
+	return {'colors': colors, 'stepped': sorted(getattr(gen.module, 'STEPPED_PALETTES', ()))}
 
 
 def _build_rigs_matrix():
