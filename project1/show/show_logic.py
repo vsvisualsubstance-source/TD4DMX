@@ -993,6 +993,18 @@ def load_timeline(doc, source='gaia'):
 			errors.append('length %r non valida' % doc.get('length'))
 		elif clean and clean[-1]['time'] > length:
 			errors.append('length %.3f s: c\'e\' una cue a %.3f s' % (length, clean[-1]['time']))
+	# legal but almost never meant: two cues at one instant (only the later
+	# one ever shows), and with loop a cue at the very end -- the clock wraps
+	# to 0 before reaching it (tick: t % length), so it never fires
+	for i in range(1, len(clean)):
+		if clean[i]['time'] == clean[i - 1]['time']:
+			warnings.append('cue %d: stesso tempo della cue %d (%.3f s)' % (i + 1, i, clean[i]['time']))
+	loop = bool(doc['loop']) if 'loop' in doc else bool(_show().par.Loop.eval())
+	if loop and length > 0:
+		for i, c in enumerate(clean, 1):
+			if c['time'] >= length:
+				warnings.append('cue %d a %.3f s = fine della timeline: con loop non scatta mai'
+					% (i, c['time']))
 	keys_in = doc.get('keys')
 	if keys_in is not None:
 		if not isinstance(keys_in, list):
