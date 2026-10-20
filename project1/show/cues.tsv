@@ -1,3 +1,4 @@
 id	time	scene	fade	label
-1	0.0	TestScene1	3.5	
-2	10.0	TestScene1	3.5	
+1	0.0	sc1	10.0	t1
+2	10.1	sc1	0.0	
+3	35.8	sc1	2.0	

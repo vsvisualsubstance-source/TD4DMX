@@ -1,10 +1,10 @@
 id	name	group	unit	profile	port_id	address	x	y	enabled	palette	uid
-1	MH1	heads	1	Generic Spot 11ch 16bit	2.1.1.2:1	17	-4.5	2.5	1		p-fslozhy
+1	MH1	heads	1	Generic Spot 11ch 16bit	2.1.1.2:1	17	-4.381	0.635	1		p-fslozhy
 5	UP1	rig_a	1	D+RGB 4CH	2.1.1.2:1	1	-4.152	6.685	1		p-p75dqtd
 7	BAR1	ledbar	1	D+RGB 4CH	2.1.1.2:1	39	-1.258	6.735	1		p-nvef9lh
-9	MH6	heads	5	Generic Spot 11ch 16bit	2.1.1.2:1	28	2.386	2.306	1		p-51kr5fl
-16	UP1	rig_a	3	D+RGB 4CH	2.1.1.2:1	5	-5.219	6.714	1	Ocean	p-6sbj0ql
-21	UP6	rig_a	8	D+RGB 4CH	2.1.1.2:1	9	5	6.5	1	Red	p-wblmjiz
+9	MH6	heads	5	Generic Spot 11ch 16bit	2.1.1.2:1	28	4.004	0.446	1		p-51kr5fl
+16	UP1	rig_b	3	D+RGB 4CH	2.1.1.2:1	5	-5.492	0.656	1	Ocean	p-6sbj0ql
+21	UP6	rig_b	8	D+RGB 4CH	2.1.1.2:1	9	5.073	0.53	1	Red	p-wblmjiz
 32	BAR11	ledbar	11	D+RGB 4CH	2.1.1.2:2	1	1.258	6.714	1		p-qy4habe
 35	HAZ1	haze	1	Haze 2CH	2.1.1.2:1	43	-0.377	3.004	1		p-3pkies2
 36	BLI1	blinder	1	Dimmer 1CH	2.1.1.2:1	45	-0.356	4.387	1		p-uyfie6d
