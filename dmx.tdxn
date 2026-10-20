@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.44.toe
-exported_at: '2026-10-20T15:19:28Z'
+source_file: dmx.45.toe
+exported_at: '2026-10-20T17:51:38Z'
 network_path: /
 options:
   include_dat_content: false
@@ -978,6 +978,7 @@ operators:
         clampMin: true
         normMax: 300.0
         help: 'Playhead position in seconds. Drag it to scrub: the state at that time is applied.'
+        value: 35.8
       - name: Rewind
         style: Pulse
         help: Back to 0 and re-apply everything.
@@ -1030,7 +1031,7 @@ operators:
         style: Str
         readOnly: true
         help: 'Read-only: transport, current cue, scene and fade progress.'
-        value: STOP 00:00.00  |  cue 1/3  t1  -> sc1  (fade 0%)
+        value: STOP 00:35.80  |  cue 3/3  sc1  (marker)
       - name: Message
         style: Str
         readOnly: true
@@ -1067,6 +1068,11 @@ operators:
         label: Apply Audio Source
         default: true
         help: The scene sets which audio source (A/B) drives each rig.
+      - name: Applystrobe
+        style: Toggle
+        label: Apply Strobe
+        default: true
+        help: The scene sets the general strobe (dmx_patch Strobe / Stroberate).
       - name: Recall
         style: Pulse
         label: Recall Now
@@ -1097,14 +1103,13 @@ operators:
         clampMin: true
         normMax: 50.0
         help: Id of the cue being edited (click a cue on the timeline).
-        value: 3
+        value: 1
       - name: Cuetime
         style: Float
         label: Time (s)
         clampMin: true
         normMax: 300.0
         help: When the cue starts, in seconds.
-        value: 35.8
       - name: Cuescene
         style: Menu
         label: Scene
@@ -1118,10 +1123,12 @@ operators:
         clampMin: true
         normMax: 30.0
         help: Crossfade from the previous cue's scene, seconds (0 = cut). Menus/toggles switch at half fade.
+        value: 10
       - name: Cuelabel
         style: Str
         label: Label
         help: Free text shown on the cue (e.g. "drop", "strofa 2").
+        value: t1
       - name: Addcue
         style: Pulse
         label: Add Cue At Playhead
@@ -1189,7 +1196,7 @@ operators:
     - tox
     storage:
       timeline_bpm: 124
-      timeline_loaded_rev: b943dfa6e4a5
+      timeline_loaded_rev: 0d64b38ab83c
       timeline_name: Timeline
       timeline_source: plancia
     children:
@@ -1221,7 +1228,7 @@ operators:
         file: project1/show/scenes.tsv
         syncfile: true
         rows: 2
-        cols: 6
+        cols: 7
       color: [0.9, 0.3, 0.4]
       tags:
       - tsv
@@ -12153,7 +12160,6 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
-        value: timeline
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -12342,7 +12348,7 @@ operators:
           clampMin: true
           normMax: 64.0
           help: Id of the fixture shown in the inspector (click it on the plan or on the universe map).
-          value: 1
+          value: 16
         - name: Status
           style: Str
           readOnly: true
@@ -12359,12 +12365,12 @@ operators:
           default: rig_a
           menuSource: tdu.TableMenu(parent.Config.parent().op('dmx_patch/groups'))
           help: 'Patch group the fixture belongs to (rig_a, rig_b, heads): sets which generator drives it and which profile library applies.'
-          value: heads
+          value: rig_b
         - name: Fname
           style: Str
           label: Name
           help: Free label shown on the plan and on the universe map.
-          value: MH1
+          value: UP1
         - name: Funit
           style: Int
           label: Unit (# nel gruppo)
@@ -12377,10 +12383,10 @@ operators:
         - name: Fprofile
           style: Menu
           label: Profile
-          default: Generic Spot 9ch
+          default: ZQ006018 4CH RGBW
           menuSource: me.op('fixture_ui').module.profile_menu()
           help: 'Fixture profile (channel layout) from the group library. Each fixture can have its own: profiles can be mixed in a group.'
-          value: Generic Spot 11ch 16bit
+          value: D+RGB 4CH
         - name: Fpalette
           style: Menu
           label: Palette
@@ -12388,7 +12394,7 @@ operators:
           menuSource: me.op('fixture_ui').module.palette_menu()
           help: 'Rigs only: palette of THIS light. ''(palette del rig)'' = follow the rig''s Palette (Look Rig tab); another name = this light uses that palette, with the rig''s speed, phase, dimmer and kick.'
           enableExpr: me.par.Fgroup.eval() != 'heads'
-          enable: false
+          value: Ocean
         - name: Fport
           style: Menu
           label: Output Port
@@ -12406,21 +12412,21 @@ operators:
           normMin: 1.0
           normMax: 512.0
           help: DMX start address 1..512 on the output port. Overlaps with other fixtures turn red on the universe map.
-          value: 17
+          value: 5
         - name: Fx
           style: Float
           label: Plan X
           normMin: -16.0
           normMax: 16.0
           help: Position on the stage plan, in grid cells (drag on the plan snaps to 0.5).
-          value: -4.381
+          value: -5.492
         - name: Fy
           style: Float
           label: Plan Y
           normMin: -8.0
           normMax: 8.0
           help: Position on the stage plan, in grid cells, y up (stage front at the bottom).
-          value: 0.635
+          value: 0.656
         - name: Fenabled
           style: Toggle
           label: Enabled
@@ -12788,7 +12794,6 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
-        Level: 0.8326417804
         Startaddress: 43
         Profile: Haze 2CH
         Outputport: 2.1.1.2:1
@@ -12819,6 +12824,282 @@ operators:
       dock: level_out
       dat_content: "\"\"\"level_out -- one channel per unit attribute (unit<u>_<attr>, DMX order of\nthe unit's profile, see dmx_patch/group_logic). Intensity channels (dimmer*\nand colour/output) at full scale (255): Level/Master/Strobe are applied in\ndmx_patch/universe_build. 'fan' follows the Fan par; any other role\n(strobe, mode, placeholder ch<N> of a catalog model with only its channel\ncount) is 0. Cooks on change only (tables + pars).\"\"\"\nFULL = 255.0\nINTENSITY = ('red', 'green', 'blue', 'white', 'amber', 'uv', 'output')\n\n\ndef onSetupParameters(scriptOp):\n\treturn\n\n\ndef onCook(scriptOp):\n\tscriptOp.clear()\n\tscriptOp.numSamples = 1\n\tcomp = parent()\n\tfl = comp.parent().op('dmx_patch/fixture_logic').module\n\tgroup = fl.group_of(comp)\n\tif group is None:\n\t\treturn\n\tfan = float(comp.par.Fan.eval()) * FULL\n\tfor u, prof in enumerate(fl.unit_profiles(comp, cached=False), 1):\n\t\tfor attr in fl.profile_channels(group, prof) or []:\n\t\t\tc = scriptOp.appendChan('unit%d_%s' % (u, attr))\n\t\t\tc[0] = fan if attr == 'fan' else \t\t\t\tFULL if attr.startswith('dimmer') or attr in INTENSITY else 0.0\n\treturn\n"
       dat_content_format: text
+  - name: rig_side
+    type: baseCOMP
+    parameters:
+      opviewer: 'True'
+      clone: dmx_audio_chase
+    custom_pars:
+      DMX Reactive:
+        $t: dmx_reactive
+        Audiobus: b
+        Palette: Blue
+        Mindimmer: 200
+        Dimmerboost: 0.4654
+        Smoothfactor: 0.475
+        Colorsmooth: 0.799
+        Kickthresh: 0.15
+      Fixture:
+        $t: fixture_2
+        Level: 0.924681
+        Fixtureprofile: D+RGB 4CH
+        Nbars: 13
+        Startaddress: 46
+    position: [600, -3000]
+    color: [0.325, 0.8, 0.3]
+    children:
+    - name: out1
+      type: outTOP
+      flags:
+      - viewer
+      position: [625, 700]
+      inputs:
+      - pixel_preview
+    - name: out2
+      type: outTOP
+      flags:
+      - viewer
+      position: [625, 600]
+      inputs:
+      - palette_preview
+    - name: out3
+      type: outTOP
+      flags:
+      - display
+      position: [625, 1000]
+      inputs:
+      - bars_preview
+    - name: dmx_out
+      type: dmxoutCHOP
+      parameters:
+        active: false
+        rate: =me.time.rate
+        netaddress: 2.1.1.2
+        localaddress: 2.1.1.100
+        routingtable: dmx_out_routingtable
+      position: [250, 300]
+      comment: 'Disattivato 2026-10-01: l uscita DMX e centralizzata in /project1/dmx_patch (start address reali, un solo stream per universo).'
+      inputs:
+      - dmx_select
+    - name: dmx_select
+      type: selectCHOP
+      parameters:
+        channames: bar*
+      position: [50, 300]
+      color: [0.67, 0.67, 0.67]
+      inputs:
+      - dmx_generator
+    - name: select_mid
+      type: selectCHOP
+      parameters:
+        chops: ='../audio_engine/bands_' + parent().par.Audiobus.eval()
+        channames: mid
+      position: [-600, 300]
+      color: [0.67, 0.67, 0.67]
+    - name: monitor_dmx
+      type: nullCHOP
+      position: [250, 450]
+      color: [0.67, 0.67, 0.67]
+      inputs:
+      - dmx_out
+    - name: select_bass
+      type: selectCHOP
+      parameters:
+        chops: ='../audio_engine/bands_' + parent().par.Audiobus.eval()
+        channames: bass
+      position: [-600, 500]
+      color: [0.67, 0.67, 0.67]
+    - name: select_high
+      type: selectCHOP
+      parameters:
+        chops: ='../audio_engine/bands_' + parent().par.Audiobus.eval()
+        channames: high
+      position: [-600, 100]
+      color: [0.67, 0.67, 0.67]
+    - name: bars_preview
+      type: scriptTOP
+      parameters:
+        callbacks: bars_preview_callbacks
+        resolutionw: 480
+        resolutionh: 60
+      custom_pars:
+        Custom:
+          $t: custom
+      position: [450, 1000]
+    - name: dmx_generator
+      type: scriptCHOP
+      parameters:
+        callbacks: dmx_generator_callbacks1
+      position: [-150, 300]
+      storage:
+        state:
+          bass_env: 0.0003557397
+          mid_env: 0.0003557397
+          high_env: 0.0003557397
+          smooth_level: 0.0007451111
+          level_min: 8.58184e-05
+          level_max: 0.0009781112
+          smooth_r:
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          - 0
+          smooth_g:
+          - 58.9461035313
+          - 58.9461035313
+          - 58.9461035313
+          - 58.9461035313
+          - 58.9461035313
+          - 58.9461035313
+          smooth_b:
+          - 255
+          - 255
+          - 255
+          - 255
+          - 255
+          - 255
+          prev_bass_env: 0.0003557397
+          punch: 0
+          punch_smooth: 0
+          last_kick_time: 0
+          color_t_smooth: 0.1067153451
+      inputs:
+      - select_bass
+      - select_mid
+      - select_high
+    - name: fixture_apply
+      type: parameterexecuteDAT
+      parameters:
+        op: ..
+        pars: Fixtureprofile Nbars Startaddress Applyfixture Outputport
+        file: project1/dmx_audio_chase/fixture_apply.py
+        syncfile: true
+      position: [125, 125]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
+    - name: monitor_debug
+      type: nullCHOP
+      position: [-150, 450]
+      color: [0.67, 0.67, 0.67]
+      inputs:
+      - dmx_generator
+    - name: pixel_preview
+      type: constantTOP
+      parameters:
+        colorr: 0
+        colorg: 0
+        colorb: 0.7847850126
+      position: [450, 700]
+    - name: palette_preview
+      type: scriptTOP
+      parameters:
+        callbacks: palette_preview_callbacks1
+        resolutionw: 400
+        resolutionh: 50
+      flags:
+      - viewer
+      position: [450, 600]
+    - name: fixture_profiles
+      type: tableDAT
+      parameters:
+        file: project1/dmx_audio_chase/fixture_profiles.tsv
+        syncfile: true
+        rows: 8
+        cols: 2
+      position: [-800, 550]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - tsv
+    - name: pixel_preview_exec
+      type: executeDAT
+      parameters:
+        framestart: true
+        file: project1/dmx_audio_chase/pixel_preview_exec.py
+      flags:
+      - viewer
+      position: [250, 700]
+    - name: dmx_out_routingtable
+      type: tableDAT
+      parameters:
+        file: project1/dmx_audio_chase/dmx_out_routingtable.tsv
+        syncfile: true
+        rows: 1
+      flags:
+      - viewer
+      - -showDocked
+      position: [0, -120]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - tsv
+      dock: dmx_out
+    - name: bars_preview_callbacks
+      type: textDAT
+      parameters:
+        file: project1/dmx_audio_chase/bars_preview_callbacks.py
+        syncfile: true
+        language: python
+      flags:
+      - viewer
+      position: [450, 880]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
+      dock: bars_preview
+    - name: dmx_generator_callbacks
+      type: textDAT
+      parameters:
+        file: project1/dmx_audio_chase/dmx_generator_callbacks.py
+        syncfile: true
+        language: python
+      flags:
+      - viewer
+      position: [175, -125]
+      size: [241, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
+      dock: dmx_generator
+    - name: dmx_generator_callbacks1
+      type: textDAT
+      parameters:
+        file: project1/dmx_audio_chase/dmx_generator_callbacks1.py
+        syncfile: true
+        language: python
+      position: [-150, 150]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
+    - name: palette_preview_callbacks
+      type: textDAT
+      parameters:
+        file: project1/dmx_audio_chase/palette_preview_callbacks.py
+        syncfile: true
+        language: python
+      flags:
+      - viewer
+      position: [0, -120]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
+      dock: palette_preview
+    - name: palette_preview_callbacks1
+      type: textDAT
+      parameters:
+        file: project1/dmx_audio_chase/palette_preview_callbacks1.py
+        syncfile: true
+        language: python
+      position: [450, 450]
+      size: [130, 90]
+      color: [0.9, 0.3, 0.4]
+      tags:
+      - py
   - name: tutorial
     type: textDAT
     parameters:
@@ -12898,6 +13179,7 @@ operators:
         normMin: 0.5
         normMax: 20.0
         help: Frequenza dello strobo generale in Hz (Plancia /dmx/strobe/rate). Acceso il 22% di ogni periodo.
+        value: 11.6271190643
       - name: Rate
         style: Int
         label: Send Rate (Hz)
@@ -12988,7 +13270,7 @@ operators:
       parameters:
         file: project1/dmx_patch/groups.tsv
         syncfile: true
-        rows: 7
+        rows: 8
         cols: 8
       position: [0, -1400]
       color: [0.9, 0.3, 0.4]
@@ -13018,7 +13300,7 @@ operators:
       parameters:
         file: project1/dmx_patch/fixtures.tsv
         syncfile: true
-        rows: 11
+        rows: 12
         cols: 12
       position: [0, -1600]
       color: [0.9, 0.3, 0.4]
@@ -13431,8 +13713,8 @@ operators:
       - name: heads_pad
         type: sliderCOMP
         parameters:
-          value0: 0.1582
-          value1: 0.3076
+          value0: 0.6407
+          value1: 0.7065
           w: 300
         children:
         - name: knob
@@ -13529,8 +13811,8 @@ operators:
         parameters:
           text: |-
             Programmer teste: 2 teste, 1 selezionate  |  pad: MH1
-            * MH1    manual  pan -184.6  tilt   52.0  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
-              MH6    manual  pan  154.8  tilt   46.5  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
+            * MH1    manual  pan   76.0  tilt  -55.8  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
+              MH6    manual  pan   76.0  tilt  -55.8  dim 0.58  rgb 0.00 1.00 0.74  gobo  96
           type: multiline
           callbacks: heads_text_callbacks
           font: Consolas
@@ -13613,7 +13895,7 @@ operators:
         clampMin: true
         normMax: 10.0
         help: Crossfade in secondi usato dal prossimo /dmx/scene (aggiornato da /dmx/fade).
-        value: 4.82906
+        value: 6.1864404678
       - name: Feedback
         style: Toggle
         label: Feedback to Plancia
@@ -13675,12 +13957,12 @@ operators:
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /dmx/output/osc 1  @ 17:18:37
+        value: /dmx/output/osc 1  @ 19:51:17
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 11148
+        value: 12659
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -13760,7 +14042,6 @@ operators:
         Kickthresh: 0.15
       Fixture:
         $t: fixture_2
-        Level: 0.575021
         Fixtureprofile: D+RGB 4CH
         Nbars: 11
         Startaddress: 39
@@ -13909,9 +14190,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.8812492434
-        colorg: 0.8812492434
-        colorb: 0
+        colorr: 0
+        colorg: 0
+        colorb: 0.8022642005
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14273,7 +14554,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: master STOP 00:00.00  seq 24
+        value: master STOP 00:35.80  seq 39
       Status:
       - name: Identitystatus
         style: Str
@@ -14294,7 +14575,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 17:19:27
+        value: gaia/brain/state @ 19:51:37
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -14321,7 +14602,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 19379.4333333333
+      lastmsg_seconds: 28504.7833333333
     children:
     - name: soul
       type: outCHOP
@@ -14558,7 +14839,7 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 7
+        rows: 142
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -14966,7 +15247,6 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
-        Level: 0.347538
         Startaddress: 45
         Outputport: 2.1.1.2:1
     position: [200, -3000]
@@ -15710,7 +15990,6 @@ operators:
         clampMin: true
         clampMax: true
         help: 'Group level of the moving heads (0-1): scales their dimmer channel in dmx_patch/universe_build, with Master and Strobe, like the Level of the other groups. Plancia /dmx/group/mh.'
-        value: 0.727694
       - name: Addresses
         style: Str
         label: Head Addresses
@@ -15878,8 +16157,8 @@ operators:
         - strobe
       - - p-fslozhy
         - manual
-        - '-184.5763'
-        - '51.9518'
+        - '75.9526'
+        - '-55.7643'
         - '0.5807'
         - '0.0'
         - '1.0'
@@ -15892,8 +16171,8 @@ operators:
         - '0.0'
       - - p-51kr5fl
         - manual
-        - '154.8305'
-        - '46.4671'
+        - '75.9526'
+        - '-55.7643'
         - '0.5807'
         - '0.0'
         - '1.0'
@@ -16053,7 +16332,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: topic, sequence number and how many fixtures are being sent, or the last error.'
-        value: 'gaia/devices/td-dmx-win/dmx_output seq 230: 10 fixture, 10 inviate'
+        value: 'gaia/devices/td-dmx-win/dmx_output seq 349: 11 fixture, 11 inviate'
     position: [1000, -430]
     color: [0.325, 0.8, 0.3]
     comment: DMX services registered on gaia_client (op.Gaia) -- project-specific glue, outside the portable client
@@ -16146,7 +16425,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_bands.tsv
         syncfile: true
-        rows: 2
+        rows: 1
         cols: 9
       flags:
       - viewer
@@ -16176,7 +16455,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Basic 2
+        Palette: Basic
         Mindimmer: 200
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
@@ -16184,7 +16463,6 @@ operators:
         Kickthresh: 0.15
       Fixture:
         $t: fixture_2
-        Level: 0.768623
         Fixtureprofile: D+RGB 4CH
         Nbars: 12
     position: [0, 50]
@@ -16334,9 +16612,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.7798392707
-        colorg: 0
-        colorb: 0.0063837683
+        colorr: 0.0020135773
+        colorg: 0.1840472205
+        colorb: 0
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -16462,7 +16740,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Basic 2
+        Palette: Basic
         Mindimmer: 196.35
         Dimmerboost: 0.505
         Smoothfactor: 0.475
@@ -16472,7 +16750,6 @@ operators:
         Kickthresh: 0.15
       Fixture:
         $t: fixture_2
-        Level: 0.778303
         Fixtureprofile: D+RGB 4CH
         Nbars: 8
         Startaddress: 5
@@ -16623,9 +16900,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.7781954333
-        colorg: 0
-        colorb: 0.0007455036
+        colorr: 0
+        colorg: 0.6371266014
+        colorb: 0.5379480966
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
