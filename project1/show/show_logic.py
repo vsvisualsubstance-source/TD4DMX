@@ -1,7 +1,7 @@
 """show_logic -- timeline engine of /project1/show (scenes, cues, automation).
 
 Tables (siblings, file-synced tsv):
-  scenes        name, label, rigs, heads, groups, audio   (category flags 0/1:
+  scenes        name, label, rigs, heads, groups, audio, strobe   (category flags 0/1:
                 which parts of the snapshot the scene applies)
   scene_values  scene, target, par, value   (one row per captured par)
   cues          id, time, scene, fade, label   (seconds)
@@ -17,6 +17,7 @@ to those pages later are captured automatically):
   heads   moving_heads 'Position' + 'Look' pages, ptz Mode / Padu / Padv
   groups  Patchenable of every rig and of heads, dmx_patch Blackout
   audio   Audiobus of every chase rig (which audio source drives the rig)
+  strobe  dmx_patch Strobe / Stroberate (the general strobe, /dmx/strobe)
   A rig created later is captured from the next capture on; scenes saved
   before it leave it alone (they have no rows for it).
 
@@ -35,7 +36,10 @@ state alone.
 
 State at time t is STATELESS (scrub / seek / loop always land right):
   cue = last cue with time <= t (none -> the timeline does not drive);
-  crossfade from the previous cue's scene over cue.fade seconds: numbers
+  scenes layer: every par holds the value of the LAST cue up to t whose
+  scene sets it (a scene without a category leaves it as the earlier cues
+  set it: colour from one cue, movement from the next);
+  crossfade from that layered state over cue.fade seconds: numbers
   interpolate, menus/toggles/strings switch at half fade; then every
   automation lane whose first..last key spans t overrides its par.
 
@@ -52,8 +56,9 @@ TARGETS = {
 	'ptz': 'ptz',
 	'patch': 'dmx_patch',
 }
-CATEGORIES = ['rigs', 'heads', 'groups', 'audio']
-CATEGORY_LABELS = {'rigs': 'Look rig A/B', 'heads': 'Teste mobili', 'groups': 'Accensioni gruppi', 'audio': 'Sorgente audio'}
+CATEGORIES = ['rigs', 'heads', 'groups', 'audio', 'strobe']
+CATEGORY_LABELS = {'rigs': 'Look dei rig', 'heads': 'Teste mobili', 'groups': 'Accensioni gruppi',
+	'audio': 'Sorgente audio', 'strobe': 'Strobo generale'}
 INTERPS = ['linear', 'smooth', 'step']
 
 SCENE_COLS = ['name', 'label'] + CATEGORIES
@@ -122,6 +127,11 @@ def _table(name, cols):
 	if t.numRows == 0 or t[0, 0] is None or t[0, 0].val != cols[0]:
 		t.clear()
 		t.appendRow(cols)
+	elif t.numCols < len(cols):
+		# a column added later (e.g. category strobe): old rows get '' (= on)
+		for c in cols:
+			if t[0, c] is None:
+				t.appendCol([c])
 	return t
 
 
@@ -186,6 +196,8 @@ def category_pars(cat):
 			[('heads', 'Patchenable'), ('patch', 'Blackout')]
 	if cat == 'audio':
 		return [(g, 'Audiobus') for g, c, k in rigs if k == 'chase']
+	if cat == 'strobe':
+		return [('patch', n) for n in ('Strobe', 'Stroberate') if _par('patch', n) is not None]
 	return []
 
 
@@ -368,8 +380,9 @@ def scene_values(name):
 
 def capture(name, label=None, categories=None):
 	"""Store the current live values of every category into scene `name`
-	(created if new; existing values replaced, category flags kept).
-	categories: only those (e.g. ['heads']); the scene's other values stay."""
+	(created if new, enabled = the captured categories; existing: values
+	replaced, category flags kept). categories: only those (e.g. ['heads']);
+	the scene's other values stay."""
 	name = str(name).strip()
 	if not name:
 		raise ValueError('nome scena vuoto')
@@ -379,7 +392,8 @@ def capture(name, label=None, categories=None):
 	owned = _category_of()
 	st = _table('scenes', SCENE_COLS)
 	if _row_index('scenes', SCENE_COLS, 'name', name) is None:
-		st.appendRow([name, label or name] + [1] * len(CATEGORIES))
+		# a new scene applies what it captured: capture(..., ['heads']) = 'only heads'
+		st.appendRow([name, label or name] + [1 if c in cats else 0 for c in CATEGORIES])
 	elif label:
 		st[_row_index('scenes', SCENE_COLS, 'name', name), 'label'] = label
 	vt = _table('scene_values', VALUE_COLS)
@@ -414,6 +428,36 @@ def set_scene_flags(name, **flags):
 	if 'label' in flags:
 		t[r, 'label'] = flags['label']
 	invalidate(force=False)
+
+
+def rename_scene(name, new_name, label=None):
+	"""Rename a scene everywhere: its row, its values, the cues using it."""
+	new_name = str(new_name or '').strip()
+	r = _row_index('scenes', SCENE_COLS, 'name', name)
+	if r is None:
+		raise ValueError('scena %r non esiste' % name)
+	if not new_name:
+		raise ValueError('nome scena vuoto')
+	if new_name != name and new_name in scene_names():
+		raise ValueError("scena %r esiste gia'" % new_name)
+	st = _table('scenes', SCENE_COLS)
+	if st[r, 'label'].val in ('', name):
+		st[r, 'label'] = new_name
+	st[r, 'name'] = new_name
+	if label:
+		st[r, 'label'] = label
+	vt = _table('scene_values', VALUE_COLS)
+	for i in range(1, vt.numRows):
+		if vt[i, 'scene'].val == name:
+			vt[i, 'scene'] = new_name
+	ct = _table('cues', CUE_COLS)
+	for i in range(1, ct.numRows):
+		if ct[i, 'scene'].val == name:
+			ct[i, 'scene'] = new_name
+	if _active.get('scene') == name:
+		_active['scene'] = new_name
+	invalidate(force=False)
+	return new_name
 
 
 def delete_scene(name):
@@ -693,13 +737,25 @@ def cue_at(t):
 	return idx, (cs[idx] if idx >= 0 else None), cs
 
 
+@_memo
+def _layered(idx):
+	"""{(target, par): value} the cues 0..idx leave behind, each scene
+	over the earlier ones (only its enabled categories)."""
+	out = {}
+	for c in cues()[:idx + 1]:
+		if c['scene']:
+			out.update(scene_values(c['scene']))
+	return out
+
+
 def state_at(t):
 	"""{(target, par): value} the timeline wants at time t."""
 	idx, cue, cs = cue_at(t)
 	out = {}
 	if cue is not None:
-		cur = scene_values(cue['scene'])
-		prev = scene_values(cs[idx - 1]['scene']) if idx > 0 else {}
+		prev = _layered(idx - 1)
+		out.update(prev)
+		cur = scene_values(cue['scene']) if cue['scene'] else {}
 		x = 1.0 if cue['fade'] <= 0 else max(0.0, min(1.0, (t - cue['time']) / cue['fade']))
 		for k, v in cur.items():
 			out[k] = _blend(k, prev.get(k), v, x)

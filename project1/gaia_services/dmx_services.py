@@ -76,7 +76,10 @@ automation lanes, internal clock) as 'show_*':
             off = live), show_rewind (action)
   params    show_time / show_length (float s), show_status (r),
             show_scene_recall (enum = scene names; set = apply now),
-            show_scene_capture (w: name -> scene from the live values),
+            show_scene_capture (w: name or {name, label?, categories?}
+            -> scene from the live values), show_scene_update (w: {name,
+            label?, categories?}), show_scene_rename (w: {name, to,
+            label?}), show_scene_delete (w: name; refused if cues use it)
             show_scenes (r json), show_cues / show_keys (rw json, set =
             replace all; cue {time, scene, fade?, label?}, key {lane, time,
             value, interp?})
@@ -580,7 +583,50 @@ def _register_show(agent):
 		sl().recall(str(v))
 
 	agent.register_param('show_scene_recall', get=lambda: None, set=recall)
-	agent.register_param('show_scene_capture', get=lambda: None, set=lambda v: sl().capture(str(v)))
+	def scenes_changed(out=None):
+		# scene list / categories changed: show_scene_recall options, show.scenes
+		run("op('%s').module.publish_matrix()" % me.path, delayFrames=1)
+		return out
+
+	def scene_arg(v):
+		"""A scene command: plain name, or JSON {name, ...}."""
+		if isinstance(v, (bytes, str)) and not str(v).strip().startswith('{'):
+			return {'name': str(v).strip()}
+		d = dict(_json_arg(v))
+		if not str(d.get('name') or '').strip():
+			raise ValueError('manca name')
+		return d
+
+	def capture(v):
+		d = scene_arg(v)
+		scenes_changed(sl().capture(d['name'], d.get('label'), d.get('categories')))
+
+	def update(v):
+		d = scene_arg(v)
+		flags = {}
+		if 'categories' in d:
+			bad = [c for c in d['categories'] if c not in sl().CATEGORIES]
+			if bad:
+				raise ValueError('categorie sconosciute %r' % bad)
+			flags = {c: c in d['categories'] for c in sl().CATEGORIES}
+		if d.get('label'):
+			flags['label'] = d['label']
+		sl().set_scene_flags(d['name'], **flags)
+		scenes_changed()
+
+	def rename(v):
+		d = scene_arg(v)
+		scenes_changed(sl().rename_scene(d['name'], d.get('to'), d.get('label')))
+
+	def delete(v):
+		scenes_changed(sl().delete_scene(scene_arg(v)['name']))
+
+	# capture: name, or {name, label?, categories?} (only those categories;
+	# a new scene enables just them, an existing one keeps its flags)
+	agent.register_param('show_scene_capture', get=lambda: None, set=capture)
+	agent.register_param('show_scene_update', get=lambda: None, set=update)
+	agent.register_param('show_scene_rename', get=lambda: None, set=rename)
+	agent.register_param('show_scene_delete', get=lambda: None, set=delete)
 	agent.register_param('show_scenes', get=lambda: sl().scenes())
 	# catalog with stable id (= name) / index (= /dmx/scene i), categories,
 	# per-head state, cues using it; active = last scene applied (recall/cue)
@@ -604,7 +650,10 @@ def _build_show_matrix():
 		'show_length': {'kind': 'param', 'type': 'float', 'range': _numeric_range(s.par.Length), 'default': float(s.par.Length.default)},
 		'show_status': {'kind': 'param', 'type': 'str', 'access': 'r'},
 		'show_scene_recall': {'kind': 'param', 'type': 'enum', 'options': sl.scene_names(), 'access': 'w'},
-		'show_scene_capture': {'kind': 'param', 'type': 'str', 'access': 'w'},
+		'show_scene_capture': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'show_scene_update': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'show_scene_rename': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'show_scene_delete': {'kind': 'param', 'type': 'str', 'access': 'w'},
 		'show_scenes': {'kind': 'param', 'type': 'json', 'access': 'r'},
 		'show_scene_catalog': {'kind': 'param', 'type': 'json', 'access': 'r'},
 		'show_active_scene': {'kind': 'param', 'type': 'json', 'access': 'r'},
@@ -616,6 +665,7 @@ def _build_show_matrix():
 	services = {name: {'kind': 'service', 'type': kind} for name, kind, _ in SHOW_SERVICES}
 	services['show_rewind'] = {'kind': 'service', 'type': 'action'}
 	return {'params': params, 'services': services, 'scenes': sl.scenes(),
+		'categories': [{'id': c, 'label': sl.CATEGORY_LABELS.get(c, c)} for c in sl.CATEGORIES],
 		'lanes': sl.automatable(), 'interps': list(sl.INTERPS)}
 
 
