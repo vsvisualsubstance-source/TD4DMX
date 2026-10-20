@@ -10,10 +10,15 @@ Tables (siblings, file-synced tsv):
 
 Categories of a scene snapshot (pars read from the live COMPs, so pars added
 to those pages later are captured automatically):
-  rigs    rig_a / rig_b 'DMX Reactive' page (palette, dimmer, colour, kick)
+  rigs    every rig of the patch (rig_groups(): dmx_patch groups table, target
+          = group name): chase rigs (rig_a, rig_b, ledbar...) their 'DMX
+          Reactive' page (palette, dimmer, colour, kick), level rigs (haze,
+          blinder...) Level / Fan
   heads   moving_heads 'Position' + 'Look' pages, ptz Mode / Padu / Padv
-  groups  Patchenable of rig_a / rig_b / heads, dmx_patch Blackout
-  audio   Audiobus of rig_a / rig_b (which audio source drives the rig)
+  groups  Patchenable of every rig and of heads, dmx_patch Blackout
+  audio   Audiobus of every chase rig (which audio source drives the rig)
+  A rig created later is captured from the next capture on; scenes saved
+  before it leave it alone (they have no rows for it).
 
 Per-head state (category heads; see GAIA_INTERFACE "TD/Win-PD, 25"): besides
 the global look of moving_heads, a scene stores every head of the
@@ -95,8 +100,21 @@ def _show():
 
 
 def target_comp(target):
-	name = TARGETS.get(target)
+	name = TARGETS.get(target) or dict((g, c) for g, c, k in rig_groups()).get(target)
 	return _show().parent().op(name) if name else None
+
+
+@_memo
+def rig_groups():
+	"""[(group, comp name, kind)] of every rig of the patch (dmx_patch groups
+	table, kind chase | level): rig_a / rig_b, ledbar, haze, blinder and any
+	group created later. The group name is the scene target. Heads are
+	not here (category heads)."""
+	fx = _show().parent().op(TARGETS['patch'] + '/fixture_logic')
+	if fx is None:
+		return [('rig_a', TARGETS['rig_a'], 'chase'), ('rig_b', TARGETS['rig_b'], 'chase')]
+	return [(g['group'], g['comp'], g['kind']) for g in fx.module.groups()
+		if g['kind'] in ('chase', 'level') and g['comp']]
 
 
 def _table(name, cols):
@@ -151,17 +169,23 @@ def _page_pars(target, pages, exclude=()):
 
 @_memo
 def category_pars(cat):
+	rigs = rig_groups()
 	if cat == 'rigs':
-		return _page_pars('rig_a', ('DMX Reactive',), ('Audiobus',)) + \
-			_page_pars('rig_b', ('DMX Reactive',), ('Audiobus',))
+		out = []
+		for g, c, kind in rigs:
+			if kind == 'chase':
+				out += _page_pars(g, ('DMX Reactive',), ('Audiobus',))
+			else:
+				out += [(g, n) for n in ('Level', 'Fan') if _par(g, n) is not None]
+		return out
 	if cat == 'heads':
 		return _page_pars('heads', ('Position', 'Look')) + \
 			[('ptz', n) for n in ('Mode', 'Padu', 'Padv') if target_comp('ptz') is not None]
 	if cat == 'groups':
-		return [('rig_a', 'Patchenable'), ('rig_b', 'Patchenable'),
-			('heads', 'Patchenable'), ('patch', 'Blackout')]
+		return [(g, 'Patchenable') for g, c, k in rigs] + \
+			[('heads', 'Patchenable'), ('patch', 'Blackout')]
 	if cat == 'audio':
-		return [('rig_a', 'Audiobus'), ('rig_b', 'Audiobus')]
+		return [(g, 'Audiobus') for g, c, k in rigs if k == 'chase']
 	return []
 
 
@@ -754,14 +778,19 @@ def scene_catalog():
 
 def scene_preview(name):
 	"""The colours a scene sets, for UIs to paint scene buttons and cues:
-	{'rig_a': {'palette', 'colors': [[r, g, b] 0-1]}, 'rig_b': ...,
+	{<chase rig>: {'palette', 'colors': [[r, g, b] 0-1]} (rig_a, rig_b,
+	ledbar...), <level rig>: {'level'} (haze, blinder),
 	'heads': [{'uid', 'name', 'rgb', 'source', 'dimmer'}]} -- only what the
 	scene's enabled categories hold. Head rgb = the beam colour before the
 	dimmer (dmx_patch/catalog_logic.beam_color), as dmx_output reports it.
 	GAIA_INTERFACE "OPS, 2" / "TD/Win-PD, 37"."""
 	v = scene_values(name)
 	out = {}
-	for t in ('rig_a', 'rig_b'):
+	for t, c, kind in rig_groups():
+		if kind == 'level':
+			if (t, 'Level') in v:
+				out[t] = {'level': round(float(v[(t, 'Level')]), 3)}
+			continue
 		pal = v.get((t, 'Palette'))
 		comp = target_comp(t)
 		if pal is None or comp is None:

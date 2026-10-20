@@ -228,6 +228,7 @@ def add_group(group, kind='chase', profile=None, port_id=None, count=1, start=No
 			'profiles': 'fixture_profiles' if kind == 'chase' else 'level_profiles',
 			'alias': alias, 'kind': kind, 'label': str(label or '').strip(), 'source': source}
 		t.appendRow([row.get(t[0, c].val, '') for c in range(t.numCols)])
+		_show_rigs_changed()
 		if profile is None:
 			profile = DEFAULT_LEVEL_PROFILE.get(group, fl.default_profile(group)) \
 				if kind == 'level' else fl.default_profile(group)
@@ -262,6 +263,15 @@ def _drop(group, name):
 	comp = _home().op(name)
 	if comp is not None:
 		comp.destroy()
+	_show_rigs_changed()
+
+
+def _show_rigs_changed():
+	"""The rigs changed: the show (scenes, lanes) caches the rig list
+	(show_logic.rig_groups) -- drop it, without forcing a re-apply."""
+	s = _home().op('show/show_logic')
+	if s is not None:
+		s.module.invalidate(force=False)
 
 
 def remove_group(group):
