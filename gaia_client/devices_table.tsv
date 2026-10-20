@@ -76,12 +76,12 @@ td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x10_b	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x11_a	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x11_b	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x12_a	inactive	False
-td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x12_b	active	False
+td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x12_b	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x13_a	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x13_b	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x14_a	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x14_b	inactive	False
-td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x15_a	active	False
+td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x15_a	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x15_b	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x16_a	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x16_b	inactive	False
@@ -110,7 +110,7 @@ td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x27_b	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x28_a	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x28_b	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x29_a	inactive	False
-td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x29_b	inactive	False
+td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x29_b	active	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x30_a	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x30_b	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x31_a	inactive	False
@@ -129,7 +129,7 @@ td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x37_a	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x37_b	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x38_a	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x38_b	inactive	False
-td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x39_a	inactive	False
+td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x39_a	active	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x39_b	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x40_a	inactive	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	load_x40_b	inactive	False
