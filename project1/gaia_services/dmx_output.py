@@ -25,7 +25,13 @@ Topic gaia/devices/<device_id>/dmx_output, retained, QoS 0:
      unknown (a wheel whose slots have no colour: white) | null = no
      light (haze: rgb_out null, intensity = output),
      heads only: "color_wheel", "gobo", "shutter" 0-255, "pan", "tilt"
-     in degrees and "zoom", "focus" 0-1 from the head programmer}]}
+     in degrees and "zoom", "focus" 0-1 from the head programmer,
+     chase rigs only: "audio" (full | off | bass | mid | high | kick) and
+     "audio_gain" 0..2, the light's own audio settings (patch)}],
+   "rigs": {<chase group>: {"level" 0-1 (the rig's audio level, normalised
+     on the track), "kicks" (kick counter: +1 per detected kick, compare
+     with the previous message), "amount" 0-1 (Audio Amount),
+     "kick_enable"}}}   ("TD/Win-PD, 45")
 A fixture that is not sent has every output field null.
 
 Published when an output value changes, at most Outputrate times per second,
@@ -52,7 +58,7 @@ def _round(v):
 	return None if v is None else int(round(v))
 
 
-def _fixture(r, rep, fl, ub, uids, heads, models):
+def _fixture(r, rep, fl, ub, uids, heads, models, audio):
 	g = rep[r, 'group'].val
 	prof = rep[r, 'profile'].val
 	status = rep[r, 'status'].val
@@ -67,6 +73,9 @@ def _fixture(r, rep, fl, ub, uids, heads, models):
 		'intensity': None, 'rgb_out': None}
 	if g == 'heads':
 		d.update(color_wheel=None, gobo=None, shutter=None, pan=None, tilt=None)
+	a = audio.get(fid)
+	if a is not None:
+		d['audio'], d['audio_gain'] = a
 	chans = fl.profile_channels(g, prof) or []
 	ch = None
 	if d['sent']:
@@ -132,12 +141,30 @@ def snapshot():
 			if key is not None:
 				heads[f['id']] = hp.effective(key)
 	models = {m['model']: m for m in _cat().models()}
-	fixtures = [_fixture(r, rep, fl, ub, uids, heads, models) for r in range(1, rep.numRows)]
+	chase = [g for g in fl.groups() if g.get('kind') == 'chase' and g['comp']]
+	chase_names = {g['group'] for g in chase}
+	audio = {f['id']: (f['audio'] or 'full', 1.0 if f['audio_gain'] == '' else f['audio_gain'])
+		for f in fl.rows() if f['group'] in chase_names}
+	fixtures = [_fixture(r, rep, fl, ub, uids, heads, models, audio) for r in range(1, rep.numRows)]
 	pp = patch.par
 	sl = home.op('show/show_logic')
 	return {'v': 1, 'master': round(float(pp.Master.eval()), 3), 'blackout': bool(pp.Blackout.eval()),
 		'strobe': bool(pp.Strobe.eval()), 'scene': sl.module.active_scene() if sl is not None else None,
-		'fixtures': fixtures}
+		'fixtures': fixtures, 'rigs': {g['group']: _rig_meter(home.op(g['comp'])) for g in chase}}
+
+
+def _rig_meter(comp):
+	"""Live audio of a chase rig, from its generator's debug channels."""
+	gen = comp.op('dmx_generator') if comp is not None else None
+	if gen is None:
+		return None
+	ch = lambda n: gen[n][0] if gen[n] is not None else None
+	lvl, kicks = ch('debug_level_norm'), ch('debug_kicks')
+	p = comp.par
+	return {'level': None if lvl is None else round(float(lvl), 2),
+		'kicks': None if kicks is None else int(kicks),
+		'amount': round(float(p.Audioamount.eval()), 3) if hasattr(p, 'Audioamount') else 1.0,
+		'kick_enable': bool(p.Kickenable.eval()) if hasattr(p, 'Kickenable') else None}
 
 
 def tick():

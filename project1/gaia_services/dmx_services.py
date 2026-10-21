@@ -218,6 +218,7 @@ FLOAT_PARAMS = [
 	('dmx_kick_decay', 'Kickdecay'),
 	('dmx_kick_cooldown', 'Kickcooldown'),
 	('dmx_kick_smooth', 'Kicksmooth'),
+	('dmx_audio_amount', 'Audioamount'),   # 0 = steady at Maxdimmer, 1 = full audio ("TD/Win-PD, 45")
 ]
 
 INT_PARAMS = [

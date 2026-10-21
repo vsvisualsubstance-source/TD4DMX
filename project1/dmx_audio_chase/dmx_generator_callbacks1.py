@@ -128,6 +128,9 @@ def onCook(scriptOp):
 	KICK_COOLDOWN = get_par(p, 'Kickcooldown', 0.22)
 	KICK_SMOOTH = max(0.001, min(1.0, get_par(p, 'Kicksmooth', 0.3) * GLOBAL_SMOOTH))
 	DIMMER_GAMMA = get_par(p, 'Dimmergamma', 2.2)
+	# quanto il rig segue la musica: 1 = come sempre, 0 = fermo (Maxdimmer,
+	# colore alla Color Phase), in mezzo un mix (GAIA_INTERFACE "TD/Win-PD, 45")
+	AUDIO_AMOUNT = max(0.0, min(1.0, get_par(p, 'Audioamount', 1.0)))
 
 	def band_level(chop):
 		if chop is None or chop.numChans == 0:
@@ -238,6 +241,7 @@ def onCook(scriptOp):
 	if KICK_ENABLE and bass_delta > KICK_THRESH * rng and (now - st['last_kick_time']) > KICK_COOLDOWN and st['punch'] < 0.3:
 		st['punch'] = 1.0
 		st['last_kick_time'] = now
+		st['kicks'] = st.get('kicks', 0) + 1   # contatore per la misura dal vivo (dmx_output)
 	else:
 		st['punch'] *= KICK_DECAY
 
@@ -277,12 +281,16 @@ def onCook(scriptOp):
 		mode, gain = UNIT_AUDIO[i] if i < len(UNIT_AUDIO) else ('full', 1.0)
 		if mode not in ('full', 'off', 'bass', 'mid', 'high', 'kick'):
 			mode = 'full'
-		dimmer_val = unit_dimmer(mode, gain)
+		dimmer_val = MAX_DIMMER + (unit_dimmer(mode, gain) - MAX_DIMMER) * AUDIO_AMOUNT
 		# --- fase tra le barre: ognuna legge un punto diverso della palette,
 		# spostato di i*BAR_PHASE rispetto alle altre (0 = tutte identiche).
 		# Una luce 'off' non segue l'audio neanche nel colore: sta ferma
-		# alla fase del rig ---------------------------------------------------
-		bar_t = ((COLOR_PHASE if mode == 'off' else color_t) + i * BAR_PHASE) % 1.0
+		# alla fase del rig; Audio Amount < 1 la avvicina alla fase (per la
+		# via piu' corta sul cerchio della palette) ----------------------------
+		base_t = COLOR_PHASE if mode == 'off' else color_t
+		if AUDIO_AMOUNT < 1.0:
+			base_t = COLOR_PHASE + ((base_t - COLOR_PHASE + 0.5) % 1.0 - 0.5) * AUDIO_AMOUNT
+		bar_t = (base_t + i * BAR_PHASE) % 1.0
 		_own = UNIT_PALETTES[i] if i < len(UNIT_PALETTES) else ''
 		_pal, _stepped = _resolved.get(_own, (PALETTE, STEPPED))
 		r_raw, g_raw, b_raw = palette_color(bar_t, _pal, stepped=_stepped)
@@ -330,7 +338,10 @@ def onCook(scriptOp):
 	                   ('debug_punch_smooth', st['punch_smooth']),
 	                   ('debug_bass_norm', band_norm['bass']),
 	                   ('debug_mid_norm', band_norm['mid']),
-	                   ('debug_high_norm', band_norm['high'])]:
+	                   ('debug_high_norm', band_norm['high']),
+	                   ('debug_level_norm', level_norm),
+	                   ('debug_kicks', st.get('kicks', 0)),
+	                   ('debug_amount', AUDIO_AMOUNT)]:
 		c = scriptOp.appendChan(name)
 		c[0] = val
 
