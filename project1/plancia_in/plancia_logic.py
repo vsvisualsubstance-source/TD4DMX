@@ -167,10 +167,15 @@ def handle(address, args):
 	if address == '/dmx/chase':
 		return 'chase %d non implementato (teste/chase rinviati)' % int(_f(args))
 	if address.startswith('/mh/'):
-		msg = _home().op('moving_heads/head_programmer').module.on_osc(address, args)
-		if address.startswith(LIST_CHANGES):
-			_lists_changed()
-		return msg
+		hp = _home().op('moving_heads/head_programmer').module
+		seq = (hp.last_result() or {}).get('seq')
+		try:
+			return hp.on_osc(address, args)
+		finally:
+			if address.startswith(LIST_CHANGES):
+				_heads_changed('heads_lists_changed')
+			elif (hp.last_result() or {}).get('seq') != seq:
+				_heads_changed('heads_result_changed')
 	if address.startswith('/led/'):
 		return None
 	return 'indirizzo sconosciuto %s' % address
@@ -180,15 +185,16 @@ LIST_CHANGES = ('/mh/preset/store', '/mh/preset/remove', '/mh/preset/rename',
 	'/mh/position/store', '/mh/position/remove', '/mh/position/rename')
 
 
-def _lists_changed():
-	"""A preset/position list changed from OSC: republish it to Gaia now
-	(status + dmx_matrix) instead of at the next 30 s heartbeat."""
+def _heads_changed(fn):
+	"""An /mh/* command changed what Gaia shows: republish now instead of at
+	the next 30 s heartbeat -- heads_lists_changed (preset/position list:
+	status + dmx_matrix) or heads_result_changed (heads_last_result only)."""
 	dat = _home().op('gaia_services/dmx_services')
 	if dat is not None:
 		try:
-			dat.module.heads_lists_changed()
+			getattr(dat.module, fn)()
 		except Exception as e:
-			debug('heads_lists_changed: %s' % e)
+			debug('%s: %s' % (fn, e))
 
 
 FEEDBACK_TIME_S = 0.1

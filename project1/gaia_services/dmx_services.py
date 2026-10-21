@@ -1021,6 +1021,25 @@ def heads_lists_changed():
 	publish_matrix()
 
 
+_result_pub = {'pending': False}
+
+
+def heads_result_changed():
+	"""A Plancia OSC /mh/* command recorded a new result: republish the
+	status on the next frame, so heads_last_result follows the command
+	instead of the 30 s heartbeat (OPS 10). Commands in the same frame
+	share one publish."""
+	if _result_pub['pending']:
+		return
+	_result_pub['pending'] = True
+	run("op('%s').module._publish_heads_result()" % me.path, delayFrames=1)
+
+
+def _publish_heads_result():
+	_result_pub['pending'] = False
+	op.Gaia.op('gaia_device_agent').module._publish_status()
+
+
 def _build_patch_matrix():
 	"""Services + the ports found by the last scan (read-only info for UIs)."""
 	ports = _patch().op('ports')
