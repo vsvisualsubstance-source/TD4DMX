@@ -1,4 +1,9 @@
 id	time	scene	fade	label
-1	0.0	sc1	10.0	t1
-2	10.1	sc1	0.0	
-3	23.4		3.0	sc1
+1	0.0	base	0.0	Base
+2	15.0	colore_rosso	3.0	Rosso
+3	20.0	teste_pubblico	2.0	Teste al pubblico
+4	30.0	teste_cielo	8.0	Teste al cielo
+5	40.0	teste_pubblico	8.0	Teste al pubblico
+6	50.0	strobo_on	0.0	Strobo
+7	54.0	strobo_off	0.0	Strobo off
+8	60.0	colore_blu	4.0	Blu
