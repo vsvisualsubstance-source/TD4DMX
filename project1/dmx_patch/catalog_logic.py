@@ -23,6 +23,11 @@ Plancia (GAIA_INTERFACE "TD/Win-PD, 19"). Two sibling tables:
                   white. The colour of a model without colour mixing
                   (dimmer / white only), and the light that CMY and the
                   wheel filter
+    lamp          heads only, discharge lamps: "<channel> on=<v> off=<v>
+                  hold=<s>" (channel = one of its roles, values DMX, hold
+                  2..30 s, default 5). head_programmer.lamp() holds on/off
+                  on that channel for hold seconds, then the channel goes
+                  back to its default (GAIA_INTERFACE "TD/Win-PD, 43")
   Derived, not stored: color_mix = how the model makes colour, from its
   roles: rgb (red green blue [+ white amber lime uv]), cmy (cyan magenta
   yellow), wheel (color), lamp (none of them: the beam colour), [] = no
@@ -59,7 +64,7 @@ gaia_services/dmx_services (dmx_models, dmx_types, ...).
 import re
 
 MODEL_COLUMNS = ['model', 'kind', 'channels', 'manufacturer', 'source',
-	'pan_range', 'tilt_range', 'defaults', 'notes', 'gobos', 'colors', 'beam']
+	'pan_range', 'tilt_range', 'defaults', 'notes', 'gobos', 'colors', 'beam', 'lamp']
 TYPE_COLUMNS = ['type', 'label', 'group', 'kind', 'model', 'source']
 
 KINDS = ('chase', 'level', 'heads')
@@ -216,6 +221,10 @@ def _model_dict(d):
 		for s in out['colors']:
 			if 'rgb' not in s:
 				s['rgb'] = named_rgb(s['name'])
+		try:
+			out['lamp'] = parse_lamp(d.get('lamp', ''), chans)
+		except ValueError:
+			out['lamp'] = None   # hand-edited row: no lamp until fixed
 	out['color_mix'] = color_mix(chans, out.get('colors'))
 	return out
 
@@ -277,6 +286,48 @@ def parse_slots(text):
 			s['rgb'] = rgb
 		out.append(s)
 	return out
+
+
+LAMP_HOLD_S = 5.0
+
+
+def parse_lamp(v, chans=None):
+	"""Lamp command of a discharge head, {channel, on, off, hold}, from a
+	dict or "control on=250 off=11 hold=5"; None when blank. chans = the
+	model's roles: the channel must be one of them."""
+	if v in (None, '') or (isinstance(v, str) and not v.strip()):
+		return None
+	if isinstance(v, dict):
+		d = {str(k).lower(): x for k, x in v.items()}
+	else:
+		d = {}
+		for tok in str(v).split():
+			if '=' in tok:
+				k, x = tok.split('=', 1)
+				d[k.strip().lower()] = x
+			else:
+				d['channel'] = tok
+	ch = str(d.get('channel') or '').strip().lower()
+	if not ch:
+		raise ValueError('lampada: manca il canale (es. "control on=250 off=11 hold=5")')
+	if chans is not None and ch not in chans:
+		raise ValueError('lampada: il canale %r non e\' tra i canali del modello' % ch)
+	out = {'channel': ch}
+	for k in ('on', 'off'):
+		n = _num(d.get(k), None)
+		if n is None or not 0 <= n <= 255:
+			raise ValueError('lampada: %s deve essere un valore DMX 0..255' % k)
+		out[k] = int(n)
+	hold = _num(d.get('hold', LAMP_HOLD_S), None)
+	if hold is None or not 2 <= hold <= 30:
+		raise ValueError('lampada: hold in secondi, 2..30')
+	out['hold'] = hold
+	return out
+
+
+def _lamp_text(lamp):
+	return '%s on=%d off=%d hold=%s' % (lamp['channel'], lamp['on'], lamp['off'],
+		_fmt(lamp['hold'])) if lamp else ''
 
 
 def _slots_text(v):
@@ -430,6 +481,8 @@ def _clean_model(raw, source, cur=None):
 	for k in ('pan_range', 'tilt_range'):
 		v = d.get(k, cur.get(k, ''))
 		row[k] = _fmt(_num(v, 0.0)) if str(v).strip() else ''
+	lamp = d.get('lamp', cur.get('lamp', ''))
+	row['lamp'] = _lamp_text(parse_lamp(lamp, chans)) if kind == 'heads' else ''
 	src = str(d.get('source') or cur.get('source') or source)
 	row['source'] = src if src in SOURCES else source
 	return row
@@ -461,21 +514,94 @@ def add_model(raw, source='manual'):
 
 def update_model(raw, source='manual'):
 	"""Change a model (named by 'model'); missing fields stay. The kind of a
-	model in use cannot change. Returns its name."""
-	name = str(dict(raw).get('model') or dict(raw).get('name') or '').strip()
+	model in use cannot change. A new channel count that makes the model's
+	fixtures overlap other fixtures follows raw['on_conflict'] (GAIA_INTERFACE
+	"TD/Win-PD, 43"): reject (default) = refused, naming the overlaps; auto =
+	written, and those fixtures move to the first free address
+	(conflict_logic.suggest, same port first); accept = written as is (the
+	patch report flags the overlaps). Returns its name."""
+	raw = dict(raw)
+	on_conflict = str(raw.pop('on_conflict', 'reject') or 'reject').strip().lower()
+	if on_conflict not in ('accept', 'reject', 'auto'):
+		raise ValueError('on_conflict %r non valido (accept, reject, auto)' % on_conflict)
+	name = str(raw.get('model') or raw.get('name') or '').strip()
 	t = models_table()
 	r = _find(t, name)
 	if r is None:
 		raise ValueError('modello %r non trovato' % name)
-	cur = {c: t[r, c].val for c in MODEL_COLUMNS}
+	cur = {c: (t[r, c].val if t[r, c] is not None else '') for c in MODEL_COLUMNS}
 	row = _clean_model(raw, source, cur)
 	if row['kind'] != cur['kind']:
 		users = model_users(name)
 		if users:
 			raise ValueError('modello %s in uso (%s): il kind non cambia' % (name, ', '.join(users)))
+	n_old, n_new = len(cur['channels'].split()), len(row['channels'].split())
+	clashes = _new_overlaps(name, n_new) if n_new != n_old else []
+	if clashes and on_conflict == 'reject':
+		raise ValueError('modello %s: %d canali invece di %d, le sue fixture si sovrappongono: %s '
+			'(on_conflict "auto" le sposta, "accept" scrive lo stesso)' % (name, n_new, n_old,
+			', '.join('%s %d-%d con %s %d-%d' % (a['name'], a['start'], a['end'], b['name'], b['start'], b['end'])
+				for a, b in clashes)))
 	_put(t, MODEL_COLUMNS, row, r)
 	sync_profiles()
+	if clashes and on_conflict == 'auto':
+		_move_clashing({e['id'] for pair in clashes for e in pair if e['profile'] == name})
 	return name
+
+
+def _cl():
+	return _patch().op('conflict_logic').module
+
+
+def _new_overlaps(name, n):
+	"""Overlaps the fixtures of model `name` would have with n channels and
+	do not have now: [(fixture entry, other entry)], each pair once."""
+	cl = _cl()
+	occ = cl.occupancy()
+	grown = [dict(e, end=e['start'] + n - 1, footprint=n) if e['profile'] == name else e for e in occ]
+
+	def pairs(entries):
+		out = set()
+		for a in entries:
+			if a['profile'] != name:
+				continue
+			for b in entries:
+				if b['id'] != a['id'] and b['port_id'] == a['port_id'] and \
+						cl._overlaps(a['start'], a['end'], b) and (b['id'], a['id']) not in out:
+					out.add((a['id'], b['id']))
+		return out
+
+	by_id = {e['id']: e for e in grown}
+	return [(by_id[a], by_id[b]) for a, b in sorted(pairs(grown) - pairs(occ))]
+
+
+def _move_clashing(ids):
+	"""Move each fixture in ids that still overlaps another to its first
+	free address (from its own address on, same port first), in address
+	order: one that overlaps only LATER fixtures of ids stays, those move
+	(a row of grown heads keeps its order). Returns the moves [{id, name,
+	from, to}]."""
+	cl, fl = _cl(), _fl()
+	moves = []
+	start = {e['id']: (e['port_id'], e['start']) for e in cl.occupancy() if e['id'] in ids}
+	order = sorted(start, key=lambda i: start[i])
+	for i, fid in enumerate(order):
+		e = next((x for x in cl.occupancy() if x['id'] == fid), None)
+		if e is None:
+			continue
+		hits = [o for o in cl.occupancy((fid,))
+			if o['port_id'] == e['port_id'] and cl._overlaps(e['start'], e['end'], o)]
+		if all(o['id'] in ids and o['start'] > e['start'] for o in hits):
+			continue
+		# the later ones of ids move after this one: their place is not taken
+		s = cl.suggest(e['footprint'], e['port_id'], e['start'], tuple(order[i:]))
+		if s is None:
+			debug('modello: nessuno spazio libero per %s (%d canali)' % (e['name'], e['footprint']))
+			continue
+		fl.update_fixture(fid, port_id=s['port_id'], address=s['address'])
+		moves.append({'id': fid, 'name': e['name'], 'from': [e['port_id'], e['start']],
+			'to': [s['port_id'], s['address']]})
+	return moves
 
 
 def set_model(raw, source='manual'):

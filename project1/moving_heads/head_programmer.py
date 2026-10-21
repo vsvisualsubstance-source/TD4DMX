@@ -29,6 +29,9 @@ across re-patching, unlike the unit number.
   discrete command records its outcome (record / last_result: Gaia
   heads_last_result, OSC feedback /mh/result) -- GAIA_INTERFACE
   "TD/Win-PD, 27".
+  Lamp (discharge heads): lamp('on'|'off') holds the model's lamp value
+  on its channel for its hold time (catalog 'lamp'), OSC /mh/lamp 1|0,
+  Gaia heads_lamp -- GAIA_INTERFACE "TD/Win-PD, 43".
   head_selections selection, label, heads (space-separated keys): named
                   sets ("sub-groups" of the heads: mh_sx, mh_fronte ...),
                   defined by Plancia (heads_selections) or in TD.
@@ -658,7 +661,8 @@ def heads_list():
 	for h in heads():
 		e = effective(h['key'])
 		out.append(dict({k: h[k] for k in ('unit', 'key', 'uid', 'id', 'name', 'profile')},
-			selected=h['key'] in sel, **{k: (round(v, 3) if isinstance(v, float) else v) for k, v in e.items()}))
+			selected=h['key'] in sel, lamp=(_lamp.get(h['key']) or {}).get('action'),
+			**{k: (round(v, 3) if isinstance(v, float) else v) for k, v in e.items()}))
 	return out
 
 
@@ -687,6 +691,58 @@ def strobe_open():
 	patch = _comp().parent().op('dmx_patch')
 	rate = max(0.5, float(patch.par.Stroberate.eval())) if patch is not None else 8.0
 	return (absTime.seconds * rate) % 1.0 < 0.22
+
+
+# ---------------------------------------------------------------- lamp
+
+# key -> {action, channel, value, until (absTime s)}: the last lamp command
+# per head (runtime; heads_list 'lamp' = that command, not a lamp sensor)
+_lamp = {}
+
+LAMP_ACTIONS = {'on': 'on', '1': 'on', 'true': 'on', 'off': 'off', '0': 'off', 'false': 'off'}
+
+
+def lamp(action, keys=None):
+	"""Lamp on/off of discharge heads (GAIA_INTERFACE "TD/Win-PD, 43"): the
+	model's 'lamp' (catalog: channel, on, off, hold) is held on its channel
+	for hold seconds, then the channel goes back to its default. keys None =
+	every head. Heads whose model has no lamp are skipped. Returns a status
+	line."""
+	a = LAMP_ACTIONS.get(str(action).strip().lower())
+	if a is None:
+		raise ValueError('lampada: %r non valido (on, off)' % action)
+	want = set(keys) if keys is not None else None
+	now = absTime.seconds
+	done, skipped, hold = [], [], 0.0
+	for h in heads():
+		if want is not None and h['key'] not in want:
+			continue
+		lp = (_cat().model(h['profile']) or {}).get('lamp')
+		if not lp:
+			skipped.append(h['name'])
+			continue
+		_lamp[h['key']] = {'action': a, 'channel': lp['channel'], 'value': lp[a], 'until': now + lp['hold']}
+		done.append(h['key'])
+		hold = max(hold, lp['hold'])
+	if not done:
+		raise ValueError('lampada: nessuna testa con la lampada nel modello (campo lamp del catalogo)')
+	return 'lampada %s su %d teste per %s s%s' % (a, len(done), round(hold, 1),
+		' (senza lampada: %s)' % ', '.join(skipped) if skipped else '')
+
+
+def lamp_values(unit_keys=None):
+	"""{unit: (channel, value)} of the heads inside a lamp hold, for
+	heads_dmx (empty dict at once when no command is pending)."""
+	if not _lamp:
+		return {}
+	now = absTime.seconds
+	ku = unit_keys if unit_keys is not None else keys_by_unit()
+	out = {}
+	for u, k in ku.items():
+		c = _lamp.get(k)
+		if c is not None and now < c['until']:
+			out[u] = (c['channel'], c['value'])
+	return out
 
 
 # ---------------------------------------------------------------- OSC /mh/*
@@ -749,6 +805,9 @@ def _on_osc(a, address, args):
 		else:
 			return 'select/%s sconosciuto' % what
 		return 'teste selezionate: %d' % len(ks)
+	# lamp: every head with a lamp, no selection needed (/mh/lamp 1|0)
+	if a == 'lamp':
+		return lamp('on' if v >= 0.5 else 'off')
 	# list management: no selection needed
 	if a == 'preset/remove':
 		return 'preset cancellato: %s' % remove_preset(_ref(args, v))

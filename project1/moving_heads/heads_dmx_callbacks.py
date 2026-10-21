@@ -18,7 +18,9 @@ tilt / look (blank fields = global), follow = pan/tilt from its PTZ target
 whatever Control says; strobe gates its shutter at dmx_patch Stroberate.
 
 Attributes not driven here use the profile 'defaults' (e.g. shutter=255,
-the open value -- check the fixture manual) or 0.
+the open value -- check the fixture manual) or 0. A lamp command
+(head_programmer.lamp) holds the model's lamp value on its channel for
+its hold time.
 """
 
 
@@ -107,11 +109,13 @@ def onCook(scriptOp):
 	shutter_open = bool(p.Shutteropen.eval())
 	# per-head programmer (head_programmer: Plancia /mh/*, Gaia heads_*):
 	# a head with a state row overrides the global look / position
-	ustate = {}
+	ustate, lamps = {}, {}
 	hp = comp.op('head_programmer')
 	if hp is not None:
 		try:
-			ustate = hp.module.unit_state()
+			ku = hp.module.keys_by_unit()
+			ustate = hp.module.unit_state(ku)
+			lamps = hp.module.lamp_values(ku)
 		except Exception as e:
 			debug('head_programmer.unit_state:', e)
 	follow_src = scriptOp.inputs[0] if len(scriptOp.inputs) > 0 else None
@@ -157,6 +161,9 @@ def onCook(scriptOp):
 		values['tilt_fine'] = tilt16 & 0xFF
 		open_now = shutter_open and (strobe_on if st is not None and st['strobe'] else True)
 		values['shutter'] = defaults.get('shutter', 255.0) if open_now else 0.0
+		lamp = lamps.get(n)
+		if lamp is not None:
+			values[lamp[0]] = lamp[1]
 		seen = {}
 		for attr in chans:
 			k = seen.get(attr, 0)

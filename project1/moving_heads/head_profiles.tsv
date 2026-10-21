@@ -1,7 +1,8 @@
-name	channels	pan_range	tilt_range	defaults	notes
+﻿name	channels	pan_range	tilt_range	defaults	notes
 Generic Spot 9ch	pan tilt color gobo shutter dimmer speed macro reset	540	270	shutter=255 speed=0	generico 8 bit -- verificare sul manuale
 Generic Spot 11ch 16bit	pan pan_fine tilt tilt_fine speed dimmer shutter color gobo macro reset	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
 Generic Wash RGBW 9ch	pan tilt speed dimmer shutter red green blue white	540	270	shutter=255 speed=0	generico 8 bit -- verificare sul manuale
 Generic Wash RGBW 14ch 16bit	pan pan_fine tilt tilt_fine speed dimmer shutter red green blue white macro macro_speed reset	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
 Generic Wash RGBWA+UV 16ch 16bit	pan pan_fine tilt tilt_fine speed dimmer shutter red green blue white amber uv zoom macro reset	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
 Generic Beam 16ch 16bit	pan pan_fine tilt tilt_fine speed dimmer shutter color gobo prism prism_rot focus frost macro reset none	540	270	shutter=255 speed=0	generico 16 bit -- verificare sul manuale
+Coemar iSpot 575 EB 22ch	pan pan_fine tilt tilt_fine speed dimmer shutter iris zoom focus gobo gobo_1_index gobo_1_rotation gobo_2 gobo_2_index gobo_2_rotation prism color color_2 gobo_color_positioning black_out_activation control	540	270	shutter=245 iris=0 gobo_1_rotation=0 prism=0 control=0	DMXControl DDF #100 di S. Hartmann, Mario Lipinski (CC-BY-SA-4.0) — verificare sul manuale · lampada: canale 22 (control) on 250–255, off 11–29

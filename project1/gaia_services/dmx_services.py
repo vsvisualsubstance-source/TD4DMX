@@ -114,7 +114,10 @@ from the models. All JSON:
                           pan_range, tilt_range, defaults}]
   dmx_model_add     w   {model, kind, channels: [roles] | "r g b" | N,
                           footprint?: N, manufacturer?, notes?, ...}
-  dmx_model_update  w   {model, <any field>} (kind fixed while in use)
+  dmx_model_update  w   {model, <any field>, on_conflict?} (kind fixed while
+                          in use; a new channel count that overlaps other
+                          fixtures: reject (default) | auto = move them |
+                          accept, "TD/Win-PD, 43")
   dmx_model_remove  w   model name (refused while in use)
   dmx_types         rw  [{type, label, group, kind, model, source}];
                         set = replace the whole taxonomy. A type naming a
@@ -895,6 +898,7 @@ PROGRAMMER_PARAMS = [
 	('heads_position_remove', 'w'), # index or name
 	('heads_position_rename', 'w'), # {position: index|name, to, label?}
 	('heads_last_result', 'r'),     # {seq, ts, source osc|gaia, action, target, ok, message, heads}
+	('heads_lamp', 'w'),            # on|off or {lamp: on|off, heads?: [refs]} -> every head with a lamp
 ]
 
 
@@ -984,6 +988,13 @@ def _register_programmer(agent):
 	reg('heads_preset_remove', lambda v: hp().remove_preset(arg(v)), True)
 	reg('heads_preset_rename', rename('preset'), True)
 	agent.register_param('heads_last_result', get=lambda: hp().last_result())
+
+	def lamp(v):
+		d = arg(v)
+		d = d if isinstance(d, dict) else {'lamp': d}
+		return hp().lamp(d.get('lamp'), heads_of(d))
+
+	reg('heads_lamp', lamp)
 
 
 _timeline_pub = {'rev': None, 'check': 0.0, 'pub': 0.0}
