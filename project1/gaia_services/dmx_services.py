@@ -64,6 +64,11 @@ mixed profiles per group) as 'dmx_fixture*' params, all JSON values:
   dmx_fixture_update        w   {id, <any field>...}
   dmx_fixture_remove        w   id
   dmx_fixture_auto_address  w   {group, start?, port_id?} -- consecutive
+  dmx_fixture_audio         w   {fixtures?: [id|uid], groups?: [group], audio?:
+                                full|off|bass|mid|high|kick, audio_gain?: 0..2}
+                                -- audio of single lights or whole chase rigs
+                                (also fields of dmx_fixtures / _add / _update;
+                                '' = like the rig). "TD/Win-PD, 44"
   dmx_patch_report          r   [{id,status,port_id,universe,start,end}]
 Invalid values raise -> reported in the status 'last_error'. dmx_matrix gains
 'fixtures' ({params, columns, groups: [{group, profiles: [{name, channels}]}]}).
@@ -397,7 +402,8 @@ def _register_fixtures(agent):
 			return
 		# the new group already holds this fixture: give it the other fields
 		fid = fl().rows(created[0])[0]['id']
-		rest = {k: d[k] for k in ('name', 'x', 'y', 'enabled', 'palette', 'uid', 'unit') if k in d}
+		rest = {k: d[k] for k in ('name', 'x', 'y', 'enabled', 'palette', 'uid', 'unit', 'audio', 'audio_gain')
+			if k in d}
 		try:
 			if rest:
 				fl().update_fixture(fid, **rest)
@@ -445,6 +451,20 @@ def _register_fixtures(agent):
 	agent.register_param('dmx_fixture_remove', get=lambda: None,
 		set=lambda v: fl().remove_fixture(_fixture_ref(v)))
 	agent.register_param('dmx_fixture_auto_address', get=lambda: None, set=auto)
+
+	def audio(v):
+		d = dict(_json_arg(v))
+		refs = d.get('fixtures')
+		refs = [refs] if isinstance(refs, (str, int)) else refs
+		grps = d.get('groups', d.get('group'))
+		grps = [grps] if isinstance(grps, str) else grps
+		if not refs and not grps:
+			raise ValueError('dmx_fixture_audio: servono fixtures e/o groups')
+		if 'audio' not in d and 'audio_gain' not in d:
+			raise ValueError('dmx_fixture_audio: servono audio e/o audio_gain')
+		fl().set_audio(refs, grps, d.get('audio'), d.get('audio_gain'))
+
+	agent.register_param('dmx_fixture_audio', get=lambda: None, set=audio)
 	agent.register_param('dmx_patch_report', get=_patch_report)
 	agent.register_param('dmx_group_add', get=lambda: None, set=group_add)
 	agent.register_param('dmx_group_remove', get=lambda: None, set=group_remove)
@@ -691,6 +711,7 @@ def _build_fixtures_matrix():
 		'dmx_fixture_update': {'kind': 'param', 'type': 'json', 'access': 'w'},
 		'dmx_fixture_remove': {'kind': 'param', 'type': 'int', 'access': 'w'},
 		'dmx_fixture_auto_address': {'kind': 'param', 'type': 'json', 'access': 'w'},
+		'dmx_fixture_audio': {'kind': 'param', 'type': 'json', 'access': 'w'},
 		'dmx_patch_report': {'kind': 'param', 'type': 'json', 'access': 'r'},
 		'dmx_group_add': {'kind': 'param', 'type': 'json', 'access': 'w'},
 		'dmx_group_remove': {'kind': 'param', 'type': 'str', 'access': 'w'},
@@ -706,6 +727,7 @@ def _build_fixtures_matrix():
 		'dmx_patch_optimize_result': {'kind': 'param', 'type': 'json', 'access': 'r'},
 	}
 	return {'params': params, 'columns': list(fl.COLUMNS), 'groups': groups,
+		'audio_modes': list(fl.AUDIO_MODES), 'audio_gain_range': [0.0, fl.AUDIO_GAIN_MAX],
 		'group_kinds': list(_groups().KINDS),
 		'groups_strict': bool(_groups().is_strict()),
 		'bind_targets': list(_groups().PROTECTED),

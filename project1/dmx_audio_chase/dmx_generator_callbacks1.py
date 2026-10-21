@@ -99,6 +99,16 @@ def onCook(scriptOp):
 		if _name:
 			_resolved[_name] = resolve_palette(_name)
 
+	# --- audio per luce (colonne 'audio' / 'audio_gain' della patch,
+	# GAIA_INTERFACE "TD/Win-PD, 44"): full = come il rig, off = fissa,
+	# bass/mid/high = solo quella banda, kick = solo i colpi; gain 0..2 ----
+	UNIT_AUDIO = []
+	if _fx is not None:
+		try:
+			UNIT_AUDIO = _fx.module.unit_audio(_parent)
+		except Exception as e:
+			debug('fixture_logic.unit_audio:', e)
+
 	MIN_DIMMER = get_par(p, 'Mindimmer', 30)
 	MAX_DIMMER = get_par(p, 'Maxdimmer', 255)
 	DIMMER_BOOST = get_par(p, 'Dimmerboost', 1.0)
@@ -235,16 +245,44 @@ def onCook(scriptOp):
 	# l'attacco (niente salto istantaneo a piena vampata) sia la coda -------
 	st['punch_smooth'] += (st['punch'] - st['punch_smooth']) * KICK_SMOOTH
 
-	level_boosted = max(0.0, min(1.0, level_norm * DIMMER_BOOST))  # guadagno extra sul dimmer
-	dimmer_val = MIN_DIMMER + level_boosted * (MAX_DIMMER - MIN_DIMMER)  # AGC-normalizzato + boost
-	dimmer_val = max(MIN_DIMMER, min(MAX_DIMMER, dimmer_val))
-	dimmer_val = min(255.0, dimmer_val + st['punch_smooth'] * KICK_BOOST)
+	# --- normalizzazione per banda: lo stesso AGC del livello totale, una
+	# per banda, per le luci che seguono solo bassi, medi o alti -----------
+	band_norm = {}
+	for _b in ('bass', 'mid', 'high'):
+		_s = st.get(_b + '_s', 0.0)
+		_s += (st[_b + '_env'] - _s) * SMOOTH_FACTOR
+		_lo, _hi = st.get(_b + '_min'), st.get(_b + '_max')
+		if _lo is None or _hi is None or not (math.isfinite(_s) and math.isfinite(_lo) and math.isfinite(_hi)):
+			_s = _s if math.isfinite(_s) else 0.0
+			_lo, _hi = _s, _s + 1e-6
+		_hi = _s if _s > _hi else _hi + (_s - _hi) * AGC_RELEASE
+		_lo = _s if _s < _lo else _lo + (_s - _lo) * AGC_RELEASE
+		st[_b + '_s'], st[_b + '_min'], st[_b + '_max'] = _s, _lo, _hi
+		band_norm[_b] = max(0.0, min(1.0, (_s - _lo) / max(_hi - _lo, MIN_RANGE)))
+
+	def unit_dimmer(mode, gain):
+		"""Dimmer 0-255 di una luce secondo il suo modo audio e guadagno;
+		full con gain 1 = il dimmer del rig di sempre."""
+		if mode == 'off':
+			return MAX_DIMMER
+		lvl = 0.0 if mode == 'kick' else band_norm.get(mode, level_norm)
+		punch = st['punch_smooth'] if mode in ('full', 'kick') else 0.0
+		level_boosted = max(0.0, min(1.0, lvl * DIMMER_BOOST * gain))  # guadagno extra sul dimmer
+		d = MIN_DIMMER + level_boosted * (MAX_DIMMER - MIN_DIMMER)  # AGC-normalizzato + boost
+		d = max(MIN_DIMMER, min(MAX_DIMMER, d))
+		return min(255.0, d + punch * KICK_BOOST * gain)
 
 	scriptOp.numSamples = 1
 	for i in range(N_BARS):
+		mode, gain = UNIT_AUDIO[i] if i < len(UNIT_AUDIO) else ('full', 1.0)
+		if mode not in ('full', 'off', 'bass', 'mid', 'high', 'kick'):
+			mode = 'full'
+		dimmer_val = unit_dimmer(mode, gain)
 		# --- fase tra le barre: ognuna legge un punto diverso della palette,
-		# spostato di i*BAR_PHASE rispetto alle altre (0 = tutte identiche) ---
-		bar_t = (color_t + i * BAR_PHASE) % 1.0
+		# spostato di i*BAR_PHASE rispetto alle altre (0 = tutte identiche).
+		# Una luce 'off' non segue l'audio neanche nel colore: sta ferma
+		# alla fase del rig ---------------------------------------------------
+		bar_t = ((COLOR_PHASE if mode == 'off' else color_t) + i * BAR_PHASE) % 1.0
 		_own = UNIT_PALETTES[i] if i < len(UNIT_PALETTES) else ''
 		_pal, _stepped = _resolved.get(_own, (PALETTE, STEPPED))
 		r_raw, g_raw, b_raw = palette_color(bar_t, _pal, stepped=_stepped)
@@ -289,7 +327,10 @@ def onCook(scriptOp):
 	                   ('debug_level', st['smooth_level']),
 	                   ('debug_color_t', color_t),
 	                   ('debug_punch', st['punch']),
-	                   ('debug_punch_smooth', st['punch_smooth'])]:
+	                   ('debug_punch_smooth', st['punch_smooth']),
+	                   ('debug_bass_norm', band_norm['bass']),
+	                   ('debug_mid_norm', band_norm['mid']),
+	                   ('debug_high_norm', band_norm['high'])]:
 		c = scriptOp.appendChan(name)
 		c[0] = val
 

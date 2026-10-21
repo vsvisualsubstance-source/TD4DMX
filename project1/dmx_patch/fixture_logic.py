@@ -20,6 +20,15 @@ source of truth: one row per physical light.
   uid      optional string id chosen by an external designer (Plancia,
            "mh-01"); unique when set. Commands may name a fixture by id
            or by uid.
+  audio    chase rigs only: how THIS light follows the audio
+           (GAIA_INTERFACE "TD/Win-PD, 44"): '' / full = like the rig
+           (all bands + kick), off = fixed (dimmer at the rig's Maxdimmer,
+           colour still on the palette at the rig's phase), bass / mid /
+           high = that band only (its own normalisation), kick = the rig's
+           Mindimmer plus the kick flashes. Two fixtures on the same unit:
+           the first decides (like profile and palette).
+  audio_gain  chase rigs only: 0..2 multiplier of the audio movement
+           (level and kick) of this light; '' = 1. 0 = steady at Mindimmer.
 
 Groups may carry an `alias` (groups table): the Plancia name of the group
 (rig_a = front, rig_b = back, heads = mh). resolve_group() accepts both.
@@ -40,7 +49,11 @@ Called from: dmx_patch (patch_report, lifecycle), the rig/heads generators and
 par callbacks, the config UI and gaia_services (dmx_fixtures param).
 """
 
-COLUMNS = ['id', 'name', 'group', 'unit', 'profile', 'port_id', 'address', 'x', 'y', 'enabled', 'palette', 'uid']
+COLUMNS = ['id', 'name', 'group', 'unit', 'profile', 'port_id', 'address', 'x', 'y', 'enabled', 'palette', 'uid',
+	'audio', 'audio_gain']
+
+AUDIO_MODES = ('full', 'off', 'bass', 'mid', 'high', 'kick')
+AUDIO_GAIN_MAX = 2.0
 
 # per group kind: names of the quick-patch pars on the group COMP
 _COUNT_PARS = ('Nbars', 'Count')
@@ -180,6 +193,8 @@ def rows(group=None):
 		d['enabled'] = 1 if _int(d['enabled'], 1) else 0
 		d['palette'] = d['palette'].strip()
 		d['uid'] = d['uid'].strip()
+		d['audio'] = d['audio'].strip()
+		d['audio_gain'] = _float(d['audio_gain'], 1.0) if d['audio_gain'].strip() else ''
 		out.append(d)
 	return out
 
@@ -245,6 +260,85 @@ def _unit_palettes(comp):
 		by_unit.setdefault(f['unit'], f['palette'])
 	n = max([1] + [f['unit'] for f in fx])
 	return [by_unit.get(u, '') for u in range(1, n + 1)]
+
+
+def unit_audio(comp):
+	"""(mode, gain) per output unit (index 0 = unit 1): mode one of
+	AUDIO_MODES ('' -> 'full'), gain 0..2 ('' -> 1.0). The first fixture of
+	a unit decides. Cached per frame (the rig generator asks every cook)."""
+	return list(_cached('audio', comp, _unit_audio))
+
+
+def _unit_audio(comp):
+	group = group_of(comp)
+	if group is None:
+		return []
+	fx = rows(group)
+	by_unit = {}
+	for f in fx:
+		by_unit.setdefault(f['unit'], (f['audio'] or 'full',
+			1.0 if f['audio_gain'] == '' else f['audio_gain']))
+	n = max([1] + [f['unit'] for f in fx])
+	return [by_unit.get(u, ('full', 1.0)) for u in range(1, n + 1)]
+
+
+def _clean_audio(group, mode=None, gain=None):
+	"""Normalised (mode, gain) cell values for a fixture of `group`; None =
+	not given. Raises ValueError on a bad value, or on a non-default value
+	for a group that is not a chase rig."""
+	out = []
+	if mode is not None:
+		m = str(mode or '').strip().lower()
+		m = '' if m in ('', 'full', 'rig') else m
+		if m and m not in AUDIO_MODES:
+			raise ValueError('audio %r non valido (%s)' % (mode, ', '.join(AUDIO_MODES)))
+		out.append(m)
+	else:
+		out.append(None)
+	if gain is not None:
+		if str(gain).strip() == '':
+			g = ''
+		else:
+			g = _float(gain, None)
+			if g is None or not 0.0 <= g <= AUDIO_GAIN_MAX:
+				raise ValueError('audio_gain %r non valido (0..%g)' % (gain, AUDIO_GAIN_MAX))
+			g = '' if g == 1.0 else round(g, 3)
+		out.append(g)
+	else:
+		out.append(None)
+	if any(v not in (None, '') for v in out) and (group_info(group) or {}).get('kind') != 'chase':
+		raise ValueError('audio per fixture: solo i rig chase (%s non lo e\')' % group)
+	return out[0], out[1]
+
+
+def set_audio(fixtures=None, groups=None, mode=None, gain=None):
+	"""Audio mode / gain of several fixtures at once: the `fixtures` refs
+	(id or uid) plus every fixture of the `groups` (names or aliases).
+	mode / gain None = left as is. Writes only those two cells (no quick
+	patch sync): the scenes call it during fades. Returns the ids written."""
+	t = table()
+	ids = set()
+	for ref in fixtures or []:
+		ids.add(fixture_id(ref))
+	for g in groups or []:
+		name = resolve_group(g)
+		if name is None:
+			raise ValueError('gruppo sconosciuto: %r' % g)
+		ids.update(f['id'] for f in rows(name))
+	todo = []
+	for f in rows():
+		if f['id'] in ids:
+			todo.append((f, _clean_audio(f['group'], mode, gain)))   # validate all first
+	missing = ids - {f['id'] for f, _v in todo}
+	if missing:
+		raise ValueError('fixture non trovate: %s' % sorted(missing))
+	for f, (m, g) in todo:
+		r = _row_index(f['id'])
+		if m is not None and t[r, 'audio'].val != m:
+			t[r, 'audio'] = m
+		if g is not None and t[r, 'audio_gain'].val != str(g):
+			t[r, 'audio_gain'] = g
+	return sorted(ids)
 
 
 def palette_names(group):
@@ -359,6 +453,8 @@ def quick_patch(comp):
 			'y': old['y'] if old else _default_y(group),
 			'enabled': old['enabled'] if old else 1,
 			'palette': old['palette'] if old else '',
+			'audio': old['audio'] if old else '',
+			'audio_gain': old['audio_gain'] if old else '',
 		}
 		if not old:
 			nid += 1
@@ -444,6 +540,12 @@ def _check(d):
 		if d['palette'] and d['palette'] not in names:
 			raise ValueError('palette %r non valida per %s (disponibili: %s)' % (
 				d['palette'], group, ', '.join(names) or 'nessuna'))
+	if 'audio' in d or 'audio_gain' in d:
+		m, g = _clean_audio(group, d.get('audio'), d.get('audio_gain'))
+		if 'audio' in d:
+			d['audio'] = m
+		if 'audio_gain' in d:
+			d['audio_gain'] = g
 	return d
 
 
@@ -585,7 +687,8 @@ def dedupe_ids():
 	return changed
 
 
-def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name=None, x=None, y=None, palette='', uid='', enabled=1):
+def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name=None, x=None, y=None, palette='', uid='', enabled=1,
+		audio='', audio_gain=''):
 	"""Append a fixture; missing fields get sensible defaults (next unit,
 	group port, first free address). Returns the new id."""
 	uid = _check_uid(uid)
@@ -605,6 +708,7 @@ def add_fixture(group, profile=None, port_id=None, address=None, unit=None, name
 		'x': x if x is not None else (max([f['x'] for f in fx]) + 1 if fx else 0.0),
 		'y': y if y is not None else (fx[-1]['y'] if fx else _default_y(group)),
 		'enabled': 0 if enabled in (False, 0, '0') else 1, 'palette': palette or '', 'uid': uid,
+		'audio': audio or '', 'audio_gain': '' if audio_gain is None else audio_gain,
 	})
 	t = table()
 	t.appendRow([''] * len(COLUMNS))
@@ -681,6 +785,8 @@ def set_all(items):
 		d.setdefault('name', _label(d.get('group'), _int(d['unit'], 1)))
 		d.setdefault('port_id', '')
 		d.setdefault('palette', '')
+		d.setdefault('audio', '')
+		d.setdefault('audio_gain', '')
 		d['uid'] = str(d.get('uid') or '').strip()
 		if d['uid'] and d['uid'] in {c['uid'] for c in clean}:
 			raise ValueError('uid %r ripetuto' % d['uid'])

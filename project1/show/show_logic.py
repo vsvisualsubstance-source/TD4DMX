@@ -34,6 +34,14 @@ global is released only at the END of the fade (no pan/tilt jump halfway).
 Scenes captured before this have no head rows: they leave the per-head
 state alone.
 
+Per-fixture audio (category rigs; GAIA_INTERFACE "TD/Win-PD, 44"): every
+light of a chase rig is stored as target 'fx:<key>' (key = its uid, else
+'id:<fixture id>') with par 'audio' (full | off | bass | mid | high | kick)
+and 'audio_gain' (0..2), the patch columns of dmx_patch/fixture_logic.
+Crossfade: the mode switches at half fade, the gain interpolates in 0.05
+steps (each step is one write of the file-synced patch table). Scenes
+captured before this have no fixture rows: they leave the lights alone.
+
 State at time t is STATELESS (scrub / seek / loop always land right):
   cue = last cue with time <= t (none -> the timeline does not drive);
   scenes layer: every par holds the value of the LAST cue up to t whose
@@ -245,8 +253,75 @@ def _head_rows():
 	return out
 
 
+# ---------------------------------------------------------------- per-fixture audio
+
+FX_PREFIX = 'fx:'
+FX_PARS = ('audio', 'audio_gain')
+FX_GAIN_STEP = 0.05
+
+
+def _is_fx(target):
+	return target.startswith(FX_PREFIX)
+
+
+def _fl():
+	c = target_comp('patch')
+	dat = c.op('fixture_logic') if c is not None else None
+	return dat.module if dat is not None else None
+
+
+def _fx_key(f):
+	return f['uid'] or 'id:%d' % f['id']
+
+
+def _fx_lights():
+	"""{fx key: fixture row} of every light of a chase rig."""
+	fl = _fl()
+	if fl is None:
+		return {}
+	chase = {g for g, c, k in rig_groups() if k == 'chase'}
+	return {_fx_key(f): f for f in fl.rows() if f['group'] in chase}
+
+
+def _fx_rows():
+	"""[(target, par, value)] of every chase light's audio, for capture."""
+	out = []
+	for key, f in _fx_lights().items():
+		t = FX_PREFIX + key
+		out.append((t, 'audio', f['audio'] or 'full'))
+		out.append((t, 'audio_gain', 1.0 if f['audio_gain'] == '' else float(f['audio_gain'])))
+	return out
+
+
+def _apply_fx(changed):
+	"""Write the fx keys of `changed` to the patch, one call per light."""
+	fl = _fl()
+	if fl is None:
+		return
+	lights = _fx_lights()
+	per = {}
+	for (t, n), v in changed.items():
+		per.setdefault(t, {})[n] = v
+	for t, vals in per.items():
+		f = lights.get(t[len(FX_PREFIX):])
+		if f is None:
+			continue
+		try:
+			fl.set_audio([f['id']], mode=vals.get('audio'), gain=vals.get('audio_gain'))
+		except Exception as e:
+			debug('show apply %s: %s' % (t, e))
+
+
 def _current(k):
-	"""Live value of a scene key (a par or a head field), None if gone."""
+	"""Live value of a scene key (a par, a head or a light field), None if
+	gone."""
+	if _is_fx(k[0]):
+		f = _fx_lights().get(k[0][len(FX_PREFIX):])
+		if f is None:
+			return None
+		if k[1] == 'audio':
+			return f['audio'] or 'full'
+		return 1.0 if f['audio_gain'] == '' else float(f['audio_gain'])
 	if _is_head(k[0]):
 		hp = _hp()
 		key = k[0][len(HEAD_PREFIX):]
@@ -368,6 +443,10 @@ def scene_values(name):
 			if sc.get('heads', 0):
 				out[k] = r['value'] if k[1] == 'mode' else _f(r['value'])
 			continue
+		if _is_fx(k[0]):
+			if sc.get('rigs', 0) and k[1] in FX_PARS:
+				out[k] = r['value'] if k[1] == 'audio' else _f(r['value'], 1.0)
+			continue
 		if not sc.get(cat.get(k, ''), 0):
 			continue
 		p = _par(*k)
@@ -401,7 +480,7 @@ def capture(name, label=None, categories=None):
 		if vt[r, 'scene'].val != name:
 			continue
 		k = (vt[r, 'target'].val, vt[r, 'par'].val)
-		cat = 'heads' if _is_head(k[0]) else owned.get(k)
+		cat = 'heads' if _is_head(k[0]) else 'rigs' if _is_fx(k[0]) else owned.get(k)
 		if categories is None or cat in cats:
 			vt.deleteRow(r)
 	for cat in cats:
@@ -412,6 +491,9 @@ def capture(name, label=None, categories=None):
 				vt.appendRow([name, t, n, round(v, 6) if isinstance(v, float) else v])
 	if 'heads' in cats:
 		for t, n, v in _head_rows():
+			vt.appendRow([name, t, n, v])
+	if 'rigs' in cats:
+		for t, n, v in _fx_rows():
 			vt.appendRow([name, t, n, v])
 	invalidate(force=False)
 	return name
@@ -772,8 +854,10 @@ def state_at(t):
 
 
 def _apply(state, force=False):
-	heads = {}
+	heads, lights = {}, {}
 	for k, v in state.items():
+		if _is_fx(k[0]) and k[1] == 'audio_gain' and isinstance(v, float):
+			v = round(round(v / FX_GAIN_STEP) * FX_GAIN_STEP, 3)   # one patch write per step
 		old = _last.get(k)
 		if not force and old is not None and (old == v or (
 				isinstance(v, float) and isinstance(old, float) and abs(old - v) < 1e-6)):
@@ -781,6 +865,9 @@ def _apply(state, force=False):
 		_last[k] = v
 		if _is_head(k[0]):
 			heads[k] = v
+			continue
+		if _is_fx(k[0]):
+			lights[k] = v
 			continue
 		p = _par(*k)
 		if p is None:
@@ -798,6 +885,8 @@ def _apply(state, force=False):
 			debug('show apply %s.%s=%r: %s' % (k[0], k[1], v, e))
 	if heads:
 		_apply_heads(heads, state, force)
+	if lights:
+		_apply_fx(lights)
 
 
 # ---------------------------------------------------------------- catalog / active
@@ -819,15 +908,19 @@ def active_scene():
 
 
 def scene_catalog():
-	"""[{id, index, label, categories, per_head, cues}] -- id = the scene
-	name (unique, stable until renamed); index = position in the list, the
-	number /dmx/scene takes (it shifts when a scene before it is deleted)."""
-	heads = {r['scene'] for r in _rows('scene_values', VALUE_COLS) if _is_head(r['target'])}
+	"""[{id, index, label, categories, per_head, per_fixture, cues}] -- id =
+	the scene name (unique, stable until renamed); index = position in the
+	list, the number /dmx/scene takes (it shifts when a scene before it is
+	deleted). per_fixture = it holds the audio of every chase light."""
+	vrows = _rows('scene_values', VALUE_COLS)
+	heads = {r['scene'] for r in vrows if _is_head(r['target'])}
+	lights = {r['scene'] for r in vrows if _is_fx(r['target'])}
 	used = {}
 	for c in cues():
 		used.setdefault(c['scene'], []).append(c['id'])
 	return [{'id': s['name'], 'index': i, 'label': s['label'],
 		'categories': [c for c in CATEGORIES if s[c]], 'per_head': s['name'] in heads,
+		'per_fixture': s['name'] in lights,
 		'cues': used.get(s['name'], []), 'preview': scene_preview(s['name'])}
 		for i, s in enumerate(scenes())]
 
