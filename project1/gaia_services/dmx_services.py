@@ -1408,6 +1408,16 @@ def _drop_stale_rig_names(agent, live_keys):
 				reg.pop(name, None)
 
 
+# State topics (gaia_client register_state_topic, "OPS, 30"): topic suffix,
+# params, check interval in s. Heads change while programming, the rest rarely.
+STATE_TOPICS = [
+	('dmx_catalog', ['dmx_models', 'dmx_types', 'dmx_groups'], 2.0),
+	('dmx_patch', ['dmx_fixtures', 'dmx_universe_map', 'dmx_patch_report'], 1.0),
+	('show_scenes', ['show_scene_catalog', 'show_scenes'], 1.0),
+	('heads_state', ['heads_list', 'heads_positions'], 0.1),
+]
+
+
 def register_all():
 	agent = op.Gaia.op('gaia_device_agent').module
 
@@ -1499,6 +1509,11 @@ def register_all():
 				start=lambda sn=src_name, pn=par_name: setattr(_source(sn).par, pn, 1),
 				stop=lambda sn=src_name, pn=par_name: setattr(_source(sn).par, pn, 0),
 				status=lambda sn=src_name, pn=par_name: bool(_source(sn).par[pn].eval()))
+
+	# "OPS, 30": the bulky structure also on retained topics, published on change
+	if hasattr(agent, 'register_state_topic'):
+		for topic, names, poll_s in STATE_TOPICS:
+			agent.register_state_topic(topic, names, poll_s)
 
 	print('[DMX Services] %d services/params registered' % (
 		len(agent._services) + len(agent._params)))

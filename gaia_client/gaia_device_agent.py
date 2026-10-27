@@ -90,7 +90,10 @@ import time
 # 1.2.3 = status publishes mocap_port (= Mocapport): per-instance mocap port.
 # 1.3.0 = show_clock: shared show clock (Clockrole master/follower) on
 #         gaia/show/clock/*, routed through this module's MQTT client.
-SW_VERSION = "1.3.0"
+# 1.4.0 = state topics (register_state_topic): bulky, rarely changing params
+#         also on their own retained topic with a rev, listed in the status
+#         as "state_topics"; STATUS_SLIM drops them from the status.
+SW_VERSION = "1.4.0"
 
 _START_TS = time.time()
 _services = {}   # name -> {"start": fn, "stop": fn, "status": fn}
@@ -99,6 +102,15 @@ _builtin_params = set()  # _params keys owned by gaia_client itself, not the pro
 
 _HEARTBEAT_S = 30
 _last_heartbeat = 0.0
+
+# State topics ("OPS, 30"): topic suffix -> {"names", "poll_s", "sig", "rev",
+# "checked"}. Published retained on gaia/devices/{id}/{suffix} as {"v": 1,
+# "device_id", "rev", "ts", "params": {name: value}} when the values change
+# (checked every poll_s, one topic per frame, and with every status).
+# STATUS_SLIM = True leaves those params out of the status; until the UIs
+# read the topics, the status stays full.
+_state_topics = {}
+STATUS_SLIM = False
 
 _last_error = None   # {"context","message","ts"} -- last error, visible in Admin
 
@@ -333,6 +345,47 @@ def register_project_registrar(fn):
 	_registrar = fn
 
 
+def register_state_topic(topic, names, poll_s=2.0):
+	"""Also publish the registered params `names` on their own retained
+	topic gaia/devices/{id}/{topic}, only when their values change (see
+	_state_topics). Idempotent: call it again from the registrar."""
+	prev = _state_topics.get(topic) or {}
+	names = list(names)
+	same = prev.get("names") == names
+	_state_topics[topic] = {"names": names, "poll_s": float(poll_s),
+		"sig": prev.get("sig") if same else None, "rev": prev.get("rev") if same else None,
+		"checked": prev.get("checked", 0.0)}
+
+
+def _publish_state_topic(dat, device_id, topic, st, force=False):
+	st["checked"] = time.time()
+	values = {n: _param_value(n) for n in st["names"] if n in _params}
+	sig = json.dumps(values, sort_keys=True)
+	if sig == st["sig"] and not force:
+		return
+	st["rev"] = hashlib.sha1(sig.encode('utf-8')).hexdigest()[:12]
+	st["sig"] = sig
+	payload = {"v": 1, "device_id": device_id, "rev": st["rev"], "ts": int(time.time() * 1000),
+		"params": values}
+	dat.publish(f"gaia/devices/{device_id}/{topic}", json.dumps(payload).encode('utf-8'), retain=True)
+
+
+def _tick_state_topics():
+	"""Every frame: check the most overdue state topic, at most one per frame."""
+	if not _state_topics:
+		return
+	now = time.time()
+	due = [(now - st["checked"] - st["poll_s"], t) for t, st in _state_topics.items()
+		if now - st["checked"] >= st["poll_s"]]
+	if not due:
+		return
+	dat = _mqtt()
+	if dat is None or not dat.isConnected:
+		return
+	topic = max(due)[1]
+	_publish_state_topic(dat, _read_config()["device_id"], topic, _state_topics[topic])
+
+
 def reregister():
 	"""Manually retry project service registration -- wired to the
 	Re-register pulse par (see mqtt_control_callbacks-style docked
@@ -475,12 +528,15 @@ def _capabilities():
 	}
 
 
-def _publish_status():
+def _publish_status(force_topics=False):
 	global _perf_dropped_window
 	dat = _mqtt()
 	if dat is None or not dat.isConnected:
 		return
 	cfg = _read_config()
+	for topic, st in _state_topics.items():
+		_publish_state_topic(dat, cfg["device_id"], topic, st, force=force_topics)
+	in_topics = {n for st in _state_topics.values() for n in st["names"]} if STATUS_SLIM else set()
 	payload = {
 		"device_id":      cfg["device_id"],
 		"name":           cfg["name"],
@@ -492,7 +548,10 @@ def _publish_status():
 		"internet":       _internet_cache,
 		"sw_version":     SW_VERSION,
 		"services":       {n: _service_status(n) for n in _services},
-		"params":         {n: _param_value(n) for n in _params},
+		"params":         {n: _param_value(n) for n in _params if n not in in_topics},
+		"state_topics":   {t: {"topic": f"gaia/devices/{cfg['device_id']}/{t}", "rev": st["rev"],
+		                       "params": st["names"]} for t, st in _state_topics.items()},
+		"status_slim":    STATUS_SLIM,
 		"uptime":         int(time.time() - _START_TS),
 		"last_error":     _last_error,
 		"fps":            _measured_fps(),
@@ -584,6 +643,7 @@ def tick():
 	global _last_heartbeat
 	if not _enabled():
 		return
+	_tick_state_topics()
 	now = time.time()
 	if (now - _last_heartbeat) < _HEARTBEAT_S:
 		return
@@ -613,7 +673,7 @@ def on_connect(dat):
 	dat.subscribe(f"gaia/devices/{cfg['device_id']}/config")
 	print(f"[GAIA Agent] Connected -- device_id: {cfg['device_id']}")
 	me.parent().par.Deviceagentstatus = 'connected'
-	_publish_status()
+	_publish_status(force_topics=True)
 	_publish_announce(dat, cfg)
 	clock = _show_clock()
 	if clock is not None:
