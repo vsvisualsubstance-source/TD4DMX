@@ -6,3 +6,4 @@ ledbar	rig_ledbar	dmx_select	fixture_profiles		chase	LED bar	td
 haze	rig_haze	level_out	level_profiles		level	Haze	td
 blinder	rig_blinder	level_out	level_profiles		level	Blinder	td
 side	rig_side	dmx_select	fixture_profiles		chase	side	plancia
+truss	rig_truss	dmx_select	fixture_profiles		chase		td
