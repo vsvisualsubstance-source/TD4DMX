@@ -107,10 +107,10 @@ _last_heartbeat = 0.0
 # "checked"}. Published retained on gaia/devices/{id}/{suffix} as {"v": 1,
 # "device_id", "rev", "ts", "params": {name: value}} when the values change
 # (checked every poll_s, one topic per frame, and with every status).
-# STATUS_SLIM = True leaves those params out of the status; until the UIs
-# read the topics, the status stays full.
+# STATUS_SLIM = True leaves those params out of the status (on since
+# "OPS, 31": the Plancia reads the topics).
 _state_topics = {}
-STATUS_SLIM = False
+STATUS_SLIM = True
 
 _last_error = None   # {"context","message","ts"} -- last error, visible in Admin
 

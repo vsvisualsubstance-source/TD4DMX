@@ -59,7 +59,7 @@ carries only values:
     missing field = null in v1; a layout_rev different from the last
     dmx_layout rev = a dmx_layout is on its way.
   The rig meter is only on dmx_rigs. OUTPUT_V1 = False turns dmx_output
-  off once every UI reads v2.
+  off (off since "OPS, 31": the Plancia reads v2 and dmx_rigs).
 
 tick() from gaia_services/lifecycle onFrameStart; pars Outputenable,
 Outputrate, Outputstatus on gaia_services.
@@ -70,7 +70,7 @@ import time
 
 HEARTBEAT_S = 2.0
 RIGS_HZ = 30.0
-OUTPUT_V1 = True
+OUTPUT_V1 = False
 LAYOUT_REFRESH_S = 30.0
 LAYOUT_KEYS = ('id', 'name', 'group', 'comp', 'profile', 'universe', 'address', 'status', 'sent',
 	'color_source', 'audio', 'audio_gain')
