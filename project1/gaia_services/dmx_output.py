@@ -40,14 +40,43 @@ nothing arrives for 3 heartbeats (measure the gap on arrival, do not
 compare ts with the UI's clock). Strobe: the gate is sampled at the
 publishing rate, so "strobe": true says the values are flickering.
 
+Rig meter, faster: topic gaia/devices/<device_id>/dmx_rigs, NOT retained,
+QoS 0: {"v": 1, "device_id", "seq", "ts", "rate_hz", "rigs": {...same
+as above}}, on change at most RIGS_HZ times per second and at least every
+HEARTBEAT_S. Only the generators' debug channels are read (no snapshot),
+so the level bar and the kick flash run smoother than dmx_output.
+"rigs" stays in dmx_output too, for UIs that have not moved yet.
+
+v2, the same data split in two retained topics (QoS 0), so the fast one
+carries only values:
+  gaia/devices/<device_id>/dmx_layout: {"v": 2, "device_id", "rev", "ts",
+    "fixtures": [{"uid", + LAYOUT_KEYS}]}, when it changes (rev = hash of
+    the content) and every LAYOUT_REFRESH_S.
+  gaia/devices/<device_id>/dmx_live: {"v": 2, "device_id", "seq", "ts",
+    "rate_hz", "layout_rev", "master", "blackout", "strobe", "scene",
+    "fixtures": {<uid>: {output fields of v1, null ones LEFT OUT}}}, on
+    change at most Outputrate per second, at least every HEARTBEAT_S. A
+    missing field = null in v1; a layout_rev different from the last
+    dmx_layout rev = a dmx_layout is on its way.
+  The rig meter is only on dmx_rigs. OUTPUT_V1 = False turns dmx_output
+  off once every UI reads v2.
+
 tick() from gaia_services/lifecycle onFrameStart; pars Outputenable,
 Outputrate, Outputstatus on gaia_services.
 """
+import hashlib
 import json
 import time
 
 HEARTBEAT_S = 2.0
-_st = {'seq': 0, 'pub': 0.0, 'sig': None}
+RIGS_HZ = 30.0
+OUTPUT_V1 = True
+LAYOUT_REFRESH_S = 30.0
+LAYOUT_KEYS = ('id', 'name', 'group', 'comp', 'profile', 'universe', 'address', 'status', 'sent',
+	'color_source', 'audio', 'audio_gain')
+_st = {'seq': 0, 'pub': 0.0, 'chk': 0.0, 'sig': None}
+_rg = {'seq': 0, 'pub': 0.0, 'sig': None}
+_v2 = {'seq': 0, 'pub': 0.0, 'sig': None, 'lsig': None, 'lpub': 0.0, 'rev': None}
 
 
 def _home():
@@ -150,7 +179,16 @@ def snapshot():
 	sl = home.op('show/show_logic')
 	return {'v': 1, 'master': round(float(pp.Master.eval()), 3), 'blackout': bool(pp.Blackout.eval()),
 		'strobe': bool(pp.Strobe.eval()), 'scene': sl.module.active_scene() if sl is not None else None,
-		'fixtures': fixtures, 'rigs': {g['group']: _rig_meter(home.op(g['comp'])) for g in chase}}
+		'fixtures': fixtures, 'rigs': rigs(chase)}
+
+
+def rigs(chase=None):
+	"""{<chase group>: _rig_meter} for every chase rig (see the module doc)."""
+	home = _home()
+	if chase is None:
+		fl = home.op('dmx_patch/fixture_logic').module
+		chase = [g for g in fl.groups() if g.get('kind') == 'chase' and g['comp']]
+	return {g['group']: _rig_meter(home.op(g['comp'])) for g in chase}
 
 
 def _rig_meter(comp):
@@ -174,31 +212,93 @@ def tick():
 		_status('spento')
 		return
 	now = time.perf_counter()
+	_tick_rigs(now)
 	rate = max(0.5, float(c.par.Outputrate.eval()))
-	if now - _st['pub'] < 1.0 / rate:
+	# gate on the last check, not the last publish: an unchanged rig would
+	# otherwise rebuild the snapshot every frame
+	if now - _st['chk'] < 1.0 / rate - 0.008:
 		return
+	_st['chk'] = now
 	try:
 		snap = snapshot()
 	except Exception as e:
 		_status('errore: %s' % e)
-		return
-	sig = json.dumps(snap, sort_keys=True)
-	if sig == _st['sig'] and now - _st['pub'] < HEARTBEAT_S:
 		return
 	g = op.Gaia
 	dat = g.op('mqtt_device') if g is not None else None
 	if dat is None or not dat.isConnected:
 		_status('MQTT non connesso')
 		return
-	_st['seq'] += 1
 	device_id = str(g.par.Deviceid.eval())
-	snap.update(device_id=device_id, seq=_st['seq'], ts=int(time.time() * 1000), rate_hz=rate)
+	ts = int(time.time() * 1000)
+	_publish_v2(dat, device_id, snap, now, ts, rate)
+	if not OUTPUT_V1:
+		_st['pub'] = now
+		_status('dmx_live seq %d: %d fixture (v1 spento)' % (_v2['seq'], len(snap['fixtures'])))
+		return
+	sig = json.dumps(snap, sort_keys=True)
+	if sig == _st['sig'] and now - _st['pub'] < HEARTBEAT_S:
+		return
+	_st['seq'] += 1
+	snap.update(device_id=device_id, seq=_st['seq'], ts=ts, rate_hz=rate)
 	topic = 'gaia/devices/%s/dmx_output' % device_id
 	dat.publish(topic, json.dumps(snap).encode('utf-8'), retain=True)
 	_st['pub'] = now
 	_st['sig'] = sig
 	sent = sum(1 for f in snap['fixtures'] if f['sent'])
 	_status('%s seq %d: %d fixture, %d inviate' % (topic, _st['seq'], len(snap['fixtures']), sent))
+
+
+def _publish_v2(dat, device_id, snap, now, ts, rate):
+	"""dmx_layout when it changes, dmx_live when a value changes or on the
+	heartbeat (see the module doc)."""
+	layout = [dict({'uid': f['uid']}, **{k: f[k] for k in LAYOUT_KEYS if k in f}) for f in snap['fixtures']]
+	lsig = json.dumps(layout, sort_keys=True)
+	if lsig != _v2['lsig'] or now - _v2['lpub'] >= LAYOUT_REFRESH_S:
+		rev = hashlib.sha1(lsig.encode('utf-8')).hexdigest()[:12]
+		msg = {'v': 2, 'device_id': device_id, 'rev': rev, 'ts': ts, 'fixtures': layout}
+		dat.publish('gaia/devices/%s/dmx_layout' % device_id,
+			json.dumps(msg, separators=(',', ':')).encode('utf-8'), retain=True)
+		_v2.update(lsig=lsig, lpub=now, rev=rev)
+	live = {f['uid']: {k: v for k, v in f.items() if k != 'uid' and k not in LAYOUT_KEYS and v is not None}
+		for f in snap['fixtures']}
+	body = {'master': snap['master'], 'blackout': snap['blackout'], 'strobe': snap['strobe'],
+		'scene': snap['scene'], 'fixtures': live}
+	sig = json.dumps(body, sort_keys=True)
+	if sig == _v2['sig'] and now - _v2['pub'] < HEARTBEAT_S:
+		return
+	_v2['seq'] += 1
+	msg = dict({'v': 2, 'device_id': device_id, 'seq': _v2['seq'], 'ts': ts, 'rate_hz': rate,
+		'layout_rev': _v2['rev']}, **body)
+	dat.publish('gaia/devices/%s/dmx_live' % device_id,
+		json.dumps(msg, separators=(',', ':')).encode('utf-8'), retain=True)
+	_v2.update(sig=sig, pub=now)
+
+
+def _tick_rigs(now):
+	"""Publish the rig meter on dmx_rigs (see the module doc)."""
+	# -8 ms: at 60 fps 1/30 s falls on a frame edge and jitter would skip to the next
+	if now - _rg['pub'] < 1.0 / RIGS_HZ - 0.008:
+		return
+	g = op.Gaia
+	dat = g.op('mqtt_device') if g is not None else None
+	if dat is None or not dat.isConnected:
+		return
+	try:
+		r = rigs()
+	except Exception:
+		return
+	sig = json.dumps(r, sort_keys=True)
+	if sig == _rg['sig'] and now - _rg['pub'] < HEARTBEAT_S:
+		return
+	_rg['seq'] += 1
+	device_id = str(g.par.Deviceid.eval())
+	msg = {'v': 1, 'device_id': device_id, 'seq': _rg['seq'], 'ts': int(time.time() * 1000),
+		'rate_hz': RIGS_HZ, 'rigs': r}
+	dat.publish('gaia/devices/%s/dmx_rigs' % device_id, json.dumps(msg, separators=(',', ':')).encode('utf-8'),
+		retain=False)
+	_rg['pub'] = now
+	_rg['sig'] = sig
 
 
 def mqtt_ok():
