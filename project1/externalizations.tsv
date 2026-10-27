@@ -27,7 +27,7 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/gaia_services/mqtt_discovery_callbacks	text	py	project1/gaia_services/mqtt_discovery_callbacks.py	2026-10-03 14:33:58 UTC				0	-920	0.9000,0.3000,0.4000
 /project1/gaia_services/lifecycle	execute	py	project1/gaia_services/lifecycle.py	2026-10-03 14:33:58 UTC				400	0	0.9000,0.3000,0.4000
 /project1/gaia_services/dmx_services	text	py	project1/gaia_services/dmx_services.py	2026-10-03 14:33:58 UTC				0	0	0.9000,0.3000,0.4000
-/project1/gaia_services	base	tox	project1/gaia_services.tox	2026-10-21 16:12:17 UTC		34	2025.33230	1000	-430	0.3250,0.8000,0.3000
+/project1/gaia_services	base	tox	project1/gaia_services.tox	2026-10-27 14:30:00 UTC		35	2025.33230	1000	-430	0.3250,0.8000,0.3000
 /project1/gaia_client/topic_dream	text	py	gaia_client/topic_dream.py	2026-10-03 14:33:58 UTC				400	-100	0.9000,0.3000,0.4000
 /project1/gaia_client/topic_canvas	text	py	gaia_client/topic_canvas.py	2026-10-03 14:33:58 UTC				400	700	0.9000,0.3000,0.4000
 /project1/gaia_client/topic_brainstate	text	py	gaia_client/topic_brainstate.py	2026-10-03 14:33:58 UTC				400	300	0.9000,0.3000,0.4000
@@ -52,7 +52,7 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/gaia_client/beacon_probe_callbacks	text	py	gaia_client/beacon_probe_callbacks.py	2026-10-03 14:33:58 UTC				0	-4820	0.9000,0.3000,0.4000
 /project1/gaia_client/beacon_discovery	text	py	gaia_client/beacon_discovery.py	2026-10-03 14:33:58 UTC				400	-4700	0.9000,0.3000,0.4000
 /project1/gaia_client/agent_lifecycle	execute	py	gaia_client/agent_lifecycle.py	2026-10-03 14:33:58 UTC				800	-3200	0.9000,0.3000,0.4000
-/project1/gaia_client	base	tox	project1/gaia_client.tox	2026-10-20 17:50:57 UTC		134	2025.33230	670	-430	0.6700,0.6700,0.6700
+/project1/gaia_client	base	tox	project1/gaia_client.tox	2026-10-27 14:30:00 UTC		135	2025.33230	670	-430	0.6700,0.6700,0.6700
 /project1/dmx_patch/universe_build_callbacks	text	py	project1/dmx_patch/universe_build_callbacks.py	2026-10-03 14:33:58 UTC				800	-1320	0.9000,0.3000,0.4000
 /project1/dmx_patch/scan_logic	text	py	project1/dmx_patch/scan_logic.py	2026-10-03 14:33:58 UTC				400	0	0.9000,0.3000,0.4000
 /project1/dmx_patch/routing_callbacks	text	py	project1/dmx_patch/routing_callbacks.py	2026-10-03 14:33:58 UTC				800	-1720	0.9000,0.3000,0.4000
@@ -91,7 +91,7 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/config	container	tox	project1/config.tox	2026-10-20 17:50:57 UTC		21	2025.33230	600	-1200	0.3250,0.8000,0.3000
 /project1/audio_panel	container	tox	project1/audio_panel.tox	2026-10-03 14:33:58 UTC		3	2025.33230	-200	-400	0.3250,0.8000,0.3000
 /project1/audio_engine/source_a/source_callbacks	parexec	py	project1/audio_engine/source_a/source_callbacks.py	2026-10-03 14:33:58 UTC				0	-400	0.9000,0.3000,0.4000
-/project1/audio_engine	base	tox	project1/audio_engine.tox	2026-10-20 15:19:00 UTC		10	2025.33230	-600	-400	0.3250,0.8000,0.3000
+/project1/audio_engine	base	tox	project1/audio_engine.tox	2026-10-27 14:30:00 UTC		11	2025.33230	-600	-400	0.3250,0.8000,0.3000
 /project1	container	tox	project1.tox	2026-10-21 16:12:17 UTC		84	2025.33230	250	150	0.3250,0.8000,0.3000
 /perform	window	tox	perform.tox	2026-10-03 14:33:59 UTC		1	2025.33230	-200	40	0.3250,0.8000,0.3000
 /window1	window	tox	window1.tox	2026-10-03 14:35:26 UTC		1	2025.33230	-150	375	0.3250,0.8000,0.3000
