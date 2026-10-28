@@ -6,3 +6,5 @@ wall	LED wall	ledwall	none		plancia
 blinder	Blinder	blinder	level	Dimmer 1CH	plancia
 haze	Haze	haze	level	Haze 2CH	plancia
 speaker	Cassa		none		plancia
+screen	Schermo proiezione		none		plancia
+projector	Proiettore		none		plancia
