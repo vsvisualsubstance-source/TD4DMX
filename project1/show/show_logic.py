@@ -1,8 +1,9 @@
 """show_logic -- timeline engine of /project1/show (scenes, cues, automation).
 
 Tables (siblings, file-synced tsv):
-  scenes        name, label, rigs, heads, groups, audio, strobe   (category flags 0/1:
-                which parts of the snapshot the scene applies)
+  scenes        name, label, rigs, heads, groups, audio, strobe, palette
+                (category flags 0/1: which parts of the snapshot the scene
+                applies)
   scene_values  scene, target, par, value   (one row per captured par)
   cues          id, time, scene, fade, label   (seconds)
   keys          id, lane, time, value, interp  (lane = '<target>.<Par>';
@@ -12,8 +13,12 @@ Categories of a scene snapshot (pars read from the live COMPs, so pars added
 to those pages later are captured automatically):
   rigs    every rig of the patch (rig_groups(): dmx_patch groups table, target
           = group name): chase rigs (rig_a, rig_b, ledbar...) their 'DMX
-          Reactive' page (palette, dimmer, colour, kick), level rigs (haze,
-          blinder...) Level / Fan
+          Reactive' page (dimmer, colour motion, kick, AGC, audio amount)
+          except the palette, level rigs (haze, blinder...) Level / Fan
+  palette Palette + the 5 Custom colours of every chase rig (GAIA_INTERFACE
+          "OPS, 36": colour-only scenes). A scene saved before this category
+          existed has an empty palette flag: it follows its rigs flag, so it
+          still recalls the palette its rigs capture stored.
   heads   moving_heads 'Position' + 'Look' pages, ptz Mode / Padu / Padv
   groups  Patchenable of every rig and of heads, dmx_patch Blackout
   audio   Audiobus of every chase rig (which audio source drives the rig)
@@ -64,9 +69,10 @@ TARGETS = {
 	'ptz': 'ptz',
 	'patch': 'dmx_patch',
 }
-CATEGORIES = ['rigs', 'heads', 'groups', 'audio', 'strobe']
+CATEGORIES = ['rigs', 'heads', 'groups', 'audio', 'strobe', 'palette']
 CATEGORY_LABELS = {'rigs': 'Look dei rig', 'heads': 'Teste mobili', 'groups': 'Accensioni gruppi',
-	'audio': 'Sorgente audio', 'strobe': 'Strobo generale'}
+	'audio': 'Sorgente audio', 'strobe': 'Strobo generale', 'palette': 'Palette'}
+PALETTE_PARS = ['Palette'] + ['Custompalette%d%s' % (i, c) for i in range(1, 6) for c in 'rgb']
 INTERPS = ['linear', 'smooth', 'step']
 
 SCENE_COLS = ['name', 'label'] + CATEGORIES
@@ -192,7 +198,7 @@ def category_pars(cat):
 		out = []
 		for g, c, kind in rigs:
 			if kind == 'chase':
-				out += _page_pars(g, ('DMX Reactive',), ('Audiobus',))
+				out += _page_pars(g, ('DMX Reactive',), ['Audiobus'] + PALETTE_PARS)
 			else:
 				out += [(g, n) for n in ('Level', 'Fan') if _par(g, n) is not None]
 		return out
@@ -206,6 +212,9 @@ def category_pars(cat):
 		return [(g, 'Audiobus') for g, c, k in rigs if k == 'chase']
 	if cat == 'strobe':
 		return [('patch', n) for n in ('Strobe', 'Stroberate') if _par('patch', n) is not None]
+	if cat == 'palette':
+		return [(g, n) for g, c, k in rigs if k == 'chase' for n in PALETTE_PARS
+			if _par(g, n) is not None]
 	return []
 
 
@@ -418,6 +427,8 @@ def scenes():
 		d = {'name': r['name'], 'label': r['label'] or r['name']}
 		for c in CATEGORIES:
 			d[c] = 1 if _i(r[c], 1) else 0
+		if r['palette'] == '':   # saved before category palette: as its rigs
+			d['palette'] = d['rigs']
 		out.append(d)
 	return out
 
@@ -1318,7 +1329,8 @@ def load_scene():
 	sc = sc[0]
 	_set(p.Scenelabel, sc['label'])
 	for c in CATEGORIES:
-		_set(p['Apply' + c], sc[c])
+		if p['Apply' + c] is not None:
+			_set(p['Apply' + c], sc[c])
 
 
 def load_cue():
