@@ -1,2 +1,6 @@
-﻿id	time	scene	fade	label
-1	0.0		2.0	1 · 12 Meters – Intro
+id	time	scene	fade	label
+1	0.0	colore_rosso	2.0	Haloween
+2	10.0	pal_magenta_cyan	2.0	colore_rosso
+3	20.0	pal_forest	2.0	colore_blu
+4	30.0	pal_deep_purple	2.0	base
+5	40.0	teste_pubblico	2.0	

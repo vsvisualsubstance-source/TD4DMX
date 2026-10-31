@@ -11,3 +11,9 @@ id	name	group	unit	profile	port_id	address	x	y	enabled	palette	uid	audio	audio_g
 15	MH5	heads	4	Coemar iSpot 575 EB 22ch	2.1.1.2:1	95	2.4	0.3	1		p-15vmxow		
 16	PAR4	rig_b	4	D+RGB 4CH	2.1.1.2:1	166	3.2	0.3	1		p-9epd693		
 17	MH6	heads	5	Coemar iSpot 575 EB 22ch	2.1.1.2:1	117	4	0.3	1		p-kcg23bn		
+19	UP4	rig_a	2	D+RGB 4CH	2.1.1.2:1	153	1.04	1.05	1		p-7nj4o02		
+20	UP5	rig_a	3	D+RGB 4CH	2.1.1.2:1	161	3.12	1.05	1		p-enmju76		
+21	BAR1	ledbar	2	D+RGB 4CH	2.1.1.2:2	1	-4.55	7.6	1		p-i52tgie		
+23	BAR3	ledbar	4	D+RGB 4CH	2.1.1.2:2	49	-1.95	7.6	1		p-w5qyyvq		
+25	BAR5	ledbar	6	D+RGB 4CH	2.1.1.2:2	97	0.65	7.6	1		p-mes5ry6		
+27	BAR7	ledbar	8	D+RGB 4CH	2.1.1.2:2	145	3.25	7.6	1		p-nxg42xx		

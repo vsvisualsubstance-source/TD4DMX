@@ -1,2 +1,1 @@
 device_id	label	ip	tailscale_ip	port	name	stanza	family	last_seen
-td-controller-pcmauro	td-controller-pcmauro (soggiorno) - 192.168.86.29:8001	192.168.86.29	100.111.37.113	8001	Controller	soggiorno	mixeraudio	13:27:51
