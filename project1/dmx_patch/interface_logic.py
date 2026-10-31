@@ -167,17 +167,34 @@ def sync_ports(probe=True):
 			ports.deleteRow(r)
 
 
+def local_addresses():
+	"""IPv4 addresses of this PC: the OS list plus the DMX Out menu (TD's
+	menu can miss adapters, e.g. a USB Ethernet on 2.x)."""
+	import socket
+	addrs = []
+	try:
+		addrs = list(socket.gethostbyname_ex(socket.gethostname())[2])
+	except Exception as e:
+		debug('local_addresses: %s' % e)
+	for a in op('dmx_out').par.localaddress.menuNames or []:
+		if a and a not in addrs:
+			addrs.append(a)
+	return [a for a in addrs if not a.startswith('127.')]
+
+
 def ensure_local_address():
-	"""Localaddress valid on THIS PC (see module doc). Returns it."""
+	"""Localaddress valid on THIS PC (see module doc); empty -> picks the
+	Art-Net network if there is one. Returns it."""
 	comp = parent()
 	cur = str(comp.par.Localaddress.eval()).strip()
-	addrs = list(op('dmx_out').par.localaddress.menuNames)
-	if not cur or not addrs or cur in addrs:
+	addrs = local_addresses()
+	if not addrs or (cur and cur in addrs):
 		return cur
 	pick = next((a for a in addrs if a.startswith('2.')), None) \
 		or next((a for a in addrs if a.startswith('10.')), '')
-	comp.par.Localaddress = pick
-	debug('Localaddress %s non e\' di questo PC -> %s' % (cur, pick or 'default OS'))
+	if pick != cur:
+		comp.par.Localaddress = pick
+		debug('Localaddress %s -> %s' % (cur or 'vuoto', pick or 'default OS'))
 	return pick
 
 

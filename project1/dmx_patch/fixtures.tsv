@@ -1,19 +1,3 @@
 id	name	group	unit	profile	port_id	address	x	y	enabled	palette	uid	audio	audio_gain
-5	UP1	rig_a	1	D+RGB 4CH	2.1.1.2:1	1	-5.2	1.05	1		p-um7agxs		
-7	BAR1	ledbar	1	D+RGB 4CH	2.1.1.2:1	12	-4.568	5.778	1		p-u2bjdhm		
-8	PAR1	rig_b	1	D+RGB 4CH	2.1.1.2:1	139	-3.2	0.3	1		p-cw9hheh		
-9	MH2	heads	1	Coemar iSpot 575 EB 22ch	2.1.1.2:1	29	-2.4	0.3	1		p-jljywp9		
-10	PAR2	rig_b	2	D+RGB 4CH	2.1.1.2:1	148	-1.6	0.3	1		p-elm730x		
-11	MH3	heads	2	Coemar iSpot 575 EB 22ch	2.1.1.2:1	51	-0.8	0.3	1		p-yjgaozw		
-12	STROBO	blinder	1	Dimmer 1CH	2.1.1.2:1	300	0	0.3	1		p-o8d2sxq		
-13	MH4	heads	3	Coemar iSpot 575 EB 22ch	2.1.1.2:1	73	0.8	0.3	1		p-7bwfnvs		
-14	PAR3	rig_b	3	D+RGB 4CH	2.1.1.2:1	157	1.6	0.3	1		p-of04huh		
-15	MH5	heads	4	Coemar iSpot 575 EB 22ch	2.1.1.2:1	95	2.4	0.3	1		p-15vmxow		
-16	PAR4	rig_b	4	D+RGB 4CH	2.1.1.2:1	166	3.2	0.3	1		p-9epd693		
-17	MH6	heads	5	Coemar iSpot 575 EB 22ch	2.1.1.2:1	117	4	0.3	1		p-kcg23bn		
-19	UP4	rig_a	2	D+RGB 4CH	2.1.1.2:1	153	1.04	1.05	1		p-7nj4o02		
-20	UP5	rig_a	3	D+RGB 4CH	2.1.1.2:1	161	3.12	1.05	1		p-enmju76		
-21	BAR1	ledbar	2	D+RGB 4CH	2.1.1.2:2	1	-4.55	7.6	1		p-i52tgie		
-23	BAR3	ledbar	4	D+RGB 4CH	2.1.1.2:2	49	-1.95	7.6	1		p-w5qyyvq		
-25	BAR5	ledbar	6	D+RGB 4CH	2.1.1.2:2	97	0.65	7.6	1		p-mes5ry6		
-27	BAR7	ledbar	8	D+RGB 4CH	2.1.1.2:2	145	3.25	7.6	1		p-nxg42xx		
+28	MH1	heads	1	Wecam Moving Head 30W 11ch	2.1.1.2:1	1	-4	0	1				
+30	MH2	heads	2	Wecam Moving Head 30W 11ch	2.1.1.2:1	12	1	0.5	1				
