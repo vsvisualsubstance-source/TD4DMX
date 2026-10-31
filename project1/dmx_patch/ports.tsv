@@ -1,3 +1,4 @@
-port_id	label	ip	node	port	net	subnet	universe	rdm	online	last_seen
-2.1.1.2:1	Node 2 Electroconcept - porta 1 - U 0:0:0 (2.1.1.2)	2.1.1.2	Node 2 Electroconcept	1	0	0	0	0	1	2026-10-28 13:27:57
-2.1.1.2:2	Node 2 Electroconcept - porta 2 - U 0:0:1 (2.1.1.2)	2.1.1.2	Node 2 Electroconcept	2	0	0	1	0	1	2026-10-28 13:27:57
+port_id	label	ip	node	port	net	subnet	universe	rdm	online	last_seen	kind
+2.1.1.2:1	Node 2 Electroconcept - porta 1 - U 0:0:0 (2.1.1.2)	2.1.1.2	Node 2 Electroconcept	1	0	0	0	0	1	2026-10-31 08:33:27	artnet
+2.1.1.2:2	Node 2 Electroconcept - porta 2 - U 0:0:1 (2.1.1.2)	2.1.1.2	Node 2 Electroconcept	2	0	0	1	0	1	2026-10-31 08:33:27	artnet
+usb:usb1	Enttec USB - USB - U 0:0:0		Enttec USB	1	0	0	0	0	0	2026-10-31 08:32:24	usb

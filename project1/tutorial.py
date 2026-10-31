@@ -85,6 +85,21 @@ Indice
     "Blackout" = manda 0 su tutti i canali patchati.
  5. Per ogni gruppo, "Patch Enable" deve essere On perche' le sue luci
     escano (pagina Fixture del rig / pagina Heads delle teste).
+ 6. "Art-Net Interface IP" si corregge da solo all'avvio se non e' un IP
+    di questo PC (sceglie l'IP 2.x.x.x, poi 10.x.x.x, se no il default).
+
+ INTERFACCE USB (Enttec USB Pro / Pro Mk2 / seriale)
+ Tabella /project1/dmx_patch/interfaces, una riga per interfaccia:
+   id (usb1)  label  type (enttecusbpro | enttecusbpromk2 | serial)
+   device (* = la prima trovata)  serialport (COM, solo serial)
+   universe (universo Plancia, U1 = primo)  enabled (1 = invia)
+ - Ogni interfaccia manda TUTTO il suo universo: le luci patchate sul nodo
+   Art-Net a U1 escono anche dalla USB impostata a U1, senza ripatchare.
+ - Compare anche come porta "usb:<id>" nei menu Output Port, per patchare
+   luci direttamente sulla USB.
+ - Porta OFFLINE = USB abilitata ma non trovata (cavo/driver), oppure
+   enabled = 0. Su un PC senza USB lasciare enabled = 0.
+ - Art-Net e USB possono funzionare insieme.
 
 
 --------------------------------------------------------------------------------

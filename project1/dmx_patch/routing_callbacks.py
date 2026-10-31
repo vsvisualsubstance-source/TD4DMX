@@ -1,5 +1,7 @@
 """routing -- DMX Out routing table: one row per universe channel of
-universe_build -> Art-Net net / subnet / universe / node IP."""
+universe_build -> Art-Net net / subnet / universe / node IP. Art-Net ports
+only (USB ports have no ip; they go out through dmxout_<id>, see
+interface_logic)."""
 
 
 def onCook(scriptOp):
@@ -11,6 +13,8 @@ def onCook(scriptOp):
 		if rep[r, 'status'].val not in ('ok', 'offline', 'conflict'):
 			continue
 		net, sub, uni, ip = (rep[r, c].val for c in ('net', 'subnet', 'universe', 'ip'))
+		if not ip:
+			continue
 		name = 'u_%s_%s_%s_%s' % (net, sub, uni, ip.replace('.', '_'))
 		if name not in seen:
 			seen.add(name)

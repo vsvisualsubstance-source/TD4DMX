@@ -8,11 +8,14 @@ so a rig patched to a node that is momentarily off keeps its configuration.
 Art-Net 4 (ArtPollReply): PortTypes bit7 = port can output DMX; SwOut low
 nibble = universe; NetSwitch / SubSwitch = net / subnet; Status1 bit1 =
 node is RDM capable. RDM itself is not implemented (no RDM node to test on).
+
+`kind` = artnet (rows of this scan) | usb (rows owned by interface_logic,
+never touched here).
 """
 import ast
 import time
 
-COLUMNS = ['port_id', 'label', 'ip', 'node', 'port', 'net', 'subnet', 'universe', 'rdm', 'online', 'last_seen']
+COLUMNS = ['port_id', 'label', 'ip', 'node', 'port', 'net', 'subnet', 'universe', 'rdm', 'online', 'last_seen', 'kind']
 
 
 def _bytes(cell):
@@ -33,6 +36,7 @@ def _int(cell, default=0):
 def scan():
 	comp = parent()
 	nodes = op('artnet_nodes')
+	op('interface_logic').module.ensure_local_address()
 	nodes.par.localaddress = comp.par.Localaddress.eval()
 	comp.par.Scanstatus = 'scanning...'
 	nodes.par.poll.pulse()
@@ -42,13 +46,12 @@ def on_poll_complete():
 	comp = parent()
 	nodes = op('artnet_nodes')
 	ports = op('ports')
-	if ports.numRows == 0 or ports[0, 0] is None or ports[0, 0].val != 'port_id':
-		ports.clear()
-		ports.appendRow(COLUMNS)
+	op('interface_logic').module.ensure_ports_schema(ports, COLUMNS)
 
 	known = {ports[r, 'port_id'].val: r for r in range(1, ports.numRows)}
 	for r in range(1, ports.numRows):
-		ports[r, 'online'] = 0
+		if ports[r, 'kind'].val != 'usb':
+			ports[r, 'online'] = 0
 
 	now = time.strftime('%Y-%m-%d %H:%M:%S')
 	n_nodes = 0
@@ -73,14 +76,15 @@ def on_poll_complete():
 			uni = (swout[i] & 0x0F) if i < len(swout) else 0
 			pid = '%s:%d' % (ip, i + 1)
 			label = '%s - porta %d - U %d:%d:%d (%s)' % (name, i + 1, net, sub, uni, ip)
-			values = [pid, label, ip, name, i + 1, net, sub, uni, rdm, 1, now]
+			values = [pid, label, ip, name, i + 1, net, sub, uni, rdm, 1, now, 'artnet']
 			if pid in known:
 				for c, v in zip(COLUMNS, values):
 					ports[known[pid], c] = v
 			else:
 				ports.appendRow(values)
 
-	online = sum(1 for r in range(1, ports.numRows) if ports[r, 'online'].val == '1')
+	online = sum(1 for r in range(1, ports.numRows)
+		if ports[r, 'online'].val == '1' and ports[r, 'kind'].val != 'usb')
 	comp.par.Nodesfound = n_nodes
 	comp.par.Portsonline = online
 	comp.par.Scanstatus = '%s: %d nodi, %d porte online, RDM: %s' % (

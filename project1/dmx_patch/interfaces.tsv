@@ -1,0 +1,2 @@
+id	label	type	device	serialport	universe	enabled
+usb1	Enttec USB	enttecusbpro	*		1	0

@@ -3,7 +3,10 @@
 patch_report gets the channels of its unit (<prefix><unit>_*, in the
 generator's order = the profile's order) written at its own start address.
 Channel name encodes the destination, u_<net>_<subnet>_<universe>_<ip>; the
-routing table maps it.
+routing table maps it (Art-Net, via select_artnet -> dmx_out). Every enabled
+USB/serial interface (interface_logic) also gets a channel usb_<id> holding
+its whole Plancia universe: the fixtures of ANY port with net 0 / subnet 0 /
+that universe, Art-Net or USB.
 
 Levels (Plancia channel 5): the INTENSITY channels of a fixture are scaled
 by its group COMP's Level par (if it has one), dmx_patch Master, and the
@@ -56,16 +59,26 @@ def onCook(scriptOp):
 		if (absTime.seconds * rate) % 1.0 >= 0.22:
 			gain = 0.0
 	fl = op('fixture_logic').module
+	il = op('interface_logic').module
 	universes = {}
+	usb = {}  # Art-Net universe (net 0 / subnet 0) -> usb stream names
+	for ifc in il.interfaces():
+		if ifc['enabled']:
+			name = il.stream_name(ifc)
+			universes[name] = [0.0] * 512
+			usb.setdefault(str(ifc['universe'] - 1), []).append(name)
 	cache = {}
 	levels = {}
 	idx_cache = {}
 	for r in range(1, rep.numRows):
 		if rep[r, 'status'].val not in SENDABLE:
 			continue
-		name = chan_name(rep[r, 'net'].val, rep[r, 'subnet'].val, rep[r, 'universe'].val, rep[r, 'ip'].val)
-		buf = universes.setdefault(name, [0.0] * 512)
-		if blackout:
+		net, sub, uni, ip = (rep[r, c].val for c in ('net', 'subnet', 'universe', 'ip'))
+		targets = [chan_name(net, sub, uni, ip)] if ip else []
+		if net == '0' and sub == '0':
+			targets += usb.get(uni, [])
+		bufs = [universes.setdefault(t, [0.0] * 512) for t in targets]
+		if blackout or not bufs:
 			continue
 		key = (rep[r, 'comp'].val, rep[r, 'select'].val)
 		if key not in cache:
@@ -91,7 +104,9 @@ def onCook(scriptOp):
 			if 0 <= addr < 512:
 				if i in scaled:
 					v *= k
-				buf[addr] = max(0.0, min(255.0, v))
+				v = max(0.0, min(255.0, v))
+				for buf in bufs:
+					buf[addr] = v
 	for name in sorted(universes):
 		c = scriptOp.appendChan(name)
 		c.vals = universes[name]

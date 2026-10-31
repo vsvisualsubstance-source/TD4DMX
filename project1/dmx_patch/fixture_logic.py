@@ -593,14 +593,18 @@ def _check_uid(uid, own_id=None):
 
 def port_for_universe(universe):
 	"""port_id of a Plancia universe (1-based, U1 = Art-Net universe 0 of the
-	ports table); raises ValueError when no scanned port carries it."""
+	ports table, Art-Net or USB); an online port wins over an offline one,
+	then table order. Raises ValueError when no port carries it."""
 	u = _int(universe, 0) - 1
 	ports = _patch().op('ports')
+	found = []
 	for r in range(1, ports.numRows if ports is not None else 0):
 		if _int(ports[r, 'universe'].val, -1) == u and _int(ports[r, 'net'].val) == 0 \
 				and _int(ports[r, 'subnet'].val) == 0:
-			return ports[r, 'port_id'].val
-	raise ValueError('universo U%s non disponibile: nessuna porta Art-Net con universe %d' % (universe, u))
+			found.append((ports[r, 'online'].val != '1', r, ports[r, 'port_id'].val))
+	if found:
+		return min(found)[2]
+	raise ValueError('universo U%s non disponibile: nessuna porta (Art-Net o USB) con universe %d' % (universe, u))
 
 
 def _catalog():
