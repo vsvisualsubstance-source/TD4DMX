@@ -13,6 +13,10 @@ by its group COMP's Level par (if it has one), dmx_patch Master, and the
 Strobe gate (on 22% of each 1/Stroberate period). A profile with a dimmer
 channel is scaled on dimmer* only (colour kept); without one, on its colour
 and output channels. Pan/tilt/strobe/mode/fan/... are never scaled.
+
+Light effects (light_effects, "TD/Win-PD, 59") modify a fixture's values
+first (dimmer / colour / white waves on top of the look); the levels above
+act after them.
 """
 import re
 
@@ -70,6 +74,13 @@ def onCook(scriptOp):
 	cache = {}
 	levels = {}
 	idx_cache = {}
+	chan_cache = {}
+	fx = op('light_effects').module if op('light_effects') is not None else None
+	try:
+		fx_mods = fx.mods() if fx is not None else {}
+	except Exception as e:
+		debug('light_effects:', e)
+		fx_mods = {}
 	for r in range(1, rep.numRows):
 		if rep[r, 'status'].val not in SENDABLE:
 			continue
@@ -86,6 +97,14 @@ def onCook(scriptOp):
 			sel = comp.op(key[1]) if comp is not None else None
 			cache[key] = _units(sel) if sel is not None else {}
 		vals = cache[key].get(int(rep[r, 'unit'].val), [])
+		m = fx_mods.get(int(rep[r, 'id'].val)) if fx_mods else None
+		if m is not None:   # light effects on top of the look (light_effects)
+			pk = (rep[r, 'group'].val, rep[r, 'profile'].val)
+			if pk not in chan_cache:
+				chans = fl.profile_channels(*pk) or []
+				chan_cache[pk] = (chans, _intensity_idx(chans))
+			vals = list(vals)
+			fx.apply(m, chan_cache[pk][0], vals, chan_cache[pk][1])
 		if key[0] not in levels:
 			comp = home.op(key[0])
 			lp = comp.par['Level'] if comp is not None else None

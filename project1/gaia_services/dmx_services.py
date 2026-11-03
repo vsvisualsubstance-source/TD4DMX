@@ -1104,7 +1104,42 @@ def _build_patch_matrix():
 		for r in range(1, ports.numRows):
 			rows.append({h: ports[r, h].val for h in head})
 	services = {name: {'kind': 'service', 'type': kind} for name, kind, _ in PATCH_SERVICES}
-	return {'services': services, 'ports': rows}
+	fxm = _patch().op('light_effects')
+	effects = {'params': {
+		'dmx_effect': {'kind': 'param', 'type': 'json', 'access': 'rw'},
+		'dmx_effects_state': {'kind': 'param', 'type': 'json', 'access': 'r'}},
+		'channels': list(fxm.module.CHANNELS) if fxm else [],
+		'shapes': list(fxm.module.SHAPES) if fxm else []}
+	return {'services': services, 'ports': rows, 'effects': effects}
+
+
+# Light effects (dmx_patch/light_effects, GAIA_INTERFACE "TD/Win-PD, 59"):
+#   dmx_effect         rw  set {effect, bpm?} = play live (same id restarts),
+#                          {stop: id} = stop that one, null = stop all live;
+#                          get = [{effect, bpm}] playing live
+#   dmx_effects_state  r   {live: [{id, name, started_ts, bpm}],
+#                          timeline: {cue, ids}, active: [ids]}
+def _register_effects(agent):
+	def fx():
+		return _patch().op('light_effects').module
+
+	def effect(v):
+		d = _json_arg(v) if isinstance(v, (bytes, str)) and str(v).strip()[:1] in '{["' else v
+		if d in (None, '', 'null', 'off', 'stop', 0, False):
+			fx().stop()
+			return
+		if not isinstance(d, dict):
+			raise ValueError('dmx_effect: serve {effect, bpm?}, {stop: id} oppure null')
+		if 'stop' in d:
+			fx().stop(d['stop'])
+			return
+		if d.get('effect') is None:
+			fx().stop()
+			return
+		fx().start(d['effect'], d.get('bpm'))
+
+	agent.register_param('dmx_effect', get=lambda: fx().live(), set=effect)
+	agent.register_param('dmx_effects_state', get=lambda: fx().state())
 
 
 # Audio engine sources (/project1/audio_engine/source_a|source_b): names are
@@ -1471,6 +1506,7 @@ STATE_TOPICS = [
 	('heads_state', ['heads_list', 'heads_positions'], 0.1),
 	('audio_devices', ['audio_devices'], 2.0),
 	('heads_motion', ['heads_motion_state'], 0.2),
+	('dmx_effects', ['dmx_effects_state'], 0.2),
 ]
 
 
@@ -1538,6 +1574,7 @@ def register_all():
 	_register_ptz(agent)
 	_register_programmer(agent)
 	_register_fixtures(agent)
+	_register_effects(agent)
 	_register_catalog(agent)
 	_register_planning(agent)
 	_register_show(agent)

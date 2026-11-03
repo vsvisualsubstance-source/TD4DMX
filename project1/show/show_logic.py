@@ -1147,6 +1147,8 @@ def timeline_rev(doc):
 	canon = {k: doc.get(k) for k in TIMELINE_FIELDS}
 	if doc.get('motion') and (doc['motion'].get('cues') or doc['motion'].get('scenes')):
 		canon['motion'] = doc['motion']   # only when there is one: older revs unchanged
+	if doc.get('effects') and (doc['effects'].get('cues') or doc['effects'].get('effects')):
+		canon['effects'] = doc['effects']
 	return hashlib.sha1(json.dumps(canon, sort_keys=True).encode('utf-8')).hexdigest()[:12]
 
 
@@ -1159,7 +1161,7 @@ def timeline():
 		'cues': [{'time': c['time'], 'scene': c['scene'] or None, 'fade': c['fade'], 'label': c['label']}
 			for c in cues()],
 		'keys': [{k: x[k] for k in ('lane', 'time', 'value', 'interp')} for x in keys()],
-		'motion': motion_track()}
+		'motion': motion_track(), 'effects': effects_track()}
 	doc['rev'] = timeline_rev(doc)
 	doc['source'] = _meta('source', 'td') if doc['rev'] == _meta('loaded_rev') else 'td'
 	return doc
@@ -1267,6 +1269,10 @@ def load_timeline(doc, source='gaia'):
 	if 'motion' in doc:   # absent = motion track untouched, null / {} = cleared
 		motion, merr = check_motion(doc.get('motion'))
 		errors.extend(merr)
+	effects = None
+	if 'effects' in doc:   # same rule as motion
+		effects, eerr = check_effects(doc.get('effects'))
+		errors.extend(eerr)
 	dry = bool(doc.get('dry_run'))
 	name = str(doc.get('name') or '').strip()
 	origin = str(doc.get('source') or source)
@@ -1291,6 +1297,8 @@ def load_timeline(doc, source='gaia'):
 		_show().store('timeline_bpm', None if bpm is None else float(bpm))
 		if motion is not None:
 			_show().store('timeline_motion', motion)
+		if effects is not None:
+			_show().store('timeline_effects', effects)
 		_show().store('timeline_source', origin)
 		_show().store('timeline_loaded_rev', timeline_rev(timeline()))
 		force_apply()
@@ -1381,6 +1389,71 @@ def motion_at(t):
 		if sc.get('id') == sid:
 			return idx, sc
 	return idx, None
+
+
+# ---------------------------------------------------------------- effects track
+# Light effects on the timeline (GAIA_INTERFACE "OPS, 42" / "TD/Win-PD, 59"),
+# played by dmx_patch/light_effects on top of the scene look:
+#   {"effects": [effect, ...],                      (full effects)
+#    "cues": [{"time": s | "m:ss", "effects": [<effect id>, ...], "label": str}]}
+# From a cue on, exactly its effects play ([] = none) until the next cue.
+# Kept in the show COMP's storage; in the timeline document as "effects":
+# absent = untouched, null or {} = cleared.
+
+def effects_track():
+	return _meta('effects') or {'effects': [], 'cues': []}
+
+
+def _fx_module():
+	c = target_comp('patch')
+	m = c.op('light_effects') if c is not None else None
+	return m.module if m is not None else None
+
+
+def check_effects(track):
+	"""Validate an effects track; returns (clean track, errors)."""
+	if not track:
+		return {'effects': [], 'cues': []}, []
+	if not isinstance(track, dict):
+		return None, ['effects: serve un oggetto {effects, cues}']
+	errors, effs, cues_out = [], [], []
+	fxm = _fx_module()
+	for i, e in enumerate(track.get('effects') or [], 1):
+		try:
+			effs.append(fxm.check_effect(e) if fxm else dict(e))
+		except (ValueError, TypeError) as ex:
+			errors.append('effetto %d: %s' % (i, ex))
+	ids = {e['id'] for e in effs}
+	for i, c in enumerate(track.get('cues') or [], 1):
+		if not isinstance(c, dict):
+			errors.append('effects cue %d: serve un oggetto' % i)
+			continue
+		try:
+			t = _seconds(c.get('time'))
+		except (ValueError, TypeError) as ex:
+			errors.append('effects cue %d: %s' % (i, ex))
+			continue
+		lst = c.get('effects')
+		lst = [] if lst in (None, 'off') else ([lst] if isinstance(lst, str) else list(lst))
+		bad = [x for x in lst if str(x) not in ids]
+		if bad:
+			errors.append('effects cue %d: effetti non in effects.effects: %s' % (i, bad))
+			continue
+		cues_out.append({'time': round(max(0.0, t), 3), 'effects': [str(x) for x in lst],
+			'label': str(c.get('label') or '').replace('\t', ' ')})
+	cues_out.sort(key=lambda c: c['time'])
+	return {'effects': effs, 'cues': cues_out}, errors
+
+
+def effects_at(t):
+	"""(cue index, [effect dicts]) of the effects track at time t."""
+	tr = effects_track()
+	idx, ids = -1, []
+	for i, c in enumerate(tr.get('cues') or []):
+		if c['time'] <= t:
+			idx, ids = i, c['effects']
+	by = {e['id']: e for e in tr.get('effects') or []}
+	return idx, [by[i] for i in ids if i in by]
 
 
 def motion_tick():
