@@ -417,7 +417,7 @@ def _default_y(group):
 
 def quick_patch(comp):
 	"""Rewrite a group as a uniform consecutive block from its quick-patch
-	pars (count, start, profile, port). Keeps id/name/x/y/enabled of the
+	pars (count, start, profile, port). Keeps id/name/uid/x/y/enabled of the
 	units that already exist; extra fixtures of the group are removed."""
 	if _syncing:
 		return
@@ -453,6 +453,7 @@ def quick_patch(comp):
 			'y': old['y'] if old else _default_y(group),
 			'enabled': old['enabled'] if old else 1,
 			'palette': old['palette'] if old else '',
+			'uid': old['uid'] if old else '',
 			'audio': old['audio'] if old else '',
 			'audio_gain': old['audio_gain'] if old else '',
 		}
@@ -769,10 +770,18 @@ def to_list():
 
 def set_all(items):
 	"""Replace the whole patch with `items` (list of dicts, same keys as
-	to_list(); id optional). Validates everything before writing anything."""
+	to_list(); id optional). Validates everything before writing anything.
+	Heads without a unit get the next free unit of the group (one head =
+	one unit, so heads_count follows the patch: GAIA_INTERFACE "OPS, 41");
+	the other groups keep unit 1 (mirrored copies). A fixture without a
+	name keeps the name of the current fixture with the same uid."""
 	clean = []
 	nid = _next_id()
 	seen = set()
+	old_names = {f['uid']: f['name'] for f in rows() if f['uid'] and f['name']}
+	head_units = {_int(it.get('unit')) for it in items
+		if resolve_group(it.get('group')) == 'heads' and _int(it.get('unit')) > 0}
+	next_head = 1
 	for it in items:
 		d = dict(it)
 		if not d.get('id') or _int(d['id']) in seen:
@@ -781,7 +790,15 @@ def set_all(items):
 		d['id'] = _int(d['id'])
 		seen.add(d['id'])
 		d.setdefault('profile', default_profile(d.get('group')))
+		if resolve_group(d.get('group')) == 'heads' and _int(d.get('unit')) <= 0:
+			while next_head in head_units:
+				next_head += 1
+			d['unit'] = next_head
+			head_units.add(next_head)
 		d.setdefault('unit', 1)
+		uid = str(d.get('uid') or '').strip()
+		if not d.get('name') and uid in old_names:
+			d['name'] = old_names[uid]
 		d.setdefault('address', 1)
 		d.setdefault('enabled', 1)
 		d.setdefault('x', 0)
