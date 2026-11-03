@@ -640,7 +640,7 @@ def _register_show(agent):
 
 	def capture(v):
 		d = scene_arg(v)
-		scenes_changed(sl().capture(d['name'], d.get('label'), d.get('categories')))
+		scenes_changed(sl().capture(d['name'], d.get('label'), d.get('categories'), d.get('only')))
 
 	def update(v):
 		d = scene_arg(v)
@@ -652,6 +652,8 @@ def _register_show(agent):
 			flags = {c: c in d['categories'] for c in sl().CATEGORIES}
 		if d.get('label'):
 			flags['label'] = d['label']
+		if 'only' in d:   # [gruppi] limits the scene; [] / null = every group ("TD/Win-PD, 60")
+			flags['only'] = d['only'] or []
 		sl().set_scene_flags(d['name'], **flags)
 		scenes_changed()
 
@@ -716,7 +718,9 @@ def _build_show_matrix():
 			if hasattr(sl, {'track': 'tracks', 'motion': 'motion_track', 'effects': 'effects_track',
 				'chases': 'chases_track', 'scene_only': 'scene_groups'}[f])],
 		'tracks': {'main': getattr(sl, 'MAIN_TRACK', None), 'field': 'track',
-			'list': sl.tracks() if hasattr(sl, 'tracks') else []}}
+			'list': sl.tracks() if hasattr(sl, 'tracks') else []},
+		# groups a scene can be limited to (show_scene_capture / _update 'only')
+		'scene_groups': sl.scene_groups() if hasattr(sl, 'scene_groups') else []}
 
 
 def _build_fixtures_matrix():

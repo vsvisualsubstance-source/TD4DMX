@@ -75,7 +75,9 @@ CATEGORY_LABELS = {'rigs': 'Look dei rig', 'heads': 'Teste mobili', 'groups': 'A
 PALETTE_PARS = ['Palette'] + ['Custompalette%d%s' % (i, c) for i in range(1, 6) for c in 'rgb']
 INTERPS = ['linear', 'smooth', 'step']
 
-SCENE_COLS = ['name', 'label'] + CATEGORIES
+# only: space-separated groups the scene is limited to ('' = all), see
+# scene_groups (GAIA_INTERFACE "OPS, 44" point 4 / "TD/Win-PD, 60")
+SCENE_COLS = ['name', 'label'] + CATEGORIES + ['only']
 VALUE_COLS = ['scene', 'target', 'par', 'value']
 CUE_COLS = ['id', 'time', 'scene', 'fade', 'label', 'track']
 # Cue tracks (GAIA_INTERFACE "OPS, 44" / "TD/Win-PD, 60"): one clock, cues
@@ -434,8 +436,46 @@ def scenes():
 			d[c] = 1 if _i(r[c], 1) else 0
 		if r['palette'] == '':   # saved before category palette: as its rigs
 			d['palette'] = d['rigs']
+		d['only'] = r['only'].split()
 		out.append(d)
 	return out
+
+
+def scene_groups():
+	"""Groups a scene can be limited to (scene 'only'): every rig group of
+	the patch, plus 'heads'."""
+	return [g for g, c, k in rig_groups()] + ['heads']
+
+
+def _clean_only(only):
+	"""Validated group list for 'only' (Plancia aliases accepted); [] = all."""
+	if not only:
+		return []
+	only = only.split() if isinstance(only, str) else list(only)
+	fx = _show().parent().op(TARGETS['patch'] + '/fixture_logic')
+	known = scene_groups()
+	out = []
+	for g in only:
+		name = 'heads' if str(g) in ('heads', 'mh') else (fx.module.resolve_group(g) if fx else str(g))
+		if name not in known:
+			raise ValueError('only: gruppo %r sconosciuto (%s)' % (g, ', '.join(known)))
+		if name not in out:
+			out.append(name)
+	return out
+
+
+def _key_group(k):
+	"""Group a scene key belongs to: the rig group, 'heads', or None for
+	the global pars (patch Blackout / Strobe)."""
+	t = k[0]
+	if _is_head(t) or t in ('heads', 'ptz'):
+		return 'heads'
+	if _is_fx(t):
+		f = _fx_lights().get(t[len(FX_PREFIX):])
+		return f['group'] if f else None
+	if t == 'patch':
+		return None
+	return t
 
 
 def scene_names():
@@ -450,11 +490,14 @@ def scene_values(name):
 		return {}
 	sc = sc[0]
 	cat = _category_of()
+	only = set(sc.get('only') or [])
 	out = {}
 	for r in _rows('scene_values', VALUE_COLS):
 		if r['scene'] != name:
 			continue
 		k = (r['target'], r['par'])
+		if only and _key_group(k) not in only:
+			continue   # a scene limited to some groups leaves the others as they are
 		if _is_head(k[0]):
 			if sc.get('heads', 0):
 				out[k] = r['value'] if k[1] == 'mode' else _f(r['value'])
@@ -473,44 +516,55 @@ def scene_values(name):
 	return out
 
 
-def capture(name, label=None, categories=None):
+def capture(name, label=None, categories=None, only=None):
 	"""Store the current live values of every category into scene `name`
 	(created if new, enabled = the captured categories; existing: values
 	replaced, category flags kept). categories: only those (e.g. ['heads']);
-	the scene's other values stay."""
+	the scene's other values stay. only: limit the scene to these groups
+	(rig groups / 'heads'): only their values are captured and replaced,
+	and the scene's 'only' is set to them (None = as it is, [] = all)."""
 	name = str(name).strip()
 	if not name:
 		raise ValueError('nome scena vuoto')
 	cats = list(CATEGORIES) if categories is None else [c for c in CATEGORIES if c in categories]
 	if categories is not None and not cats:
 		raise ValueError('categorie %r sconosciute (%s)' % (categories, ', '.join(CATEGORIES)))
+	grp = None if only is None else set(_clean_only(only))
+	keep = lambda k: not grp or _key_group(k) in grp
 	owned = _category_of()
 	st = _table('scenes', SCENE_COLS)
 	if _row_index('scenes', SCENE_COLS, 'name', name) is None:
 		# a new scene applies what it captured: capture(..., ['heads']) = 'only heads'
-		st.appendRow([name, label or name] + [1 if c in cats else 0 for c in CATEGORIES])
-	elif label:
-		st[_row_index('scenes', SCENE_COLS, 'name', name), 'label'] = label
+		st.appendRow([name, label or name] + [1 if c in cats else 0 for c in CATEGORIES]
+			+ [' '.join(sorted(grp)) if grp else ''])
+	else:
+		r0 = _row_index('scenes', SCENE_COLS, 'name', name)
+		if label:
+			st[r0, 'label'] = label
+		if grp is not None:
+			st[r0, 'only'] = ' '.join(sorted(grp))
 	vt = _table('scene_values', VALUE_COLS)
 	for r in range(vt.numRows - 1, 0, -1):
 		if vt[r, 'scene'].val != name:
 			continue
 		k = (vt[r, 'target'].val, vt[r, 'par'].val)
 		cat = 'heads' if _is_head(k[0]) else 'rigs' if _is_fx(k[0]) else owned.get(k)
-		if categories is None or cat in cats:
+		if (categories is None or cat in cats) and keep(k):
 			vt.deleteRow(r)
 	for cat in cats:
 		for t, n in category_pars(cat):
 			p = _par(t, n)
-			if p is not None:
+			if p is not None and keep((t, n)):
 				v = _read(p)
 				vt.appendRow([name, t, n, round(v, 6) if isinstance(v, float) else v])
 	if 'heads' in cats:
 		for t, n, v in _head_rows():
-			vt.appendRow([name, t, n, v])
+			if keep((t, n)):
+				vt.appendRow([name, t, n, v])
 	if 'rigs' in cats:
 		for t, n, v in _fx_rows():
-			vt.appendRow([name, t, n, v])
+			if keep((t, n)):
+				vt.appendRow([name, t, n, v])
 	invalidate(force=False)
 	return name
 
@@ -525,6 +579,8 @@ def set_scene_flags(name, **flags):
 			t[r, c] = 1 if _i(flags[c], 1) else 0
 	if 'label' in flags:
 		t[r, 'label'] = flags['label']
+	if 'only' in flags:   # [] / None = every group
+		t[r, 'only'] = ' '.join(_clean_only(flags['only']))
 	invalidate(force=False)
 
 
@@ -989,7 +1045,7 @@ def scene_catalog():
 		used.setdefault(c['scene'], []).append(c['id'])
 	return [{'id': s['name'], 'index': i, 'label': s['label'],
 		'categories': [c for c in CATEGORIES if s[c]], 'per_head': s['name'] in heads,
-		'per_fixture': s['name'] in lights,
+		'per_fixture': s['name'] in lights, 'only': s.get('only') or [],
 		'cues': used.get(s['name'], []), 'preview': scene_preview(s['name'])}
 		for i, s in enumerate(scenes())]
 
