@@ -606,6 +606,20 @@ def _register_show(agent):
 	# (GAIA_INTERFACE "OPS, 42" point 7)
 	agent.register_param('show_status', get=lambda: sl().status_text())
 
+	# step chases ("TD/Win-PD, 60"): dmx_chase set {chase, bpm?} plays live,
+	# null stops (the last step stays); get = {chase, bpm} | None
+	def chase(v):
+		d = _json_arg(v) if isinstance(v, (bytes, str)) and str(v).strip()[:1] in '{["' else v
+		if d in (None, '', 'null', 'off', 'stop', 0, False) or (isinstance(d, dict) and d.get('chase') is None):
+			sl().stop_chase()
+			return
+		if not isinstance(d, dict):
+			raise ValueError('dmx_chase: serve {chase, bpm?} oppure null')
+		sl().start_chase(d['chase'], d.get('bpm'))
+
+	agent.register_param('dmx_chase', get=lambda: sl().live_chase(), set=chase)
+	agent.register_param('dmx_chase_state', get=lambda: sl().chase_state())
+
 	def recall(v):
 		sl().recall(str(v))
 
@@ -688,6 +702,8 @@ def _build_show_matrix():
 		'show_keys': {'kind': 'param', 'type': 'json', 'access': 'rw'},
 		'show_timeline': {'kind': 'param', 'type': 'json', 'access': 'rw'},
 		'show_timeline_result': {'kind': 'param', 'type': 'json', 'access': 'r'},
+		'dmx_chase': {'kind': 'param', 'type': 'json', 'access': 'rw'},
+		'dmx_chase_state': {'kind': 'param', 'type': 'json', 'access': 'r'},
 	}
 	services = {name: {'kind': 'service', 'type': kind} for name, kind, _ in SHOW_SERVICES}
 	services['show_rewind'] = {'kind': 'service', 'type': 'action'}
@@ -1514,6 +1530,7 @@ STATE_TOPICS = [
 	('audio_devices', ['audio_devices'], 2.0),
 	('heads_motion', ['heads_motion_state'], 0.2),
 	('dmx_effects', ['dmx_effects_state'], 0.2),
+	('dmx_chase', ['dmx_chase_state'], 0.1),
 ]
 
 

@@ -882,10 +882,14 @@ def _history():
 	"""{(target, par): [(time, fade, value)]} -- every cue (any track) that
 	sets the key, in timeline order."""
 	out = {}
-	for c in cues():
-		if c['scene']:
-			for k, v in scene_values(c['scene']).items():
-				out.setdefault(k, []).append((c['time'], c['fade'], v))
+	# timeline cues and the expanded steps of the chase track, in time order
+	# (a step at the same instant as a cue comes after it)
+	evs = [(c['time'], 0, c['fade'], c['scene']) for c in cues() if c['scene']]
+	evs += [(s['time'], 1, s['fade'], s['scene']) for s in chase_steps()]
+	evs.sort(key=lambda e: (e[0], e[1]))
+	for tc, _o, fade, scene in evs:
+		for k, v in scene_values(scene).items():
+			out.setdefault(k, []).append((tc, fade, v))
 	return {k: ([h[0] for h in hist], hist) for k, hist in out.items()}
 
 
@@ -1087,6 +1091,7 @@ def tick():
 		_cue_seen[0] = (True, idx)
 	else:
 		_cue_seen[0] = None
+	_live_chase_step()
 	_xfade_step()
 	status = status_text(t)
 	if p.Status.eval() != status:
@@ -1209,6 +1214,8 @@ def timeline_rev(doc):
 		canon['motion'] = doc['motion']   # only when there is one: older revs unchanged
 	if doc.get('effects') and (doc['effects'].get('cues') or doc['effects'].get('effects')):
 		canon['effects'] = doc['effects']
+	if doc.get('chases') and (doc['chases'].get('cues') or doc['chases'].get('chases')):
+		canon['chases'] = doc['chases']
 	return hashlib.sha1(json.dumps(canon, sort_keys=True).encode('utf-8')).hexdigest()[:12]
 
 
@@ -1222,7 +1229,7 @@ def timeline():
 			# track only off the main one: older timelines keep their rev
 			**({} if c['track'] == MAIN_TRACK else {'track': c['track']})) for c in cues()],
 		'keys': [{k: x[k] for k in ('lane', 'time', 'value', 'interp')} for x in keys()],
-		'motion': motion_track(), 'effects': effects_track()}
+		'motion': motion_track(), 'effects': effects_track(), 'chases': chases_track()}
 	doc['rev'] = timeline_rev(doc)
 	doc['source'] = _meta('source', 'td') if doc['rev'] == _meta('loaded_rev') else 'td'
 	return doc
@@ -1339,6 +1346,11 @@ def load_timeline(doc, source='gaia'):
 	if 'effects' in doc:   # same rule as motion
 		effects, eerr = check_effects(doc.get('effects'))
 		errors.extend(eerr)
+	chases = None
+	if 'chases' in doc:   # same rule; missing scenes follow missing_scenes
+		chases, cerr, cwarn = check_chases(doc.get('chases'), missing)
+		errors.extend(cerr)
+		warnings.extend(cwarn)
 	dry = bool(doc.get('dry_run'))
 	name = str(doc.get('name') or '').strip()
 	origin = str(doc.get('source') or source)
@@ -1365,6 +1377,9 @@ def load_timeline(doc, source='gaia'):
 			_show().store('timeline_motion', motion)
 		if effects is not None:
 			_show().store('timeline_effects', effects)
+		if chases is not None:
+			_show().store('timeline_chases', chases)
+		invalidate()   # chase steps depend on the chases, Length and BPM just stored
 		_show().store('timeline_source', origin)
 		_show().store('timeline_loaded_rev', timeline_rev(timeline()))
 		force_apply()
@@ -1520,6 +1535,241 @@ def effects_at(t):
 			idx, ids = i, c['effects']
 	by = {e['id']: e for e in tr.get('effects') or []}
 	return idx, [by[i] for i in ids if i in by]
+
+
+# ---------------------------------------------------------------- chases
+# Step chases (GAIA_INTERFACE "OPS, 44" point 3 / "TD/Win-PD, 60"): a
+# sequence of TD scenes, each held for a time and reached with a fade.
+# Format and maths = plancia/src/63-chase.js (chaseSec, chaseOrder,
+# chaseExpand; see chase_self_test):
+#   chase {id, name, steps: [{scene, hold?}], hold: {value, unit: beats|s},
+#          fadePct (0..100 of the step time), pingpong}
+#   track {"chases": [chase...], "cues": [{"time", "chase": <id> | "off", "label"}]}
+# Timeline: a chase cue plays until the next chase cue (or the end); its
+# steps are expanded on the fly into virtual cues that join state_at's per
+# key composition (not in the cues table, not counted by GO/BACK).
+# Live: start_chase / stop_chase (Gaia dmx_chase): every step is a recall()
+# of its scene with its fade, so nothing is left behind in /dmx/fade.
+
+def chase_sec(h, bpm):
+	h = h or {}
+	try:
+		v = float(h.get('value') or 0) or 1.0
+	except (TypeError, ValueError):
+		v = 1.0
+	return max(.05, v if h.get('unit') == 's' else v * 60.0 / (bpm if bpm and bpm > 0 else 120.0))
+
+
+def chase_order(ch):
+	n = len(ch.get('steps') or [])
+	o = list(range(n))
+	return o + o[1:-1][::-1] if ch.get('pingpong') and n > 2 else o
+
+
+def chase_expand(ch, start, end, bpm, limit=500):
+	"""Steps from start to end (excluded): [{time, step, scene, fade}]."""
+	order, out = chase_order(ch), []
+	if not order:
+		return out
+	t, k = float(start), 0
+	pct = max(0.0, min(100.0, float(ch.get('fadePct') or 0)))
+	while t < end - 1e-6 and len(out) < limit:
+		i = order[k % len(order)]
+		st = ch['steps'][i]
+		dur = chase_sec(st.get('hold') or ch.get('hold'), bpm)
+		if st.get('scene'):
+			out.append({'time': round(t, 3), 'step': i, 'scene': st['scene'], 'fade': round(dur * pct / 100.0, 2)})
+		t += dur
+		k += 1
+	return out
+
+
+def chases_track():
+	return _meta('chases') or {'chases': [], 'cues': []}
+
+
+def check_chases(track, missing='error'):
+	"""Validate a chases track; returns (clean track, errors, warnings).
+	A step whose scene TD does not have: error, or dropped with a warning
+	when missing == 'marker' (as the timeline's missing_scenes)."""
+	if not track:
+		return {'chases': [], 'cues': []}, [], []
+	if not isinstance(track, dict):
+		return None, ['chases: serve un oggetto {chases, cues}'], []
+	errors, warnings, chs, cues_out = [], [], [], []
+	names = set(scene_names())
+	for i, ch in enumerate(track.get('chases') or [], 1):
+		if not isinstance(ch, dict) or not str(ch.get('id') or '').strip():
+			errors.append('chase %d: serve un oggetto con id' % i)
+			continue
+		steps = []
+		for j, st in enumerate(ch.get('steps') or [], 1):
+			sc = str((st or {}).get('scene') or '')
+			if sc and sc not in names:
+				if missing == 'marker':
+					warnings.append('chase %r step %d: scena %r non esiste -> saltato' % (ch['id'], j, sc))
+					continue
+				errors.append('chase %r step %d: scena %r non esiste' % (ch['id'], j, sc))
+				continue
+			d = {'scene': sc}
+			if (st or {}).get('hold'):
+				d['hold'] = dict(st['hold'])
+			steps.append(d)
+		if not steps:
+			errors.append('chase %r: nessuno step valido' % ch['id'])
+			continue
+		chs.append({'id': str(ch['id']), 'name': str(ch.get('name') or ch['id']), 'steps': steps,
+			'hold': dict(ch.get('hold') or {'value': 4, 'unit': 'beats'}),
+			'fadePct': max(0.0, min(100.0, _f(ch.get('fadePct'), 0.0))), 'pingpong': bool(ch.get('pingpong'))})
+	ids = {c['id'] for c in chs}
+	for i, c in enumerate(track.get('cues') or [], 1):
+		if not isinstance(c, dict):
+			errors.append('chases cue %d: serve un oggetto' % i)
+			continue
+		try:
+			t = _seconds(c.get('time'))
+		except (ValueError, TypeError) as e:
+			errors.append('chases cue %d: %s' % (i, e))
+			continue
+		cid = str(c.get('chase') or 'off')
+		if cid != 'off' and cid not in ids:
+			errors.append('chases cue %d: chase %r non è in chases.chases' % (i, cid))
+			continue
+		cues_out.append({'time': round(max(0.0, t), 3), 'chase': cid,
+			'label': str(c.get('label') or '').replace('\t', ' ')})
+	cues_out.sort(key=lambda c: c['time'])
+	return {'chases': chs, 'cues': cues_out}, errors, warnings
+
+
+@_memo
+def chase_steps():
+	"""The timeline's chase cues expanded: [{time, scene, fade, chase, step}]."""
+	tr = chases_track()
+	by = {c['id']: c for c in tr.get('chases') or []}
+	cs = tr.get('cues') or []
+	length = float(_show().par.Length.eval())
+	bpm = _meta('bpm')
+	out = []
+	for i, c in enumerate(cs):
+		ch = by.get(c['chase'])
+		if ch is None:
+			continue
+		end = min(length, cs[i + 1]['time'] if i + 1 < len(cs) else length)
+		for s in chase_expand(ch, c['time'], end, float(bpm) if bpm else None):
+			out.append(dict(s, chase=ch['id']))
+	return out
+
+
+def chase_at(t):
+	"""(cue index, chase dict | None, step index | None) of the timeline's
+	chase track at time t."""
+	tr = chases_track()
+	idx, cid = -1, None
+	for i, c in enumerate(tr.get('cues') or []):
+		if c['time'] <= t:
+			idx, cid = i, (None if c['chase'] == 'off' else c['chase'])
+	ch = next((c for c in tr.get('chases') or [] if c['id'] == cid), None)
+	step = None
+	if ch is not None:
+		for s in chase_steps():
+			if s['chase'] == ch['id'] and s['time'] <= t:
+				step = s['step']
+	return idx, ch, step
+
+
+_live_chase = {}   # {chase, bpm, started (absTime s), ts, k (step counter applied)}
+
+
+def start_chase(chase, bpm=None):
+	"""Live: play a chase from its first step now (replaces a running one)."""
+	clean, errors, _w = check_chases({'chases': [chase], 'cues': []})
+	if errors:
+		raise ValueError('; '.join(errors))
+	import time
+	_live_chase.clear()
+	_live_chase.update(chase=clean['chases'][0], bpm=float(bpm) if bpm else None,
+		started=absTime.seconds, ts=int(time.time() * 1000), k=-1, step=None)
+	_live_chase_step()
+
+
+def stop_chase():
+	"""Live chase off: the last step's look stays."""
+	_live_chase.clear()
+
+
+def live_chase():
+	return {'chase': _live_chase['chase'], 'bpm': _live_chase['bpm']} if _live_chase else None
+
+
+def _live_chase_step():
+	"""From tick(): recall the step whose turn it is (once per step)."""
+	if not _live_chase:
+		return
+	ch = _live_chase['chase']
+	bpm = _live_chase['bpm'] or _meta('bpm') or 120.0
+	order = chase_order(ch)
+	el = absTime.seconds - _live_chase['started']
+	k, t = 0, 0.0
+	durs = [chase_sec(ch['steps'][i].get('hold') or ch.get('hold'), bpm) for i in order]
+	cycle = sum(durs)
+	if cycle <= 0:
+		return
+	n_cycles = int(el // cycle)
+	t = n_cycles * cycle
+	k = n_cycles * len(order)
+	for d in durs:
+		if t + d > el:
+			break
+		t += d
+		k += 1
+	if k == _live_chase['k']:
+		return
+	_live_chase['k'] = k
+	i = order[k % len(order)]
+	st = ch['steps'][i]
+	_live_chase['step'] = i
+	if st.get('scene'):
+		fade = round(durs[k % len(order)] * float(ch.get('fadePct') or 0) / 100.0, 2)
+		try:
+			recall(st['scene'], fade)
+		except Exception as e:
+			debug('live chase %s: %s' % (ch['id'], e))
+
+
+def chase_state():
+	"""{live: {chase_id, name, step, started_ts, bpm} | None,
+	timeline: {cue, chase_id, step}} -- changes at start/stop and per step."""
+	lv = None
+	if _live_chase:
+		lv = {'chase_id': _live_chase['chase']['id'], 'name': _live_chase['chase']['name'],
+			'step': _live_chase.get('step'), 'started_ts': _live_chase['ts'], 'bpm': _live_chase['bpm']}
+	p = _show().par
+	tl = {'cue': -1, 'chase_id': None, 'step': None}
+	if p.Active.eval():
+		idx, ch, step = chase_at(float(p.Time.eval()))
+		tl = {'cue': idx, 'chase_id': ch['id'] if ch else None, 'step': step}
+	return {'live': lv, 'timeline': tl}
+
+
+def chase_self_test():
+	"""The assertions of plancia/test/chase.test.js (expansion part)."""
+	CH = {'id': 'ch1', 'name': 'Rosso blu', 'steps': [{'scene': 'rosso'}, {'scene': 'blu'},
+		{'scene': 'verde', 'hold': {'value': 2, 'unit': 'beats'}}], 'hold': {'value': 4, 'unit': 'beats'},
+		'fadePct': 50, 'pingpong': False}
+	fails = []
+	s = chase_expand(CH, 10, 30, 120)
+	if [[x['time'], x['scene'], x['fade']] for x in s[:4]] != [[10, 'rosso', 1], [12, 'blu', 1], [14, 'verde', 0.5], [15, 'rosso', 1]]:
+		fails.append('expand: %r' % s[:4])
+	if not all(x['time'] < 30 for x in s):
+		fails.append('expand oltre la fine')
+	pp = chase_expand(dict(CH, pingpong=True, steps=[{'scene': x['scene']} for x in CH['steps']]), 0, 10, 120)
+	if [x['scene'] for x in pp[:5]] != ['rosso', 'blu', 'verde', 'blu', 'rosso']:
+		fails.append('pingpong: %r' % [x['scene'] for x in pp[:5]])
+	# the timeline: chase from 0, off at 6 -> steps at 0, 2, 4, 5
+	tl = [x['time'] for x in chase_expand(CH, 0, 6, 120)]
+	if tl != [0, 2, 4, 5]:
+		fails.append('timeline: %r' % tl)
+	return fails
 
 
 def motion_tick():
