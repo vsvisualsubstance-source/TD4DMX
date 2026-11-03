@@ -1134,14 +1134,45 @@ def _source_for_rig(rig_name):
 	return _source('source_' + str(_rig(rig_name).par.Audiobus.eval()))
 
 
+def _menu_label(par, val):
+	"""Label of a device/driver menu value. A value no longer in the menu
+	(the card saved with the project is not on this machine) gets a readable
+	label from TD's internal name '{guid}||Device_name||n' instead of the
+	raw name (GAIA_INTERFACE "OPS, 41" point 3)."""
+	names = list(par.menuNames)
+	if val in names:
+		return par.menuLabels[names.index(val)]
+	parts = val.split('||')
+	return parts[1].replace('_', ' ') if len(parts) >= 2 else val
+
+
+def audio_devices():
+	"""{<letter>: {driver|device: {value, options, missing}}} -- the current
+	driver/device menus of every audio source as labels, so the Plancia list
+	follows a driver change and the machine (state topic 'audio_devices').
+	missing = the selected value is not in the menu here."""
+	out = {}
+	for letter, src_name in SOURCES:
+		src = _source(src_name)
+		if src is None:
+			continue
+		d = {}
+		for suffix, par_name, labels_out in AUDIO_MENU_PARAMS:
+			if not labels_out:
+				continue
+			par = src.par[par_name]
+			val = str(par.eval())
+			d[suffix] = {'value': _menu_label(par, val), 'options': list(par.menuLabels),
+				'missing': val not in par.menuNames}
+		out[letter] = d
+	return out
+
+
 def _register_source_menu(agent, name, src_name, par_name, labels_out):
 	def get():
 		par = _source(src_name).par[par_name]
 		val = str(par.eval())
-		names = list(par.menuNames)
-		if labels_out and val in names:
-			return par.menuLabels[names.index(val)]
-		return val
+		return _menu_label(par, val) if labels_out else val
 
 	def set_(value):
 		par = _source(src_name).par[par_name]
@@ -1197,7 +1228,9 @@ def _build_source_matrix(letter, src_name):
 
 
 def _build_audio_matrix():
-	return {'sources': {letter: _build_source_matrix(letter, src_name) for letter, src_name in SOURCES}}
+	return {'sources': {letter: _build_source_matrix(letter, src_name) for letter, src_name in SOURCES},
+		# live driver/device lists (state topic 'audio_devices', "OPS, 41")
+		'params': {'audio_devices': {'kind': 'param', 'type': 'json', 'access': 'r'}}}
 
 
 def _rig(rig_name):
@@ -1415,6 +1448,7 @@ STATE_TOPICS = [
 	('dmx_patch', ['dmx_fixtures', 'dmx_universe_map', 'dmx_patch_report'], 1.0),
 	('show_scenes', ['show_scene_catalog', 'show_scenes'], 1.0),
 	('heads_state', ['heads_list', 'heads_positions'], 0.1),
+	('audio_devices', ['audio_devices'], 2.0),
 ]
 
 
@@ -1509,6 +1543,7 @@ def register_all():
 				start=lambda sn=src_name, pn=par_name: setattr(_source(sn).par, pn, 1),
 				stop=lambda sn=src_name, pn=par_name: setattr(_source(sn).par, pn, 0),
 				status=lambda sn=src_name, pn=par_name: bool(_source(sn).par[pn].eval()))
+	agent.register_param('audio_devices', get=audio_devices)
 
 	# "OPS, 30": the bulky structure also on retained topics, published on change
 	if hasattr(agent, 'register_state_topic'):
