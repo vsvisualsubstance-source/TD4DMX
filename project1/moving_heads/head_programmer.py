@@ -373,8 +373,13 @@ def set_mode(mode, keys=None):
 
 
 def pantilt_norm(x, y, keys=None):
-	"""Plancia /mh/pantilt: x, y in -1..1 (pad); tilt = -y."""
+	"""Plancia /mh/pantilt: x, y in -1..1 (pad); tilt = -y. Heads moved by
+	a TD motion scene (head_motion) are skipped: the motion wins
+	(GAIA_INTERFACE "TD/Win-PD, 57")."""
 	keys = list(keys) if keys is not None else selection()
+	hm = _comp().op('head_motion')
+	if hm is not None:
+		keys = [k for k in keys if not hm.module.owns(k)]
 	for k in keys:
 		pr, tr = _ranges(k)
 		program({'pan': max(-1.0, min(1.0, x)) * pr / 2.0,

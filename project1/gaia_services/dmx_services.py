@@ -922,6 +922,8 @@ PROGRAMMER_PARAMS = [
 	('heads_position_rename', 'w'), # {position: index|name, to, label?}
 	('heads_last_result', 'r'),     # {seq, ts, source osc|gaia, action, target, ok, message, heads}
 	('heads_lamp', 'w'),            # on|off or {lamp: on|off, heads?: [refs]} -> every head with a lamp
+	('heads_motion', 'rw'),         # {scene, heads?: [refs], bpm?} plays a motion scene live; null stops ("TD/Win-PD, 57")
+	('heads_motion_state', 'r'),    # {source live|timeline|off, scene_id, name, heads, bpm, period_s, started_ts, cue}
 ]
 
 
@@ -1018,6 +1020,22 @@ def _register_programmer(agent):
 		return hp().lamp(d.get('lamp'), heads_of(d))
 
 	reg('heads_lamp', lamp)
+
+	def hm():
+		return _heads().op('head_motion').module
+
+	def motion(v):
+		d = arg(v) if v not in (None, '', b'') else None
+		if d in (None, 'null', 'off', 'stop', 0, False) or (isinstance(d, dict) and d.get('scene') is None):
+			hm().stop()
+			return 'stop'
+		if not isinstance(d, dict):
+			raise ValueError('heads_motion: serve {scene, heads?, bpm?} oppure null')
+		hm().start(d['scene'], heads_of(d), d.get('bpm'))
+		return 'start %s' % (d['scene'].get('id') if isinstance(d['scene'], dict) else '')
+
+	agent.register_param('heads_motion', get=lambda: hm().live(), set=recorded('heads_motion', motion))
+	agent.register_param('heads_motion_state', get=lambda: hm().state())
 
 
 _timeline_pub = {'rev': None, 'check': 0.0, 'pub': 0.0}
@@ -1449,6 +1467,7 @@ STATE_TOPICS = [
 	('show_scenes', ['show_scene_catalog', 'show_scenes'], 1.0),
 	('heads_state', ['heads_list', 'heads_positions'], 0.1),
 	('audio_devices', ['audio_devices'], 2.0),
+	('heads_motion', ['heads_motion_state'], 0.2),
 ]
 
 

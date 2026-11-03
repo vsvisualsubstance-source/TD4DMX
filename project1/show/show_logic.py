@@ -1145,6 +1145,8 @@ def timeline_rev(doc):
 	same rev on every machine, whoever made it (TD or Plancia)."""
 	import hashlib
 	canon = {k: doc.get(k) for k in TIMELINE_FIELDS}
+	if doc.get('motion') and (doc['motion'].get('cues') or doc['motion'].get('scenes')):
+		canon['motion'] = doc['motion']   # only when there is one: older revs unchanged
 	return hashlib.sha1(json.dumps(canon, sort_keys=True).encode('utf-8')).hexdigest()[:12]
 
 
@@ -1156,7 +1158,8 @@ def timeline():
 		'length': float(p.Length.eval()), 'loop': bool(p.Loop.eval()),
 		'cues': [{'time': c['time'], 'scene': c['scene'] or None, 'fade': c['fade'], 'label': c['label']}
 			for c in cues()],
-		'keys': [{k: x[k] for k in ('lane', 'time', 'value', 'interp')} for x in keys()]}
+		'keys': [{k: x[k] for k in ('lane', 'time', 'value', 'interp')} for x in keys()],
+		'motion': motion_track()}
 	doc['rev'] = timeline_rev(doc)
 	doc['source'] = _meta('source', 'td') if doc['rev'] == _meta('loaded_rev') else 'td'
 	return doc
@@ -1260,6 +1263,10 @@ def load_timeline(doc, source='gaia'):
 	bpm = doc.get('bpm')
 	if bpm is not None and _f(bpm, -1) <= 0:
 		errors.append('bpm %r non valido' % bpm)
+	motion = None
+	if 'motion' in doc:   # absent = motion track untouched, null / {} = cleared
+		motion, merr = check_motion(doc.get('motion'))
+		errors.extend(merr)
 	dry = bool(doc.get('dry_run'))
 	name = str(doc.get('name') or '').strip()
 	origin = str(doc.get('source') or source)
@@ -1282,6 +1289,8 @@ def load_timeline(doc, source='gaia'):
 			p.Time = 0
 		_show().store('timeline_name', name)
 		_show().store('timeline_bpm', None if bpm is None else float(bpm))
+		if motion is not None:
+			_show().store('timeline_motion', motion)
 		_show().store('timeline_source', origin)
 		_show().store('timeline_loaded_rev', timeline_rev(timeline()))
 		force_apply()
@@ -1296,6 +1305,93 @@ def load_timeline(doc, source='gaia'):
 
 def timeline_result():
 	return _tl['last']
+
+
+# ---------------------------------------------------------------- motion track
+# Head motion on the timeline (GAIA_INTERFACE "OPS, 41" / "TD/Win-PD, 57"),
+# like the Plancia's MOVIMENTO track (layout.headTimeline): its own cues,
+# separate from the scene cues, played by moving_heads/head_motion.
+#   {"scenes": [motion scene, ...],                 (full Plancia scenes)
+#    "cues": [{"time": s | "m:ss", "scene": <scene id> | "off", "label": str}]}
+# Kept in the show COMP's storage with the other timeline meta. In the
+# timeline document as "motion": absent = untouched, null or {} = cleared.
+
+def motion_track():
+	return _meta('motion') or {'scenes': [], 'cues': []}
+
+
+def _motion_hm():
+	c = target_comp('heads')
+	m = c.op('head_motion') if c is not None else None
+	return m.module if m is not None else None
+
+
+def check_motion(track):
+	"""Validate a motion track; returns (clean track, errors)."""
+	if not track:
+		return {'scenes': [], 'cues': []}, []
+	errors, scenes, cues_out = [], [], []
+	hm = _motion_hm()
+	if not isinstance(track, dict):
+		return None, ['motion: serve un oggetto {scenes, cues}']
+	for i, sc in enumerate(track.get('scenes') or [], 1):
+		try:
+			scenes.append(hm.check_scene(sc) if hm else dict(sc))
+		except (ValueError, TypeError) as e:
+			errors.append('motion scena %d: %s' % (i, e))
+	ids = {s['id'] for s in scenes}
+	for i, c in enumerate(track.get('cues') or [], 1):
+		if not isinstance(c, dict):
+			errors.append('motion cue %d: serve un oggetto' % i)
+			continue
+		try:
+			t = _seconds(c.get('time'))
+		except (ValueError, TypeError) as e:
+			errors.append('motion cue %d: %s' % (i, e))
+			continue
+		sid = str(c.get('scene') or 'off')
+		if sid != 'off' and sid not in ids:
+			errors.append('motion cue %d: scena %r non è in motion.scenes' % (i, sid))
+			continue
+		cues_out.append({'time': round(max(0.0, t), 3), 'scene': sid,
+			'label': str(c.get('label') or '').replace('\t', ' ')})
+	cues_out.sort(key=lambda c: c['time'])
+	return {'scenes': scenes, 'cues': cues_out}, errors
+
+
+def set_motion_track(track):
+	clean, errors = check_motion(json.loads(track) if isinstance(track, (str, bytes)) else track)
+	if errors:
+		raise ValueError('; '.join(errors))
+	_show().store('timeline_motion', clean)
+	return clean
+
+
+def motion_at(t):
+	"""(cue index, scene dict | None) of the motion track at time t: the
+	last cue <= t ('off' = none), -1 before the first."""
+	tr = motion_track()
+	idx, sid = -1, None
+	for i, c in enumerate(tr.get('cues') or []):
+		if c['time'] <= t:
+			idx, sid = i, (None if c['scene'] == 'off' else c['scene'])
+	if sid is None:
+		return idx, None
+	for sc in tr.get('scenes') or []:
+		if sc.get('id') == sid:
+			return idx, sc
+	return idx, None
+
+
+def motion_tick():
+	"""After tick(): run the head motion engine (it writes pan/tilt AFTER
+	the timeline, so on pan/tilt the motion wins)."""
+	hm = _motion_hm()
+	if hm is None:
+		return
+	p = _show().par
+	bpm = _meta('bpm')
+	hm.tick(float(p.Time.eval()), bool(p.Active.eval()), float(bpm) if bpm else None)
 
 
 # ---------------------------------------------------------------- inspector
