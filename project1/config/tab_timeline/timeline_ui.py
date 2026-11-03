@@ -106,6 +106,30 @@ def _track_rows(sl):
 	return sl.tracks() if hasattr(sl, 'tracks') else ['']
 
 
+def _extra_rows(sl):
+	"""[(title, [(time, text)])] of the chase / motion / effects tracks with
+	cues ('' text = off)."""
+	out = []
+	if hasattr(sl, 'chases_track'):
+		tr = sl.chases_track()
+		names = {c['id']: c['name'] for c in tr.get('chases') or []}
+		if tr.get('cues'):
+			out.append(('CHASE', [(c['time'], '' if c['chase'] == 'off' else '>> %s' % names.get(c['chase'], c['chase']))   # cv2 fonts: ASCII only
+				for c in tr['cues']]))
+	if hasattr(sl, 'motion_track'):
+		tr = sl.motion_track()
+		names = {s['id']: s.get('name') or s['id'] for s in tr.get('scenes') or []}
+		if tr.get('cues'):
+			out.append(('MOVIMENTO', [(c['time'], '' if c['scene'] == 'off' else (c.get('label') or names.get(c['scene'], c['scene'])))
+				for c in tr['cues']]))
+	if hasattr(sl, 'effects_track'):
+		tr = sl.effects_track()
+		names = {e['id']: e.get('name') or e['id'] for e in tr.get('effects') or []}
+		if tr.get('cues'):
+			out.append(('EFFETTI', [(c['time'], ' + '.join(names.get(i, i) for i in c['effects'])) for c in tr['cues']]))
+	return out
+
+
 def _lanes():
 	out = {}
 	for lane, ks in _sl().lanes().items():
@@ -198,6 +222,22 @@ def render(scriptOp):
 		if len(rows) > 1:   # track name, on the left edge
 			_rect(img, (0, cy0), (4, cy1), HEAD if track == sl.MAIN_TRACK else DIM, -1)
 			_text(img, track.upper(), 8, cy1 - 4, DIM, 0.34)
+		cy0 = cy1 + 4
+	# the other tracks of the timeline document (read-only blocks): chases,
+	# head motion, light effects -- only when they have cues
+	for title, blocks in _extra_rows(sl):
+		cy1 = cy0 + TRACK_H
+		for i, (t0, text) in enumerate(blocks):
+			end = blocks[i + 1][0] if i + 1 < len(blocks) else length
+			x0, x1 = int(_x(t0)), int(_x(end))
+			if x1 < 0 or x0 > w or not text:
+				continue
+			col = SCENE_COLORS[hash(text) % len(SCENE_COLORS)]
+			_rect(img, (x0, cy0), (x1, cy1), tuple(v * 0.35 for v in col), -1)
+			_line(img, (x0, cy0), (x0, cy1), col, 2)
+			_text(img, text, x0 + 6, cy0 + 16, TEXT, 0.42)
+		_rect(img, (0, cy0), (4, cy1), DIM, -1)
+		_text(img, title, 8, cy1 - 4, DIM, 0.34)
 		cy0 = cy1 + 4
 	cy1 = cy0 - 4
 	if not allc:

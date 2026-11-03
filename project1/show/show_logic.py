@@ -1551,6 +1551,9 @@ def effects_at(t):
 # Live: start_chase / stop_chase (Gaia dmx_chase): every step is a recall()
 # of its scene with its fade, so nothing is left behind in /dmx/fade.
 
+CHASE_MARK = '⟳'
+
+
 def chase_sec(h, bpm):
 	h = h or {}
 	try:
