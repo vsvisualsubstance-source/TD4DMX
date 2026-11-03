@@ -23,6 +23,7 @@ SCENE_COLORS = [(0.20, 0.62, 0.92), (0.96, 0.58, 0.18), (0.55, 0.82, 0.30), (0.8
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 HEADER_H, RULER_H, CUE_H, LANE_H = 30, 24, 86, 54
+TRACK_H = 46   # cue row height when there is more than one track
 SNAP = 0.1
 
 
@@ -100,6 +101,11 @@ def _cues():
 	return cs
 
 
+def _track_rows(sl):
+	"""Cue rows of the canvas: the show's tracks (main first)."""
+	return sl.tracks() if hasattr(sl, 'tracks') else ['']
+
+
 def _lanes():
 	out = {}
 	for lane, ks in _sl().lanes().items():
@@ -157,30 +163,45 @@ def render(scriptOp):
 		_text(img, _fmt(t), x + 3, y0 + 14, DIM, 0.36)
 		t += step
 
-	# cue lane
-	cy0, cy1 = HEADER_H + RULER_H + 4, HEADER_H + RULER_H + 4 + CUE_H
-	cs = _cues()
+	# cue lanes: one row per track ("TD/Win-PD, 60"), the main one first
 	scenes = {s['name']: s for s in sl.scenes()}
-	for i, c in enumerate(cs):
-		end = cs[i + 1]['time'] if i + 1 < len(cs) else length
-		x0, x1 = int(_x(c['time'])), int(_x(end))
-		if x1 < 0 or x0 > w:
-			continue
-		col = _scene_color(c['scene'])
-		_rect(img, (x0, cy0), (x1, cy1), tuple(v * 0.45 for v in col), -1)
-		xf = int(_x(c['time'] + c['fade']))
-		if xf > x0:   # fade ramp from the previous scene
-			pts = np.array([[x0, cy1], [xf, cy0], [xf, cy1]], np.int32)
-			_fillpoly(img, [pts], tuple(v * 0.8 for v in col))
-		_line(img, (x0, cy0), (x0, cy1), col, 2)
-		if c['id'] == sel_cue:
-			_rect(img, (x0, cy0 - 2), (x1, cy1 + 2), SEL, 2)
-		label = scenes.get(c['scene'], {}).get('label', c['scene'])
-		_text(img, c['label'] or ('cue %d' % c['id']), x0 + 6, cy0 + 18, TEXT, 0.45)
-		_text(img, label, x0 + 6, cy0 + 38, TEXT, 0.42)
-		_text(img, '%s  fade %.1fs' % (_fmt(c['time']), c['fade']), x0 + 6, cy1 - 8, DIM, 0.36)
-	if not cs:
-		_text(img, 'nessuna cue: Scene > New Scene From Live, poi Cue > Add Cue At Playhead', 12, cy0 + 48, DIM, 0.45)
+	allc = _cues()
+	rows = _track_rows(sl)
+	_view['tracks'] = []
+	cy0 = HEADER_H + RULER_H + 4
+	rh = CUE_H if len(rows) == 1 else TRACK_H
+	for track in rows:
+		cy1 = cy0 + rh
+		_view['tracks'].append((track, cy0, cy1))
+		cs = [c for c in allc if c.get('track', track) == track]
+		for i, c in enumerate(cs):
+			end = cs[i + 1]['time'] if i + 1 < len(cs) else length
+			x0, x1 = int(_x(c['time'])), int(_x(end))
+			if x1 < 0 or x0 > w:
+				continue
+			col = _scene_color(c['scene'])
+			_rect(img, (x0, cy0), (x1, cy1), tuple(v * 0.45 for v in col), -1)
+			xf = int(_x(c['time'] + c['fade']))
+			if xf > x0:   # fade ramp from the previous scene
+				pts = np.array([[x0, cy1], [xf, cy0], [xf, cy1]], np.int32)
+				_fillpoly(img, [pts], tuple(v * 0.8 for v in col))
+			_line(img, (x0, cy0), (x0, cy1), col, 2)
+			if c['id'] == sel_cue:
+				_rect(img, (x0, cy0 - 2), (x1, cy1 + 2), SEL, 2)
+			label = scenes.get(c['scene'], {}).get('label', c['scene'])
+			_text(img, c['label'] or ('cue %d' % c['id']), x0 + 6, cy0 + 16, TEXT, 0.42)
+			if rh >= CUE_H:
+				_text(img, label, x0 + 6, cy0 + 38, TEXT, 0.42)
+				_text(img, '%s  fade %.1fs' % (_fmt(c['time']), c['fade']), x0 + 6, cy1 - 8, DIM, 0.36)
+			else:
+				_text(img, label, x0 + 6, cy1 - 8, DIM, 0.36)
+		if len(rows) > 1:   # track name, on the left edge
+			_rect(img, (0, cy0), (4, cy1), HEAD if track == sl.MAIN_TRACK else DIM, -1)
+			_text(img, track.upper(), 8, cy1 - 4, DIM, 0.34)
+		cy0 = cy1 + 4
+	cy1 = cy0 - 4
+	if not allc:
+		_text(img, 'nessuna cue: Scene > New Scene From Live, poi Cue > Add Cue At Playhead', 12, cy1 - 30, DIM, 0.45)
 
 	# automation lanes
 	_view['lanes'] = []
@@ -253,8 +274,10 @@ def on_press(panel):
 		_drag.update(kind='seek')
 		p.Time = _snap(_t(x))
 		return
-	if y < cue_top + CUE_H:
-		cs = _cues()
+	for track, y0, y1 in _view.get('tracks', []):
+		if not (y0 <= y <= y1):
+			continue
+		cs = [c for c in _cues() if c.get('track', track) == track]
 		hit = None
 		for i, c in enumerate(cs):
 			end = cs[i + 1]['time'] if i + 1 < len(cs) else float(p.Length.eval())

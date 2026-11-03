@@ -693,7 +693,14 @@ def _build_show_matrix():
 	services['show_rewind'] = {'kind': 'service', 'type': 'action'}
 	return {'params': params, 'services': services, 'scenes': sl.scenes(),
 		'categories': [{'id': c, 'label': sl.CATEGORY_LABELS.get(c, c)} for c in sl.CATEGORIES],
-		'lanes': sl.automatable(), 'interps': list(sl.INTERPS)}
+		'lanes': sl.automatable(), 'interps': list(sl.INTERPS),
+		# what show_timeline understands ("TD/Win-PD, 57/59/60"): Plancia
+		# detects the features here
+		'timeline_features': [f for f in ('track', 'motion', 'effects', 'chases', 'scene_only')
+			if hasattr(sl, {'track': 'tracks', 'motion': 'motion_track', 'effects': 'effects_track',
+				'chases': 'chases_track', 'scene_only': 'scene_groups'}[f])],
+		'tracks': {'main': getattr(sl, 'MAIN_TRACK', None), 'field': 'track',
+			'list': sl.tracks() if hasattr(sl, 'tracks') else []}}
 
 
 def _build_fixtures_matrix():

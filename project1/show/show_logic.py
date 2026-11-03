@@ -77,7 +77,12 @@ INTERPS = ['linear', 'smooth', 'step']
 
 SCENE_COLS = ['name', 'label'] + CATEGORIES
 VALUE_COLS = ['scene', 'target', 'par', 'value']
-CUE_COLS = ['id', 'time', 'scene', 'fade', 'label']
+CUE_COLS = ['id', 'time', 'scene', 'fade', 'label', 'track']
+# Cue tracks (GAIA_INTERFACE "OPS, 44" / "TD/Win-PD, 60"): one clock, cues
+# grouped in tracks (track '' = MAIN_TRACK). GO / BACK, "cue n/m" of the
+# status and of the show clock count the MAIN track only; every track
+# composes the output the same way (see state_at).
+MAIN_TRACK = 'luci'
 KEY_COLS = ['id', 'lane', 'time', 'value', 'interp']
 
 _last = {}        # (target, par) -> last value applied
@@ -605,17 +610,17 @@ def goto_cue(step):
 	from the current Time. With the timeline not Active the cue's scene is
 	recalled live with the cue's fade. Returns the cue."""
 	p = _show().par
-	idx, _cue, cs = cue_at(float(p.Time.eval()))
+	idx, _cue, cs = cue_at(float(p.Time.eval()))   # main track only ("OPS, 44")
 	if not cs:
-		raise ValueError('nessun cue nella timeline')
+		raise ValueError('nessun cue nella traccia %s' % MAIN_TRACK)
 	j = max(0, min(len(cs) - 1, idx + int(step)))
 	return _jump_to(cs[j])
 
 
 def goto_cue_number(n):
-	"""Jump to cue number n (1-based, timeline order), same rules as
+	"""Jump to cue number n (1-based, main track order), same rules as
 	goto_cue. Returns the cue."""
-	cs = cues()
+	cs = track_cues()
 	n = int(n)
 	if not 1 <= n <= len(cs):
 		raise ValueError('cue %d non esiste (%d cue)' % (n, len(cs)))
@@ -654,6 +659,7 @@ def clock_state():
 			'label': (cue or {}).get('label', '') or '',
 			'scene': (cue or {}).get('scene', '') or '',
 			'time': (cue or {}).get('time', 0.0),
+			'track': MAIN_TRACK,   # index/count = main track only ("OPS, 44")
 		},
 	}
 
@@ -698,11 +704,33 @@ def cues():
 	out = []
 	for r in _rows('cues', CUE_COLS):
 		out.append({'id': _i(r['id']), 'time': _f(r['time']), 'scene': r['scene'],
-			'fade': max(0.0, _f(r['fade'])), 'label': r['label']})
+			'fade': max(0.0, _f(r['fade'])), 'label': r['label'],
+			'track': r['track'].strip() or MAIN_TRACK})
 	return sorted(out, key=lambda c: (c['time'], c['id']))
 
 
+def track_cues(track=MAIN_TRACK):
+	"""Cues of one track (time order); None = every cue."""
+	return [c for c in cues() if track is None or c['track'] == track]
+
+
+def tracks():
+	"""Track names: the main one first, then the others by their first cue."""
+	out = [MAIN_TRACK]
+	for c in cues():
+		if c['track'] not in out:
+			out.append(c['track'])
+	return out
+
+
+def _clean_track(v):
+	s = str(v or '').strip().replace('\t', ' ')
+	return s or MAIN_TRACK
+
+
 def _check_cue(d):
+	if 'track' in d:
+		d['track'] = _clean_track(d['track'])
 	# scene '' = a MARKER: a named point of the timeline that changes nothing
 	if d.get('scene') and d['scene'] not in scene_names():
 		raise ValueError('scena %r non esiste' % d['scene'])
@@ -713,9 +741,16 @@ def _check_cue(d):
 	return d
 
 
-def add_cue(time, scene, fade=2.0, label=''):
-	d = _check_cue({'id': _next_id('cues', CUE_COLS), 'time': time, 'scene': scene, 'fade': fade, 'label': label})
-	_table('cues', CUE_COLS).appendRow([d[c] for c in CUE_COLS])
+def _cue_row(d):
+	"""Table row of a cue: the main track is stored as '' (older files)."""
+	return [('' if d.get('track', MAIN_TRACK) == MAIN_TRACK else d['track']) if c == 'track' else d.get(c, '')
+		for c in CUE_COLS]
+
+
+def add_cue(time, scene, fade=2.0, label='', track=MAIN_TRACK):
+	d = _check_cue({'id': _next_id('cues', CUE_COLS), 'time': time, 'scene': scene, 'fade': fade, 'label': label,
+		'track': track})
+	_table('cues', CUE_COLS).appendRow(_cue_row(d))
 	invalidate()
 	return d['id']
 
@@ -729,7 +764,7 @@ def update_cue(cid, **fields):
 	t = _table('cues', CUE_COLS)
 	for k, v in d.items():
 		if k in CUE_COLS:
-			t[r, k] = v
+			t[r, k] = '' if k == 'track' and v == MAIN_TRACK else v
 	invalidate()
 
 
@@ -820,9 +855,10 @@ def _lane_value(ks, t):
 
 # ---------------------------------------------------------------- state
 
-def cue_at(t):
-	"""(index, cue) of the cue active at time t, or (-1, None)."""
-	cs = cues()
+def cue_at(t, track=MAIN_TRACK):
+	"""(index, cue, cues) of the cue active at time t on `track` (default
+	the main one; None = any track), or (-1, None, cues)."""
+	cs = track_cues(track)
 	idx = -1
 	for i, c in enumerate(cs):
 		if c['time'] <= t:
@@ -841,17 +877,35 @@ def _layered(idx):
 	return out
 
 
-def state_at(t):
-	"""{(target, par): value} the timeline wants at time t."""
-	idx, cue, cs = cue_at(t)
+@_memo
+def _history():
+	"""{(target, par): [(time, fade, value)]} -- every cue (any track) that
+	sets the key, in timeline order."""
 	out = {}
-	if cue is not None:
-		prev = _layered(idx - 1)
-		out.update(prev)
-		cur = scene_values(cue['scene']) if cue['scene'] else {}
-		x = 1.0 if cue['fade'] <= 0 else max(0.0, min(1.0, (t - cue['time']) / cue['fade']))
-		for k, v in cur.items():
-			out[k] = _blend(k, prev.get(k), v, x)
+	for c in cues():
+		if c['scene']:
+			for k, v in scene_values(c['scene']).items():
+				out.setdefault(k, []).append((c['time'], c['fade'], v))
+	return {k: ([h[0] for h in hist], hist) for k, hist in out.items()}
+
+
+def state_at(t):
+	"""{(target, par): value} the timeline wants at time t. PER KEY: the
+	last cue up to t that sets it (any track) gives the value, crossfading
+	over ITS fade from the value of the cue before it on that key. So a cue
+	on another track that does not touch a key never cuts its fade (with a
+	single track this equals the old 'layered + crossfade of the last cue'
+	except that such fades now finish instead of snapping)."""
+	import bisect
+	out = {}
+	for k, (times, hist) in _history().items():
+		i = bisect.bisect_right(times, t) - 1
+		if i < 0:
+			continue
+		tc, fade, v = hist[i]
+		prev = hist[i - 1][2] if i > 0 else None
+		x = 1.0 if fade <= 0 else max(0.0, min(1.0, (t - tc) / fade))
+		out[k] = _blend(k, prev, v, x)
 	for lane, ks in lanes().items():
 		v = _lane_value(ks, t)
 		if v is None:
@@ -1027,7 +1081,7 @@ def tick():
 		else:
 			_apply(st, force=_force[0])
 		_force[0] = False
-		idx, cue, _cs = cue_at(t)
+		idx, cue, _cs = cue_at(t, None)   # last scene applied: any track
 		if cue is not None and _cue_seen[0] != (True, idx):
 			_set_active(cue['scene'], 'cue', cue['fade'], cue['id'])
 		_cue_seen[0] = (True, idx)
@@ -1051,7 +1105,7 @@ def status_text(t=None):
 	head = '%s %02d:%05.2f' % ('PLAY' if show.par.Play.eval() else 'STOP', m, s)
 	if not show.par.Active.eval():
 		return head + '  |  timeline NON attiva (live)'
-	if cue is None:
+	if cue is None:   # main track only: GO/BACK count these ("OPS, 44")
 		return head + '  |  prima della prima cue'
 	if not cue['scene']:
 		return '%s  |  cue %d/%d  %s  (marker)' % (head, idx + 1, len(cs), cue['label'] or '')
@@ -1082,8 +1136,13 @@ def set_cues(items):
 	t = _table('cues', CUE_COLS)
 	t.clear()
 	t.appendRow(CUE_COLS)
-	for d in clean:
-		t.appendRow([d[c] for c in CUE_COLS])
+	# rows grouped by track (main first) so the table reads track by track;
+	# ids stay in timeline order
+	order = {MAIN_TRACK: 0}
+	for d in sorted(clean, key=lambda d: _f(d['time'])):
+		order.setdefault(d.get('track', MAIN_TRACK), len(order))
+	for d in sorted(clean, key=lambda d: (order[d.get('track', MAIN_TRACK)], _f(d['time']), d['id'])):
+		t.appendRow(_cue_row(d))
 	invalidate()
 
 
@@ -1112,7 +1171,8 @@ def set_keys(items):
 #   {"v": 1, "name": str, "bpm": number|null, "length": s, "loop": bool,
 #    "default_fade": s (2.0), "rewind": bool (false),
 #    "cues": [{"time": s | "m:ss.s", "scene": id (name) | index (int, as
-#              /dmx/scene) | null (marker), "fade": s, "label": str}],
+#              /dmx/scene) | null (marker), "fade": s, "label": str,
+#              "track": str (absent = MAIN_TRACK, "TD/Win-PD, 60")}],
 #    "keys": [...]   (optional: absent = TD's automation lanes untouched,
 #                     [] = cleared; same rows as show_keys)}
 
@@ -1158,8 +1218,9 @@ def timeline():
 	p = _show().par
 	doc = {'v': 1, 'name': _meta('name', ''), 'bpm': _meta('bpm'),
 		'length': float(p.Length.eval()), 'loop': bool(p.Loop.eval()),
-		'cues': [{'time': c['time'], 'scene': c['scene'] or None, 'fade': c['fade'], 'label': c['label']}
-			for c in cues()],
+		'cues': [dict({'time': c['time'], 'scene': c['scene'] or None, 'fade': c['fade'], 'label': c['label']},
+			# track only off the main one: older timelines keep their rev
+			**({} if c['track'] == MAIN_TRACK else {'track': c['track']})) for c in cues()],
 		'keys': [{k: x[k] for k in ('lane', 'time', 'value', 'interp')} for x in keys()],
 		'motion': motion_track(), 'effects': effects_track()}
 	doc['rev'] = timeline_rev(doc)
@@ -1226,7 +1287,8 @@ def load_timeline(doc, source='gaia'):
 			errors.append('cue %d: fade %r non valido' % (i, it.get('fade')))
 			continue
 		clean.append({'time': round(t, 3), 'scene': str(sc), 'fade': round(fade, 3),
-			'label': str(it.get('label') or it.get('name') or '').replace('\t', ' ')})
+			'label': str(it.get('label') or it.get('name') or '').replace('\t', ' '),
+			'track': _clean_track(it.get('track'))})
 	clean.sort(key=lambda c: c['time'])
 	end = max([c['time'] + c['fade'] for c in clean] + [0.0])
 	length = doc.get('length')
@@ -1243,9 +1305,13 @@ def load_timeline(doc, source='gaia'):
 	# legal but almost never meant: two cues at one instant (only the later
 	# one ever shows), and with loop a cue at the very end -- the clock wraps
 	# to 0 before reaching it (tick: t % length), so it never fires
+	# (on different tracks the same instant is normal: no warning)
 	for i in range(1, len(clean)):
-		if clean[i]['time'] == clean[i - 1]['time']:
-			warnings.append('cue %d: stesso tempo della cue %d (%.3f s)' % (i + 1, i, clean[i]['time']))
+		for j in range(i):
+			if clean[i]['time'] == clean[j]['time'] and clean[i]['track'] == clean[j]['track']:
+				warnings.append('cue %d: stesso tempo della cue %d (%.3f s, traccia %s)'
+					% (i + 1, j + 1, clean[i]['time'], clean[i]['track']))
+				break
 	loop = bool(doc['loop']) if 'loop' in doc else bool(_show().par.Loop.eval())
 	if loop and length > 0:
 		for i, c in enumerate(clean, 1):
