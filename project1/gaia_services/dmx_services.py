@@ -601,7 +601,10 @@ def _register_show(agent):
 	agent.register_service('show_rewind', start=lambda: _show().par.Rewind.pulse())
 	_register_value(agent, 'show_time', None, 'Time', float, comp=_show)
 	_register_value(agent, 'show_length', None, 'Length', float, comp=_show)
-	agent.register_param('show_status', get=lambda: str(_show().par.Status.eval()))
+	# computed now, not the Status par: tick() refreshes that at the NEXT
+	# frame, so a status sent right after show_active said the old state
+	# (GAIA_INTERFACE "OPS, 42" point 7)
+	agent.register_param('show_status', get=lambda: sl().status_text())
 
 	def recall(v):
 		sl().recall(str(v))
