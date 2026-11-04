@@ -84,6 +84,10 @@ def onFrameStart(frame: int):
 			svc.module.timeline_tick()
 		except Exception as e:
 			debug('timeline_tick failed:', e)
+		try:
+			svc.module.matrix_tick()
+		except Exception as e:
+			debug('matrix_tick failed:', e)
 	out = op('dmx_output')
 	if out is not None:
 		try:

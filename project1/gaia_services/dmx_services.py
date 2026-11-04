@@ -1497,22 +1497,50 @@ def publish_matrix():
 	cfg_op = op.Gaia
 	device_id = cfg_op.par.Deviceid.eval() if cfg_op else 'unknown'
 	family = (cfg_op.par.Family.eval() if cfg_op else '') or 'dmx'
-	payload = {
-		'device_id': device_id,
-		'rigs': _build_rigs_matrix(),
-		'audio': _build_audio_matrix(),
-		'patch': _build_patch_matrix(),
-		'heads': _build_heads_matrix(),
-		'ptz': _build_ptz_matrix(),
-		'fixtures': _build_fixtures_matrix(),
-		'catalog': _build_catalog_matrix(),
-		'show': _build_show_matrix(),
-		'ts': int(time.time() * 1000),
-	}
+	payload = {'device_id': device_id}
+	fps = {}
+	for part, fn in MATRIX_PARTS:
+		payload[part] = globals()[fn]()
+		fps[part] = _fingerprint(payload[part])
+	payload['ts'] = int(time.time() * 1000)
 	topic = 'gaia/devices/%s/%s_matrix' % (device_id, family.lower())
 	dat.publish(topic, json.dumps(payload).encode('utf-8'), retain=True)
+	_matrix_pub['fp'] = fps
 	print('[DMX Services] Matrix published to %s' % topic)
 	return True
+
+
+# Sections of dmx_matrix, in payload order (builder function names).
+MATRIX_PARTS = [('rigs', '_build_rigs_matrix'), ('audio', '_build_audio_matrix'),
+	('patch', '_build_patch_matrix'), ('heads', '_build_heads_matrix'),
+	('ptz', '_build_ptz_matrix'), ('fixtures', '_build_fixtures_matrix'),
+	('catalog', '_build_catalog_matrix'), ('show', '_build_show_matrix')]
+MATRIX_CHECK_S = 1.0   # one section rebuilt and compared per check
+_matrix_pub = {'fp': {}, 'check': 0.0, 'next': 0}
+
+
+def _fingerprint(part):
+	return hash(json.dumps(part, sort_keys=True, default=str))
+
+
+def matrix_tick():
+	"""From lifecycle onFrameStart: rebuild ONE matrix section per
+	MATRIX_CHECK_S (round robin, a few ms at most) and republish the whole
+	matrix when it differs from what was published -- whatever changed it
+	(new scene categories, a code change, a par menu, a TD edit with no
+	hook). GAIA_INTERFACE "OPS, 49" / "TD/Win-PD, 67"."""
+	now = time.time()
+	if now - _matrix_pub['check'] < MATRIX_CHECK_S:
+		return
+	_matrix_pub['check'] = now
+	part, fn = MATRIX_PARTS[_matrix_pub['next'] % len(MATRIX_PARTS)]
+	_matrix_pub['next'] += 1
+	dat = op.Gaia.op('mqtt_device')
+	if not dat or not dat.isConnected:
+		return
+	if _fingerprint(globals()[fn]()) != _matrix_pub['fp'].get(part):
+		print('[DMX Services] matrix section %r changed, republishing' % part)
+		publish_matrix()
 
 
 def _register_level_rig(agent, group, rig_name):
