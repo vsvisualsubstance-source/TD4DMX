@@ -929,6 +929,9 @@ def _build_heads_matrix():
 			'selections': hp.selections(),
 			'positions': [{'index': x['index'], 'position': x['position'], 'label': x['label']} for x in hp.positions()],
 			'presets': [{'index': x['index'], 'preset': x['preset'], 'label': x['label']} for x in hp.presets()],
+			# groups heads_color_follow accepts (alias or group), "TD/Win-PD, 64"
+			'color_follow_groups': hp.follow_groups(),
+			# deprecated ("OPS, 46": the Plancia reads gobos/colors of the model)
 			'plancia_gobos': list(hp.PLANCIA_GOBOS)}}
 
 
@@ -954,6 +957,7 @@ PROGRAMMER_PARAMS = [
 	('heads_lamp', 'w'),            # on|off or {lamp: on|off, heads?: [refs]} -> every head with a lamp
 	('heads_motion', 'rw'),         # {scene, heads?: [refs], bpm?} plays a motion scene live; null stops ("TD/Win-PD, 57")
 	('heads_motion_state', 'r'),    # {source live|timeline|off, scene_id, name, heads, bpm, period_s, started_ts, cue}
+	('heads_color_follow', 'rw'),   # group (front/back/ledbar/rig_a...) whose colour the heads follow, null = fixed ("TD/Win-PD, 64")
 ]
 
 
@@ -984,6 +988,8 @@ def _register_programmer(agent):
 		if mode == 'global':
 			hp().set_mode('global', keys)
 			return
+		if any(f in d for f in ('red', 'green', 'blue', 'color')):
+			hp().set_color_follow(None)   # a colour given by hand: fixed again
 		hp().program(d, keys, mode=mode)
 
 	def mode(v):
@@ -1050,6 +1056,15 @@ def _register_programmer(agent):
 		return hp().lamp(d.get('lamp'), heads_of(d))
 
 	reg('heads_lamp', lamp)
+
+	def color_follow(v):
+		d = arg(v) if v not in (None, b'') else None
+		if isinstance(d, dict):
+			d = d.get('group')
+		return hp().set_color_follow(d) or 'colore fisso'
+
+	agent.register_param('heads_color_follow', get=lambda: hp().color_follow() or None,
+		set=recorded('heads_color_follow', color_follow))
 
 	def hm():
 		return _heads().op('head_motion').module

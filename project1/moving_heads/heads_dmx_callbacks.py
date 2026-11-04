@@ -17,6 +17,11 @@ head with a head_state row overrides the above -- manual = its own pan /
 tilt / look (blank fields = global), follow = pan/tilt from its PTZ target
 whatever Control says; strobe gates its shutter at dmx_patch Stroberate.
 
+Colour follow (moving_heads Colorfollow = a chase group, head_programmer
+"colour follow"): every head's colour is replaced by the group's tint at
+the end -- RGB/CMY heads the tint, wheel heads the nearest slot with
+hysteresis; dimmer, gobo and the rest stay as above.
+
 Attributes not driven here use the profile 'defaults' (e.g. shutter=255,
 the open value -- check the fixture manual) or 0. A lamp command
 (head_programmer.lamp) holds the model's lamp value on its channel for
@@ -109,13 +114,15 @@ def onCook(scriptOp):
 	shutter_open = bool(p.Shutteropen.eval())
 	# per-head programmer (head_programmer: Plancia /mh/*, Gaia heads_*):
 	# a head with a state row overrides the global look / position
-	ustate, lamps = {}, {}
+	ustate, lamps, ku, tint = {}, {}, {}, None
 	hp = comp.op('head_programmer')
 	if hp is not None:
 		try:
 			ku = hp.module.keys_by_unit()
 			ustate = hp.module.unit_state(ku)
 			lamps = hp.module.lamp_values(ku)
+			cf = hp.module.color_follow()
+			tint = hp.module.group_tint(cf) if cf else None
 		except Exception as e:
 			debug('head_programmer.unit_state:', e)
 	follow_src = scriptOp.inputs[0] if len(scriptOp.inputs) > 0 else None
@@ -151,6 +158,17 @@ def onCook(scriptOp):
 			for f in ('color', 'gobo'):
 				if st[f] is not None:
 					values[f] = st[f]
+		if tint is not None and ku.get(n):
+			try:
+				fv = hp.module.follow_values(ku[n], profiles[n - 1], tint)
+			except Exception as e:
+				debug('head_programmer.follow_values:', e)
+				fv = {}
+			for f in ('red', 'green', 'blue'):
+				if f in fv:
+					values[f] = fv[f] * 255.0
+			if 'color' in fv:
+				values['color'] = fv['color']
 		# CMY heads: the requested colour as subtractive filters
 		for c, k in (('red', 'cyan'), ('green', 'magenta'), ('blue', 'yellow')):
 			if k in chans:

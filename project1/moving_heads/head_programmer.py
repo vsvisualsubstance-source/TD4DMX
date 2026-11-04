@@ -32,6 +32,14 @@ across re-patching, unlike the unit number.
   Lamp (discharge heads): lamp('on'|'off') holds the model's lamp value
   on its channel for its hold time (catalog 'lamp'), OSC /mh/lamp 1|0,
   Gaia heads_lamp -- GAIA_INTERFACE "TD/Win-PD, 43".
+  Colour follow (GAIA_INTERFACE "OPS, 46" / "TD/Win-PD, 64"): moving_heads
+  par Colorfollow = a chase group ('' = fixed colour, as before). Every
+  head then takes the group's average TINT each frame, at the output
+  (heads_dmx), without touching head_state: RGB heads get it as is, wheel
+  heads the nearest colour slot with hysteresis (FOLLOW_HOLD /
+  FOLLOW_MARGIN). Colorfollow sits on the Look page, so heads scenes
+  capture it; a heads scene without it, a preset, /mh/color,
+  /mh/colorwheel and a colour in Gaia heads_program set it back to fixed.
   head_selections selection, label, heads (space-separated keys): named
                   sets ("sub-groups" of the heads: mh_sx, mh_fronte ...),
                   defined by Plancia (heads_selections) or in TD.
@@ -56,7 +64,7 @@ FIELDS = STATE_COLS[2:]
 UNIT_FIELDS = ('dimmer', 'red', 'green', 'blue', 'white', 'zoom', 'focus')   # 0..1
 MODES = ('global', 'manual', 'follow')
 POS_COLS = ['position', 'label', 'head', 'pan', 'tilt']
-PRESET_COLS = ['preset', 'label', 'head'] + FIELDS
+PRESET_COLS = ['preset', 'label', 'head'] + FIELDS + ['color_follow']
 SEL_COLS = ['selection', 'label', 'heads']
 
 # Plancia's position names and formula (plancia/index.html POS / posOf),
@@ -541,6 +549,10 @@ def presets():
 			idx[name] = len(out)
 			out.append({'index': len(out), 'preset': name, 'label': t[r, 'label'].val or name, 'heads': {}})
 		out[idx[name]]['heads'][t[r, 'head'].val] = {c: _f(t[r, c].val) for c in FIELDS}
+		if t[r, 'color_follow'].val:
+			out[idx[name]]['color_follow'] = t[r, 'color_follow'].val
+	for x in out:
+		x.setdefault('color_follow', None)
 	return out
 
 
@@ -557,9 +569,10 @@ def store_preset(name, label='', keys=None):
 	for r in range(t.numRows - 1, 0, -1):
 		if t[r, 'preset'].val == name:
 			t.deleteRow(r)
+	cf = color_follow()
 	for k in keys:
 		e = effective(k)
-		t.appendRow([name, label or name, k] + [round(e[c], 4) for c in FIELDS])
+		t.appendRow([name, label or name, k] + [round(e[c], 4) for c in FIELDS] + [cf])
 	return name
 
 
@@ -580,6 +593,7 @@ def recall_preset(ref, keys=None):
 	targets = [k for k in p['heads'] if not sel or k in sel]
 	for k in targets:
 		program({c: v for c, v in p['heads'][k].items() if v is not None}, [k], mode='manual')
+	set_color_follow(p.get('color_follow'))   # the preset's colour: followed or fixed
 	return p['preset'], targets
 
 
@@ -662,11 +676,15 @@ def heads_list():
 	"""Per head, for Plancia / Gaia: identity, selected, mode, effective
 	values."""
 	sel = set(selection())
+	cf = color_follow() or None
 	out = []
 	for h in heads():
 		e = effective(h['key'])
+		if cf and h['key'] in _follow_out:   # the colour that comes out
+			e.update(_follow_out[h['key']])
 		out.append(dict({k: h[k] for k in ('unit', 'key', 'uid', 'id', 'name', 'profile')},
 			selected=h['key'] in sel, lamp=(_lamp.get(h['key']) or {}).get('action'),
+			color_follow=cf,
 			**{k: (round(v, 3) if isinstance(v, float) else v) for k, v in e.items()}))
 	return out
 
@@ -679,6 +697,113 @@ def status_text():
 		modes[m] = modes.get(m, 0) + 1
 	return '%d teste, %d selezionate | %s' % (len(heads()), len(selection()),
 		', '.join('%s %d' % kv for kv in sorted(modes.items())))
+
+
+# ---------------------------------------------------------------- colour follow
+
+FOLLOW_HOLD = 0.5      # s: a wheel head changes slot at most this often
+FOLLOW_MARGIN = 0.75   # the new slot must be this much closer to the tint
+FOLLOW_DARK = 0.02     # group darker than this: the heads keep their colour
+FOLLOW_OFF = ('', 'off', 'none', 'null', 'fixed', 'fisso')
+_follow = {}       # head key -> {'slot': DMX value, 't': secs of the last change}
+_follow_out = {}   # head key -> {red, green, blue[, color]} last sent (heads_list)
+_tint = {}         # group -> last tint (held while the group is dark)
+
+
+def follow_groups():
+	"""[{group, alias, label}] the heads can follow: groups with a colour
+	(kind chase)."""
+	return [{'group': g['group'], 'alias': g.get('alias') or '', 'label': g.get('label') or g['group']}
+		for g in _fl().groups() if g.get('kind') == 'chase']
+
+
+def resolve_follow(ref):
+	"""'' for fixed, else the group name (alias accepted: front -> rig_a)."""
+	s = '' if ref is None else str(ref).strip()
+	if s.lower() in FOLLOW_OFF:
+		return ''
+	g = _fl().resolve_group(s)
+	if g is None or g not in [x['group'] for x in follow_groups()]:
+		raise ValueError("colore teste: %r non e' un gruppo con colore (%s)" % (
+			ref, ', '.join(x['alias'] or x['group'] for x in follow_groups())))
+	return g
+
+
+def color_follow():
+	"""Group followed now ('' = fixed colour)."""
+	p = getattr(_comp().par, 'Colorfollow', None)
+	if p is None:
+		return ''
+	try:
+		return resolve_follow(p.eval())
+	except ValueError:
+		return ''
+
+
+def set_color_follow(ref):
+	g = resolve_follow(ref)
+	p = getattr(_comp().par, 'Colorfollow', None)
+	if p is not None and str(p.eval()) != g:
+		p.val = g
+	if not g:
+		_follow.clear()
+		_follow_out.clear()
+	return g
+
+
+def group_tint(group):
+	"""Average colour of the group's lights now, normalized so the
+	brightest channel is 1 (a hue, not a level); the last one while the
+	group is dark; None if never seen."""
+	fl = _fl()
+	info = fl.group_info(group)
+	comp = _comp().parent().op(info['comp']) if info else None
+	gen = comp.op('dmx_generator') if comp is not None else None
+	if gen is None:
+		return _tint.get(group)
+	acc = [0.0, 0.0, 0.0]
+	units = fl.rows(group)
+	for f in units:
+		pre = 'bar%d_' % f['unit']
+		w = gen[pre + 'white']
+		w = float(w[0]) if w is not None else 0.0
+		for i, n in enumerate(('red', 'green', 'blue')):
+			c = gen[pre + n]
+			acc[i] += (float(c[0]) if c is not None else 0.0) + w
+	top = max(acc)
+	if top > FOLLOW_DARK * 255.0 * max(1, len(units)):
+		_tint[group] = [a / top for a in acc]
+	return _tint.get(group)
+
+
+def _hue_dist(a, b):
+	na = [x / (max(a) or 1.0) for x in a]
+	nb = [x / (max(b) or 1.0) for x in b]
+	return sum((x - y) ** 2 for x, y in zip(na, nb))
+
+
+def follow_values(key, profile, tint):
+	"""Colour fields (red/green/blue 0..1, color = wheel DMX value on a
+	wheel head) a following head sends now; {} without a tint."""
+	if tint is None:
+		return {}
+	m = _cat().model(profile) if profile else None
+	mix = (m or {}).get('color_mix') or []
+	slots = [s for s in ((m or {}).get('colors') or []) if s.get('rgb')]
+	if 'wheel' in mix and 'rgb' not in mix and slots:
+		now = absTime.seconds
+		st = _follow.get(key)
+		best = _cat().nearest_color_slot(m, tint)
+		cur = next((s for s in slots if st and float(s['value']) == float(st['slot'])), None)
+		if cur is None or (best['value'] != cur['value'] and now - st['t'] >= FOLLOW_HOLD
+				and _hue_dist(best['rgb'], tint) < FOLLOW_MARGIN * _hue_dist(cur['rgb'], tint)):
+			cur = best
+			_follow[key] = {'slot': best['value'], 't': now}
+		out = {'red': cur['rgb'][0], 'green': cur['rgb'][1], 'blue': cur['rgb'][2], 'color': float(cur['value'])}
+	else:
+		out = {'red': tint[0], 'green': tint[1], 'blue': tint[2]}
+	_follow_out[key] = {k: round(float(v), 3) for k, v in out.items()}
+	return out
 
 
 # ---------------------------------------------------------------- engine
@@ -836,6 +961,7 @@ def _on_osc(a, address, args):
 	elif a == 'tilt':
 		program({'tilt': v})
 	elif a == 'color':
+		set_color_follow(None)   # a colour given by hand: fixed again
 		program({'red': v, 'green': _f(args[1], 0.0) if len(args) > 1 else 0.0,
 			'blue': _f(args[2], 0.0) if len(args) > 2 else 0.0})
 	elif a in ('dimmer', 'zoom', 'focus', 'white'):
@@ -844,6 +970,8 @@ def _on_osc(a, address, args):
 		program({'strobe': 1.0 if v >= 0.5 else 0.0})
 	elif a in ('gobo', 'colorwheel'):
 		kind = 'gobo' if a == 'gobo' else 'color'
+		if kind == 'color':
+			set_color_follow(None)
 		for k in sel:
 			program({kind: wheel_value(k, kind, int(round(v)))}, [k])
 	elif a == 'position':

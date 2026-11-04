@@ -22,7 +22,7 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/moving_heads/heads_callbacks	parexec	py	project1/moving_heads/heads_callbacks.py	2026-10-03 14:33:58 UTC				0	-600	0.9000,0.3000,0.4000
 /project1/moving_heads/head_profiles	table	tsv	project1/moving_heads/head_profiles.tsv	2026-10-03 14:33:58 UTC				0	0	0.9000,0.3000,0.4000
 /project1/moving_heads/head_config	table	tsv	project1/moving_heads/head_config.tsv	2026-10-03 14:33:58 UTC				0	-200	0.9000,0.3000,0.4000
-/project1/moving_heads	base	tox	project1/moving_heads.tox	2026-11-03 11:18:00 UTC		22	2025.33230	-600	-2100	0.3250,0.8000,0.3000
+/project1/moving_heads	base	tox	project1/moving_heads.tox	2026-11-04 16:11:18 UTC		23	2025.33230	-600	-2100	0.3250,0.8000,0.3000
 /project1/gaia_services/touch_discovery	text	py	project1/gaia_services/touch_discovery.py	2026-10-03 14:33:58 UTC				400	-800	0.9000,0.3000,0.4000
 /project1/gaia_services/mqtt_discovery_callbacks	text	py	project1/gaia_services/mqtt_discovery_callbacks.py	2026-10-03 14:33:58 UTC				0	-920	0.9000,0.3000,0.4000
 /project1/gaia_services/lifecycle	execute	py	project1/gaia_services/lifecycle.py	2026-10-03 14:33:58 UTC				400	0	0.9000,0.3000,0.4000

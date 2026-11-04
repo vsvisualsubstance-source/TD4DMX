@@ -513,6 +513,12 @@ def scene_values(name):
 			continue
 		v = r['value']
 		out[k] = _i(v) if p.style == 'Toggle' else (_f(v) if _is_number(p) else v)
+	# heads scenes stored before the colour follow ("TD/Win-PD, 64") carry
+	# their colour but no Colorfollow: a saved colour = fixed colour
+	cf = ('heads', 'Colorfollow')
+	if sc.get('heads', 0) and cf not in out and _par(*cf) is not None \
+			and (not only or 'heads' in only) and any(_key_group(k) == 'heads' for k in out):
+		out[cf] = ''
 	return out
 
 
