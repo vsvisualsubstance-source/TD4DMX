@@ -4,10 +4,14 @@
 Canvas rows, top to bottom: header (status), ruler (click/drag = seek), cue
 lane (block per cue until the next one, fade ramp at its start; click =
 select, drag = move in time), one row per automation lane (curve + keys;
-click = select key / lane, drag a key = time + value).
+click = select key / lane, drag a key = time + value); at the bottom an
+overview of the whole show with the visible window (click/drag = seek, the
+view pages there).
 Drags are previewed here and committed on release (file-synced tables).
 View = show pars Viewstart / Viewlength / Follow (paging while playing).
 """
+import re
+import unicodedata
 import numpy as np
 import cv2
 
@@ -24,6 +28,7 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 HEADER_H, RULER_H, CUE_H, LANE_H = 30, 24, 86, 54
 TRACK_H = 46   # cue row height when there is more than one track
+OV_H = 30      # overview strip at the bottom
 SNAP = 0.1
 
 
@@ -59,8 +64,45 @@ def _sl():
 	return _show().op('show_logic').module
 
 
-def _text(img, s, x, y, color=TEXT, scale=0.42):
-	cv2.putText(img, str(s), (int(x), int(y)), FONT, scale, _c(color), 1, cv2.LINE_AA)
+# cv2 Hershey fonts draw ASCII only: symbols the Plancia puts in labels get an
+# ASCII stand-in, accents are dropped (e -> e), anything else is removed
+_ASCII_SUBS = {'⟳': '>>', '↻': '>>', '→': '->', '…': '...', '–': '-',
+	'—': '-', '‘': "'", '’': "'", '“': '"', '”': '"', '·': '-', '×': 'x'}
+
+
+def _ascii(s):
+	s = ''.join(_ASCII_SUBS.get(ch, ch) for ch in str(s))
+	return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii')
+
+
+def _tw(s, scale):
+	"""Pixel width of an (ASCII) string."""
+	return cv2.getTextSize(s, FONT, scale, 1)[0][0]
+
+
+def _fit(s, maxw, scale):
+	"""s cut to maxw pixels ('.' marks the cut); '' when not even 2 chars fit."""
+	if _tw(s, scale) <= maxw:
+		return s
+	while len(s) > 2 and _tw(s + '.', scale) > maxw:
+		s = s[:-1]
+	return s + '.' if len(s) > 2 or _tw(s + '.', scale) <= maxw else ''
+
+
+def _text(img, s, x, y, color=TEXT, scale=0.42, maxw=None):
+	s = _ascii(s)
+	if maxw is not None:
+		s = _fit(s, maxw, scale)
+	if s:
+		cv2.putText(img, s, (int(x), int(y)), FONT, scale, _c(color), 1, cv2.LINE_AA)
+
+
+def _base_label(s):
+	"""'>> Colori veloci 12' -> 'Colori veloci' (run of chase-like cues)."""
+	return re.sub(r'\s*\d+$', '', _ascii(s).replace('>>', '').strip())
+
+
+GROUP_W = 70   # cue blocks narrower than this (px) get grouped by base label
 
 
 def _fmt(t):
@@ -160,6 +202,7 @@ def render(scriptOp):
 	p = show.par
 	vs, vl = _view_range(w)
 	_view.update(vs=vs, vl=vl, w=w, h=h)
+	hb = h - OV_H - 6   # bottom of the main area, above the overview
 	length = float(p.Length.eval())
 	t_now = float(p.Time.eval())
 	sel_cue, sel_key = int(p.Cue.eval()), int(p.Key.eval())
@@ -167,15 +210,16 @@ def render(scriptOp):
 	# beyond the end of the show: darker background, drawn first
 	xe = int(_x(length))
 	if xe < w:
-		img[HEADER_H:, max(0, xe):] = _c(tuple(v * 0.45 for v in BG))
+		img[HEADER_H:hb, max(0, xe):] = _c(tuple(v * 0.45 for v in BG))
 
 	# header
 	_text(img, p.Status.eval(), 10, 20, TEXT, 0.48)
 	msg = p.Message.eval()
 	if msg:
-		_text(img, msg, w - 10 - 8 * len(msg), 20, HEAD, 0.42)
+		_text(img, msg, w - 10 - _tw(_ascii(msg), 0.42), 20, HEAD, 0.42)
 
-	# ruler: tick step from zoom
+	# ruler: tick step from zoom; no tick label under the playhead tag
+	xp = int(_x(t_now))
 	y0 = HEADER_H
 	_rect(img, (0, y0), (w, y0 + RULER_H), PANEL, -1)
 	step = next(s for s in (0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600) if vl / s <= 24)
@@ -183,8 +227,9 @@ def render(scriptOp):
 	while t <= vs + vl:
 		x = int(_x(t))
 		_line(img, (x, y0 + RULER_H - 8), (x, y0 + RULER_H), DIM, 1)
-		_line(img, (x, y0 + RULER_H), (x, h), GRID, 1)
-		_text(img, _fmt(t), x + 3, y0 + 14, DIM, 0.36)
+		_line(img, (x, y0 + RULER_H), (x, hb), GRID, 1)
+		if not (x + 3 + _tw(_fmt(t), 0.36) >= xp - 2 and x + 3 <= xp + 54):
+			_text(img, _fmt(t), x + 3, y0 + 14, DIM, 0.36)
 		t += step
 
 	# cue lanes: one row per track ("TD/Win-PD, 60"), the main one first
@@ -198,6 +243,21 @@ def render(scriptOp):
 		cy1 = cy0 + rh
 		_view['tracks'].append((track, cy0, cy1))
 		cs = [c for c in allc if c.get('track', track) == track]
+		# runs of narrow blocks with the same base label (a chase expanded
+		# into cues): one label for the whole run instead of a label each
+		groups, run = [], []
+		for i, c in enumerate(cs):
+			end = cs[i + 1]['time'] if i + 1 < len(cs) else length
+			key = _base_label(c['label'] or c['scene'])
+			if _x(end) - _x(c['time']) < GROUP_W and run and run[-1][1] == key:
+				run.append((c, key, end))
+				continue
+			if len(run) > 1:
+				groups.append(run)
+			run = [(c, key, end)] if _x(end) - _x(c['time']) < GROUP_W else []
+		if len(run) > 1:
+			groups.append(run)
+		grouped = {c['id'] for g in groups for c, _k, _e in g}
 		for i, c in enumerate(cs):
 			end = cs[i + 1]['time'] if i + 1 < len(cs) else length
 			x0, x1 = int(_x(c['time'])), int(_x(end))
@@ -212,13 +272,34 @@ def render(scriptOp):
 			_line(img, (x0, cy0), (x0, cy1), col, 2)
 			if c['id'] == sel_cue:
 				_rect(img, (x0, cy0 - 2), (x1, cy1 + 2), SEL, 2)
+			if c['id'] in grouped:
+				continue
 			label = scenes.get(c['scene'], {}).get('label', c['scene'])
-			_text(img, c['label'] or ('cue %d' % c['id']), x0 + 6, cy0 + 16, TEXT, 0.42)
+			tw = max(0, min(x1, w) - max(x0, 0) - 10)
+			tx = max(x0, 0) + 6
+			_text(img, c['label'] or ('cue %d' % c['id']), tx, cy0 + 16, TEXT, 0.42, tw)
 			if rh >= CUE_H:
-				_text(img, label, x0 + 6, cy0 + 38, TEXT, 0.42)
-				_text(img, '%s  fade %.1fs' % (_fmt(c['time']), c['fade']), x0 + 6, cy1 - 8, DIM, 0.36)
+				_text(img, label, tx, cy0 + 38, TEXT, 0.42, tw)
+				s = _fit('%s  fade %.1fs' % (_fmt(c['time']), c['fade']), tw, 0.36)
+				if s:   # dark plate: readable over the fade ramp
+					_rect(img, (tx - 4, cy1 - 21), (tx + 4 + _tw(s, 0.36), cy1 - 3), tuple(v * 0.45 for v in col), -1)
+					_text(img, s, tx, cy1 - 8, DIM, 0.36)
 			else:
-				_text(img, label, x0 + 6, cy1 - 8, DIM, 0.36)
+				_text(img, label, tx, cy1 - 8, DIM, 0.36, tw)
+		for g in groups:   # one label on a dark plate over the run
+			g0, g1 = int(_x(g[0][0]['time'])), int(_x(g[-1][2]))
+			if g1 < 0 or g0 > w:
+				continue
+			gx0, gx1 = max(g0, 0), min(g1, w)
+			s = _fit('%s  x%d' % (g[0][1] or 'cue', len(g)), gx1 - gx0 - 12, 0.42)
+			if s:
+				_rect(img, (gx0 + 2, cy0 + 3), (gx0 + 10 + _tw(s, 0.42), cy0 + 22), BG, -1)
+				_text(img, s, gx0 + 6, cy0 + 17, TEXT, 0.42)
+			if rh >= CUE_H:
+				s = _fit('%s - %s' % (_fmt(g[0][0]['time']), _fmt(g[-1][2])), gx1 - gx0 - 12, 0.36)
+				if s:
+					_rect(img, (gx0 + 2, cy1 - 21), (gx0 + 10 + _tw(s, 0.36), cy1 - 3), BG, -1)
+					_text(img, s, gx0 + 6, cy1 - 8, DIM, 0.36)
 		if len(rows) > 1:   # track name, on the left edge
 			_rect(img, (0, cy0), (4, cy1), HEAD if track == sl.MAIN_TRACK else DIM, -1)
 			_text(img, track.upper(), 8, cy1 - 4, DIM, 0.34)
@@ -235,7 +316,7 @@ def render(scriptOp):
 			col = SCENE_COLORS[hash(text) % len(SCENE_COLORS)]
 			_rect(img, (x0, cy0), (x1, cy1), tuple(v * 0.35 for v in col), -1)
 			_line(img, (x0, cy0), (x0, cy1), col, 2)
-			_text(img, text, x0 + 6, cy0 + 16, TEXT, 0.42)
+			_text(img, text, max(x0, 0) + 6, cy0 + 16, TEXT, 0.42, min(x1, w) - max(x0, 0) - 10)
 		_rect(img, (0, cy0), (4, cy1), DIM, -1)
 		_text(img, title, 8, cy1 - 4, DIM, 0.34)
 		cy0 = cy1 + 4
@@ -247,7 +328,7 @@ def render(scriptOp):
 	_view['lanes'] = []
 	ly = cy1 + 8
 	for lane, ks in _lanes().items():
-		if ly + LANE_H > h:
+		if ly + LANE_H > hb:
 			break
 		_view['lanes'].append((lane, ly, ly + LANE_H))
 		_rect(img, (0, ly), (w, ly + LANE_H), PANEL, -1)
@@ -281,16 +362,47 @@ def render(scriptOp):
 		ly += LANE_H + 6
 
 	if xe < w:
-		_line(img, (xe, HEADER_H), (xe, h), DIM, 1)
+		_line(img, (xe, HEADER_H), (xe, hb), DIM, 1)
 	# playhead
-	xp = int(_x(t_now))
 	if 0 <= xp < w:
-		_line(img, (xp, HEADER_H), (xp, h), HEAD, 2)
+		_line(img, (xp, HEADER_H), (xp, hb), HEAD, 2)
 		_rect(img, (xp - 1, HEADER_H), (xp + 52, HEADER_H + 14), HEAD, -1)
 		_text(img, _fmt(t_now), xp + 3, HEADER_H + 11, (1, 1, 1), 0.36)
 
+	_draw_overview(img, allc, length, vs, vl, t_now)
+
 	# uint8 RGBA drawn top-down -> TD textures are bottom-up
 	scriptOp.copyNumpyArray(np.ascontiguousarray(img[::-1]))
+
+
+def _ov_span(length):
+	"""Seconds covered by the overview: the show, or more if cues/view go past."""
+	return max(length, _view['vs'] + _view['vl'], 1.0)
+
+
+def _draw_overview(img, allc, length, vs, vl, t_now):
+	"""Whole show in one strip: cue blocks (main track), the visible window,
+	the end of the show and the playhead."""
+	h, w = img.shape[:2]
+	y0, y1 = h - OV_H, h - 1
+	span = _ov_span(length)
+	_view['ov'] = (y0, span)
+
+	def ox(t):
+		return int(t / span * (w - 1))
+
+	_rect(img, (0, y0 - 6), (w, h), PANEL, -1)
+	main = getattr(_sl(), 'MAIN_TRACK', '')
+	cs = [c for c in allc if c.get('track', main) == main]
+	for i, c in enumerate(cs):
+		end = cs[i + 1]['time'] if i + 1 < len(cs) else length
+		col = _scene_color(c['scene'])
+		_rect(img, (ox(c['time']), y0 + 4), (max(ox(c['time']) + 1, ox(end)), y1 - 4), tuple(v * 0.6 for v in col), -1)
+		_line(img, (ox(c['time']), y0 + 4), (ox(c['time']), y1 - 4), col, 1)
+	if length < span:
+		_rect(img, (ox(length), y0 + 4), (w, y1 - 4), tuple(v * 0.45 for v in BG), -1)
+	_rect(img, (ox(vs), y0 + 1), (ox(vs + vl), y1 - 1), SEL, 1)
+	_line(img, (ox(t_now), y0), (ox(t_now), y1), HEAD, 2)
 
 
 # ---------------------------------------------------------------- input
@@ -309,6 +421,11 @@ def on_press(panel):
 	x, y = _xy(panel)
 	p = _show().par
 	cue_top = HEADER_H + RULER_H + 4
+	if 'ov' in _view and y >= _view['ov'][0] - 6:
+		_drag.clear()
+		_drag.update(kind='overview')
+		_seek_overview(x)
+		return
 	if y < cue_top:
 		_drag.clear()
 		_drag.update(kind='seek')
@@ -341,11 +458,23 @@ def on_press(panel):
 			return
 
 
+def _seek_overview(x):
+	"""Overview click: playhead there, view paged to it (as Follow does)."""
+	p = _show().par
+	t = _snap(max(0.0, min(1.0, x / float(_view['w']))) * _view['ov'][1])
+	p.Time = t
+	vl = _view['vl']
+	if not (_view['vs'] <= t < _view['vs'] + vl):
+		p.Viewstart = (t // vl) * vl
+
+
 def on_move(panel):
 	if not _drag:
 		return
 	x, y = _xy(panel)
-	if _drag['kind'] == 'seek':
+	if _drag['kind'] == 'overview':
+		_seek_overview(x)
+	elif _drag['kind'] == 'seek':
 		_show().par.Time = _snap(_t(x))
 	elif _drag['kind'] == 'cue':
 		_drag['time'] = _snap(_t(x) - _drag['grab'])
