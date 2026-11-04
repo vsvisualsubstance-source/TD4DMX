@@ -24,6 +24,26 @@ GROUP_COLORS = {
 	'heads': (0.82, 0.38, 0.98),
 }
 OTHER = (0.6, 0.6, 0.6)
+# groups beyond the built-in three (ledbar, haze, rigs made by the Plancia...):
+# colours by their row in the dmx_patch `groups` table
+EXTRA_COLORS = [(0.45, 0.85, 0.35), (0.98, 0.85, 0.25), (0.30, 0.88, 0.78), (0.98, 0.42, 0.58),
+	(0.60, 0.62, 0.98), (0.85, 0.55, 0.35), (0.70, 0.90, 0.55), (0.95, 0.65, 0.85)]
+
+
+def _groups():
+	"""[(group, label)] in the order of the dmx_patch groups table."""
+	t = _patch().op('groups')
+	if t is None or t.numRows < 2:
+		return [(g, g) for g in GROUP_COLORS]
+	lab = t[0, 'label'] is not None
+	return [(t[r, 'group'].val, (t[r, 'label'].val if lab else '') or t[r, 'group'].val) for r in range(1, t.numRows)]
+
+
+def _gcol(group):
+	if group in GROUP_COLORS:
+		return GROUP_COLORS[group]
+	extra = [g for g, _l in _groups() if g not in GROUP_COLORS]
+	return EXTRA_COLORS[extra.index(group) % len(EXTRA_COLORS)] if group in extra else OTHER
 BG = (0.065, 0.07, 0.08)
 GRID = (0.12, 0.13, 0.15)
 GRID_MAJOR = (0.19, 0.20, 0.23)
@@ -207,7 +227,7 @@ def render_plan(scriptOp):
 	uni = {p['port_id']: p['universe'] for p in _cl().ports()}
 	for f in sorted(fx, key=lambda f: f['id'] == sel):
 		cx, cy = to_px(f['x'], f['y'])
-		gcol = GROUP_COLORS.get(f['group'], OTHER)
+		gcol = _gcol(f['group'])
 		st = rep.get(f['id'], {}).get('status', '')
 		sending = st in ('ok', 'offline', 'conflict')
 		p1 = (int(cx - half), int(cy - half * 0.62))
@@ -234,12 +254,16 @@ def render_plan(scriptOp):
 		if f['palette']:   # own palette (not the rig's): name above the tile
 			_text(img, f['palette'][:14], p1[0], p1[1] - 5, gcol, 0.36)
 
-	# header: legend
+	# header: legend of the groups that have fixtures, with their label
 	x = 10
-	for g, col in GROUP_COLORS.items():
+	used = {f['group'] for f in fx}
+	for g, label in _groups():
+		if g not in used:
+			continue
+		col = _gcol(g)
 		_rect(img, (x, 7), (x + 12, 19), col, -1)
-		_text(img, g, x + 17, 18, TEXT, 0.42)
-		x += 95
+		_text(img, label, x + 17, 18, TEXT, 0.42)
+		x += 17 + cv2.getTextSize(label, FONT, 0.42, 1)[0][0] + 22
 	_text(img, 'click = seleziona, trascina = sposta (griglia 0.5)', x + 10, 18, DIM, 0.4)
 	_out(scriptOp, img)
 
@@ -281,7 +305,7 @@ def render_umap(scriptOp):
 			continue
 		used += 1
 		f = own[-1]
-		col = GROUP_COLORS.get(f['group'], OTHER)
+		col = _gcol(f['group'])
 		live = [o for o in own if rep.get(o['id'], {}).get('status') in ('ok', 'offline', 'conflict')]
 		if len(live) > 1:
 			col = BAD
@@ -298,15 +322,20 @@ def render_umap(scriptOp):
 		for a in range(f['address'], min(512, f['address'] + _nchans(f) - 1) + 1):
 			x0, y0, x1, y1 = cell(a)
 			_rect(img, (x0 - 1, y0 - 1), (x1 + 1, y1 + 1), SEL, 1)
-	pinfo = ''
+	pinfo, offline = '', False
 	ports = _patch().op('ports')
 	if ports is not None and ports[port, 'label'] is not None:
-		pinfo = ports[port, 'label'].val + ('' if ports[port, 'online'].val == '1' else '  [OFFLINE]')
+		pinfo = ports[port, 'label'].val
+		offline = ports[port, 'online'].val != '1'
 	conflicts = sum(1 for f in fx if rep.get(f['id'], {}).get('status') == 'conflict')
-	_text(img, 'Porta %s   %s' % (port or '-', pinfo), 8, 17, TEXT, 0.42)
-	_text(img, 'usati %d / 512   liberi %d%s' % (used, 512 - used,
-		'   CONFLITTI: %d fixture' % conflicts if conflicts else ''),
-		w - 330, 17, BAD if conflicts else DIM, 0.42)
+	right = 'usati %d / 512   liberi %d%s' % (used, 512 - used,
+		'   CONFLITTI: %d fixture' % conflicts if conflicts else '')
+	rw = cv2.getTextSize(right, FONT, 0.42, 1)[0][0]
+	_text(img, right, w - 10 - rw, 17, BAD if conflicts else DIM, 0.42)
+	left = 'Porta %s%s   %s' % (port or '-', '  [OFFLINE]' if offline else '', pinfo)
+	while len(left) > 8 and cv2.getTextSize(left, FONT, 0.42, 1)[0][0] > w - 30 - rw:
+		left = left[:-2]   # long port labels: cut, never under the counters
+	_text(img, left, 8, 17, BAD if offline else TEXT, 0.42)
 	_out(scriptOp, img)
 
 
