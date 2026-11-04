@@ -20,6 +20,14 @@ to those pages later are captured automatically):
           existed has an empty palette flag: it follows its rigs flag, so it
           still recalls the palette its rigs capture stored.
   heads   moving_heads 'Position' + 'Look' pages, ptz Mode / Padu / Padv
+  heads_color  the heads WITHOUT their position (GAIA_INTERFACE "OPS, 47" /
+          "TD/Win-PD, 65"): moving_heads 'Look' page (Colorfollow included)
+          and the per-head fields except pan/tilt and mode, so a colour cue
+          never moves a head. It shares the values of category heads (one
+          row per par): a scene with heads applies them all, a scene with
+          only heads_color the colour part. A head that was global at the
+          capture stores '' (= back to the global look, its row untouched).
+          Scenes saved before it have an empty flag = off.
   groups  Patchenable of every rig and of heads, dmx_patch Blackout
   audio   Audiobus of every chase rig (which audio source drives the rig)
   strobe  dmx_patch Strobe / Stroberate (the general strobe, /dmx/strobe)
@@ -69,9 +77,12 @@ TARGETS = {
 	'ptz': 'ptz',
 	'patch': 'dmx_patch',
 }
-CATEGORIES = ['rigs', 'heads', 'groups', 'audio', 'strobe', 'palette']
+CATEGORIES = ['rigs', 'heads', 'groups', 'audio', 'strobe', 'palette', 'heads_color']
 CATEGORY_LABELS = {'rigs': 'Look dei rig', 'heads': 'Teste mobili', 'groups': 'Accensioni gruppi',
-	'audio': 'Sorgente audio', 'strobe': 'Strobo generale', 'palette': 'Palette'}
+	'audio': 'Sorgente audio', 'strobe': 'Strobo generale', 'palette': 'Palette',
+	'heads_color': 'Colore teste'}
+# per-head fields of heads_color: everything but the position
+HEAD_POS_FIELDS = ('pan', 'tilt', 'mode')
 PALETTE_PARS = ['Palette'] + ['Custompalette%d%s' % (i, c) for i in range(1, 6) for c in 'rgb']
 INTERPS = ['linear', 'smooth', 'step']
 
@@ -212,6 +223,8 @@ def category_pars(cat):
 	if cat == 'heads':
 		return _page_pars('heads', ('Position', 'Look')) + \
 			[('ptz', n) for n in ('Mode', 'Padu', 'Padv') if target_comp('ptz') is not None]
+	if cat == 'heads_color':
+		return _page_pars('heads', ('Look',))
 	if cat == 'groups':
 		return [(g, 'Patchenable') for g, c, k in rigs] + \
 			[('heads', 'Patchenable'), ('patch', 'Blackout')]
@@ -227,11 +240,32 @@ def category_pars(cat):
 
 @_memo
 def _category_of():
+	"""{(target, par): owning category}; heads_color pars belong to heads
+	(see _in_scene)."""
 	m = {}
 	for cat in CATEGORIES:
 		for k in category_pars(cat):
-			m[k] = cat
+			m.setdefault(k, cat)
 	return m
+
+
+@_memo
+def _head_color_pars():
+	return set(category_pars('heads_color'))
+
+
+def _is_head_color(k):
+	"""A key of category heads_color: Look pars, head fields but position."""
+	if _is_head(k[0]):
+		return k[1] not in HEAD_POS_FIELDS
+	return k in _head_color_pars()
+
+
+def _in_scene(sc, k, owner):
+	"""Key k (owning category `owner`) is applied by scene sc."""
+	if sc.get(owner, 0):
+		return True
+	return owner == 'heads' and sc.get('heads_color', 0) and _is_head_color(k)
 
 
 def _par(target, name):
@@ -254,8 +288,10 @@ def _hp():
 	return dat.module if dat is not None else None
 
 
-def _head_rows():
-	"""[(target, par, value)] of every head's current state, for capture."""
+def _head_rows(color_only=False):
+	"""[(target, par, value)] of every head's current state, for capture.
+	color_only (category heads_color): no mode/pan/tilt, and '' for the
+	fields of a global head (it follows the global look again)."""
 	hp = _hp()
 	if hp is None:
 		return []
@@ -263,9 +299,13 @@ def _head_rows():
 	for h in hp.heads():
 		t = HEAD_PREFIX + h['key']
 		e = hp.effective(h['key'])
-		out.append((t, 'mode', e['mode']))
+		if not color_only:
+			out.append((t, 'mode', e['mode']))
 		for f in hp.FIELDS:
-			out.append((t, f, round(float(e[f]), 6)))
+			if color_only and f in HEAD_POS_FIELDS:
+				continue
+			v = '' if color_only and e['mode'] == 'global' else round(float(e[f]), 6)
+			out.append((t, f, v))
 	return out
 
 
@@ -384,6 +424,8 @@ def _apply_heads(changed, state, force):
 					hp.set_mode('global', [key])
 				continue
 			vals = {f: v for f, v in fields.items() if f != 'mode'}
+			if mode is None and key not in hp.state() and all(v is None for v in vals.values()):
+				continue   # heads_color: a global head stays global (no row, no position change)
 			hp.program(vals, [key], mode=mode if mode in ('manual', 'follow') else None)
 		except Exception as e:
 			debug('show apply %s: %s' % (t, e))
@@ -434,6 +476,8 @@ def scenes():
 		d = {'name': r['name'], 'label': r['label'] or r['name']}
 		for c in CATEGORIES:
 			d[c] = 1 if _i(r[c], 1) else 0
+		if r['heads_color'] == '':   # saved before category heads_color
+			d['heads_color'] = 0
 		if r['palette'] == '':   # saved before category palette: as its rigs
 			d['palette'] = d['rigs']
 		d['only'] = r['only'].split()
@@ -499,14 +543,15 @@ def scene_values(name):
 		if only and _key_group(k) not in only:
 			continue   # a scene limited to some groups leaves the others as they are
 		if _is_head(k[0]):
-			if sc.get('heads', 0):
-				out[k] = r['value'] if k[1] == 'mode' else _f(r['value'])
+			if _in_scene(sc, k, 'heads'):
+				# '' = the head was global at a heads_color capture: back to global
+				out[k] = r['value'] if k[1] == 'mode' else _f(r['value'], None)
 			continue
 		if _is_fx(k[0]):
 			if sc.get('rigs', 0) and k[1] in FX_PARS:
 				out[k] = r['value'] if k[1] == 'audio' else _f(r['value'], 1.0)
 			continue
-		if not sc.get(cat.get(k, ''), 0):
+		if not _in_scene(sc, k, cat.get(k, '')):
 			continue
 		p = _par(*k)
 		if p is None:
@@ -516,7 +561,7 @@ def scene_values(name):
 	# heads scenes stored before the colour follow ("TD/Win-PD, 64") carry
 	# their colour but no Colorfollow: a saved colour = fixed colour
 	cf = ('heads', 'Colorfollow')
-	if sc.get('heads', 0) and cf not in out and _par(*cf) is not None \
+	if (sc.get('heads', 0) or sc.get('heads_color', 0)) and cf not in out and _par(*cf) is not None \
 			and (not only or 'heads' in only) and any(_key_group(k) == 'heads' for k in out):
 		out[cf] = ''
 	return out
@@ -541,8 +586,10 @@ def capture(name, label=None, categories=None, only=None):
 	st = _table('scenes', SCENE_COLS)
 	if _row_index('scenes', SCENE_COLS, 'name', name) is None:
 		# a new scene applies what it captured: capture(..., ['heads']) = 'only heads'
-		st.appendRow([name, label or name] + [1 if c in cats else 0 for c in CATEGORIES]
-			+ [' '.join(sorted(grp)) if grp else ''])
+		# by column name: a column added later sits at the end of the table
+		row = dict(name=name, label=label or name, only=' '.join(sorted(grp)) if grp else '',
+			**{c: 1 if c in cats else 0 for c in CATEGORIES})
+		st.appendRow([row.get(st[0, i].val, '') for i in range(st.numCols)])
 	else:
 		r0 = _row_index('scenes', SCENE_COLS, 'name', name)
 		if label:
@@ -555,16 +602,23 @@ def capture(name, label=None, categories=None, only=None):
 			continue
 		k = (vt[r, 'target'].val, vt[r, 'par'].val)
 		cat = 'heads' if _is_head(k[0]) else 'rigs' if _is_fx(k[0]) else owned.get(k)
-		if (categories is None or cat in cats) and keep(k):
+		if (categories is None or cat in cats or 'heads_color' in cats and cat == 'heads'
+				and _is_head_color(k)) and keep(k):
 			vt.deleteRow(r)
+	done = set()
 	for cat in cats:
 		for t, n in category_pars(cat):
 			p = _par(t, n)
-			if p is not None and keep((t, n)):
+			if p is not None and keep((t, n)) and (t, n) not in done:
+				done.add((t, n))
 				v = _read(p)
 				vt.appendRow([name, t, n, round(v, 6) if isinstance(v, float) else v])
 	if 'heads' in cats:
 		for t, n, v in _head_rows():
+			if keep((t, n)):
+				vt.appendRow([name, t, n, v])
+	elif 'heads_color' in cats:
+		for t, n, v in _head_rows(color_only=True):
 			if keep((t, n)):
 				vt.appendRow([name, t, n, v])
 	if 'rigs' in cats:
@@ -1097,9 +1151,13 @@ def scene_preview(name):
 		heads = []
 		for h in hp.heads():
 			t = HEAD_PREFIX + h['key']
-			if (t, 'mode') not in v:
+			if (t, 'mode') not in v and (t, 'dimmer') not in v:
 				continue
-			f = lambda n: float(v.get((t, n)) or 0.0)
+			look = {'red': 'Colorr', 'green': 'Colorg', 'blue': 'Colorb', 'white': 'White',
+				'color': 'Colorwheel', 'dimmer': 'Dimmer'}
+			# None = global head of a heads_color scene: the scene's (or live) look
+			f = lambda n: float((v.get((t, n)) if v.get((t, n)) is not None else
+				v.get(('heads', look[n]), _current(('heads', look[n])))) or 0.0)
 			m = cat.model(h['profile']) or {}
 			chans = set(m.get('channels') or [])
 			# only the model's own roles: beam_color adds white/amber/... when present
@@ -1879,8 +1937,8 @@ def load_scene():
 	sc = sc[0]
 	_set(p.Scenelabel, sc['label'])
 	for c in CATEGORIES:
-		if p['Apply' + c] is not None:
-			_set(p['Apply' + c], sc[c])
+		if p[_apply_par(c)] is not None:
+			_set(p[_apply_par(c)], sc[c])
 
 
 def load_cue():
@@ -1922,6 +1980,11 @@ def _differs(a, b):
 		return str(a) != str(b)
 
 
+def _apply_par(cat):
+	"""Show par of a category flag (Applyrigs, Applyheadscolor...)."""
+	return 'Apply' + cat.replace('_', '')
+
+
 def on_value_change(par):
 	p = _show().par
 	n = par.name
@@ -1937,7 +2000,8 @@ def on_value_change(par):
 		elif n in ('Scenelabel',) or n.startswith('Apply'):
 			sc = [s for s in scenes() if s['name'] == str(p.Scene.eval())]
 			if sc:
-				field = 'label' if n == 'Scenelabel' else n[5:]
+				field = 'label' if n == 'Scenelabel' else \
+					next((c for c in CATEGORIES if _apply_par(c) == n), n[5:])
 				v = par.eval() if n == 'Scenelabel' else (1 if par.eval() else 0)
 				if _differs(sc[0][field], v):
 					set_scene_flags(sc[0]['name'], **{field: v})
