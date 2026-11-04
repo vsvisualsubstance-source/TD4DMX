@@ -29,6 +29,7 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 HEADER_H, RULER_H, CUE_H, LANE_H = 30, 24, 86, 54
 TRACK_H = 46   # cue row height when there is more than one track
 OV_H = 30      # overview strip at the bottom
+GUT_W = 84     # left column with the row names, when there is more than one row
 SNAP = 0.1
 
 
@@ -86,6 +87,7 @@ def _fit(s, maxw, scale):
 		return s
 	while len(s) > 2 and _tw(s + '.', scale) > maxw:
 		s = s[:-1]
+	s = s.rstrip()
 	return s + '.' if len(s) > 2 or _tw(s + '.', scale) <= maxw else ''
 
 
@@ -121,11 +123,13 @@ def _view_range(w):
 
 
 def _x(t):
-	return (t - _view['vs']) / _view['vl'] * _view['w']
+	g = _view.get('gut', 0)
+	return g + (t - _view['vs']) / _view['vl'] * (_view['w'] - g)
 
 
 def _t(x):
-	return _view['vs'] + x / float(_view['w']) * _view['vl']
+	g = _view.get('gut', 0)
+	return _view['vs'] + (x - g) / float(_view['w'] - g) * _view['vl']
 
 
 def _scene_color(name):
@@ -201,7 +205,10 @@ def render(scriptOp):
 	sl = _sl()
 	p = show.par
 	vs, vl = _view_range(w)
-	_view.update(vs=vs, vl=vl, w=w, h=h)
+	rows = _track_rows(sl)
+	extra = _extra_rows(sl)
+	gut = GUT_W if (len(rows) > 1 or extra) else 0
+	_view.update(vs=vs, vl=vl, w=w, h=h, gut=gut)
 	hb = h - OV_H - 6   # bottom of the main area, above the overview
 	length = float(p.Length.eval())
 	t_now = float(p.Time.eval())
@@ -235,7 +242,7 @@ def render(scriptOp):
 	# cue lanes: one row per track ("TD/Win-PD, 60"), the main one first
 	scenes = {s['name']: s for s in sl.scenes()}
 	allc = _cues()
-	rows = _track_rows(sl)
+	names = []   # (title, y0, y1, marker colour) for the left column
 	_view['tracks'] = []
 	cy0 = HEADER_H + RULER_H + 4
 	rh = CUE_H if len(rows) == 1 else TRACK_H
@@ -275,8 +282,8 @@ def render(scriptOp):
 			if c['id'] in grouped:
 				continue
 			label = scenes.get(c['scene'], {}).get('label', c['scene'])
-			tw = max(0, min(x1, w) - max(x0, 0) - 10)
-			tx = max(x0, 0) + 6
+			tw = max(0, min(x1, w) - max(x0, gut) - 10)
+			tx = max(x0, gut) + 6
 			_text(img, c['label'] or ('cue %d' % c['id']), tx, cy0 + 16, TEXT, 0.42, tw)
 			if rh >= CUE_H:
 				_text(img, label, tx, cy0 + 38, TEXT, 0.42, tw)
@@ -290,7 +297,7 @@ def render(scriptOp):
 			g0, g1 = int(_x(g[0][0]['time'])), int(_x(g[-1][2]))
 			if g1 < 0 or g0 > w:
 				continue
-			gx0, gx1 = max(g0, 0), min(g1, w)
+			gx0, gx1 = max(g0, gut), min(g1, w)
 			s = _fit('%s  x%d' % (g[0][1] or 'cue', len(g)), gx1 - gx0 - 12, 0.42)
 			if s:
 				_rect(img, (gx0 + 2, cy0 + 3), (gx0 + 10 + _tw(s, 0.42), cy0 + 22), BG, -1)
@@ -300,13 +307,12 @@ def render(scriptOp):
 				if s:
 					_rect(img, (gx0 + 2, cy1 - 21), (gx0 + 10 + _tw(s, 0.36), cy1 - 3), BG, -1)
 					_text(img, s, gx0 + 6, cy1 - 8, DIM, 0.36)
-		if len(rows) > 1:   # track name, on the left edge
-			_rect(img, (0, cy0), (4, cy1), HEAD if track == sl.MAIN_TRACK else DIM, -1)
-			_text(img, track.upper(), 8, cy1 - 4, DIM, 0.34)
+		if gut:
+			names.append((track, cy0, cy1, HEAD if track == sl.MAIN_TRACK else DIM))
 		cy0 = cy1 + 4
 	# the other tracks of the timeline document (read-only blocks): chases,
 	# head motion, light effects -- only when they have cues
-	for title, blocks in _extra_rows(sl):
+	for title, blocks in extra:
 		cy1 = cy0 + TRACK_H
 		for i, (t0, text) in enumerate(blocks):
 			end = blocks[i + 1][0] if i + 1 < len(blocks) else length
@@ -316,11 +322,16 @@ def render(scriptOp):
 			col = SCENE_COLORS[hash(text) % len(SCENE_COLORS)]
 			_rect(img, (x0, cy0), (x1, cy1), tuple(v * 0.35 for v in col), -1)
 			_line(img, (x0, cy0), (x0, cy1), col, 2)
-			_text(img, text, max(x0, 0) + 6, cy0 + 16, TEXT, 0.42, min(x1, w) - max(x0, 0) - 10)
-		_rect(img, (0, cy0), (4, cy1), DIM, -1)
-		_text(img, title, 8, cy1 - 4, DIM, 0.34)
+			_text(img, text, max(x0, gut) + 6, cy0 + 16, TEXT, 0.42, min(x1, w) - max(x0, gut) - 10)
+		names.append((title, cy0, cy1, DIM))
 		cy0 = cy1 + 4
 	cy1 = cy0 - 4
+	if gut:   # left column: one name per row, the blocks scroll under it
+		_rect(img, (0, HEADER_H), (gut - 1, cy1), PANEL, -1)
+		_line(img, (gut - 1, HEADER_H), (gut - 1, cy1), GRID, 1)
+		for title, y0r, y1r, col in names:
+			_rect(img, (0, y0r), (3, y1r), col, -1)
+			_text(img, title.upper(), 10, (y0r + y1r) // 2 + 4, TEXT if col == HEAD else DIM, 0.36, gut - 16)
 	if not allc:
 		_text(img, 'nessuna cue: Scene > New Scene From Live, poi Cue > Add Cue At Playhead', 12, cy1 - 30, DIM, 0.45)
 
@@ -357,14 +368,14 @@ def render(scriptOp):
 			_circle(img, c, 5, (0.95, 0.9, 0.4), -1, cv2.LINE_AA)
 			if k['id'] == sel_key:
 				_circle(img, c, 9, SEL, 2, cv2.LINE_AA)
-		_text(img, lane.replace('.', '  '), 10, ly + 16, TEXT, 0.42)
-		_text(img, '%.3g .. %.3g' % (lo, hi), 10, ly + LANE_H - 8, DIM, 0.34)
+		_text(img, lane.replace('.', '  '), gut + 10, ly + 16, TEXT, 0.42)
+		_text(img, '%.3g .. %.3g' % (lo, hi), gut + 10, ly + LANE_H - 8, DIM, 0.34)
 		ly += LANE_H + 6
 
 	if xe < w:
 		_line(img, (xe, HEADER_H), (xe, hb), DIM, 1)
 	# playhead
-	if 0 <= xp < w:
+	if gut <= xp < w:
 		_line(img, (xp, HEADER_H), (xp, hb), HEAD, 2)
 		_rect(img, (xp - 1, HEADER_H), (xp + 52, HEADER_H + 14), HEAD, -1)
 		_text(img, _fmt(t_now), xp + 3, HEADER_H + 11, (1, 1, 1), 0.36)
