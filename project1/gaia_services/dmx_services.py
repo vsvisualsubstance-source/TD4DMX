@@ -189,6 +189,17 @@ heads_positions, heads_position_recall / _store, heads_presets,
 heads_preset_store / _recall / _remove (see PROGRAMMER_PARAMS); dmx_matrix
 'heads' gains 'programmer' (order, modes, fields, selections, positions,
 presets). Same commands as Plancia OSC /mh/* (plancia_in).
+
+2026-11-05: advanced rig config, the Look Rig of the Plancia (sibling
+module rig_config, GAIA_INTERFACE "TD/Win-PD, 68"). All JSON:
+  dmx_rig_config         rw  get = {group: {field: value}} of every chase/
+                             level rig; set = {group, values} | {groups:
+                             {group: values}} | [{group, values}], request_id?
+                             -- validated as a whole, written as a whole
+  dmx_rig_config_result  r   {request_id, ts, ok, applied, errors}
+dmx_matrix gains 'rig_config' ({params, kinds: sections per kind, fields:
+schema per kind, groups: [{group, label, alias, kind, inactive...}]});
+retained state topic dmx_rig_config.
 """
 import json
 import time
@@ -1514,7 +1525,8 @@ def publish_matrix():
 MATRIX_PARTS = [('rigs', '_build_rigs_matrix'), ('audio', '_build_audio_matrix'),
 	('patch', '_build_patch_matrix'), ('heads', '_build_heads_matrix'),
 	('ptz', '_build_ptz_matrix'), ('fixtures', '_build_fixtures_matrix'),
-	('catalog', '_build_catalog_matrix'), ('show', '_build_show_matrix')]
+	('catalog', '_build_catalog_matrix'), ('show', '_build_show_matrix'),
+	('rig_config', '_build_rig_config_matrix')]
 MATRIX_CHECK_S = 1.0   # one section rebuilt and compared per check
 _matrix_pub = {'fp': {}, 'check': 0.0, 'next': 0}
 
@@ -1543,6 +1555,23 @@ def matrix_tick():
 		publish_matrix()
 
 
+def _rig_config():
+	"""rig_config module (sibling DAT, resolved at call time)."""
+	return me.parent().op('rig_config').module
+
+
+def _build_rig_config_matrix():
+	return _rig_config().matrix()
+
+
+def _register_rig_config(agent):
+	"""Advanced config of every chase/level rig in one JSON param, the Look
+	Rig of the Plancia (rig_config docstring, GAIA_INTERFACE "TD/Win-PD, 68")."""
+	agent.register_param('dmx_rig_config', get=lambda: _rig_config().values(),
+		set=lambda v: _rig_config().apply(_json_arg(v)))
+	agent.register_param('dmx_rig_config_result', get=lambda: _rig_config().result())
+
+
 def _register_level_rig(agent, group, rig_name):
 	prefix = 'dmx_%s_' % group
 	for suffix, par_name in LEVEL_RIG_FLOATS:
@@ -1558,7 +1587,7 @@ def _drop_stale_rig_names(agent, live_keys):
 	"""Unregister dmx_<key>_* of rigs that no longer exist (removed groups)."""
 	fixed = ('dmx_fixture', 'dmx_fixtures', 'dmx_patch_report', 'dmx_group_',
 		'dmx_scan', 'dmx_output', 'dmx_blackout', 'dmx_model', 'dmx_type',
-		'dmx_patch_', 'dmx_universe_', 'dmx_groups')
+		'dmx_patch_', 'dmx_universe_', 'dmx_groups', 'dmx_rig_config')
 	for reg in (agent._params, agent._services):
 		for name in list(reg):
 			if not name.startswith('dmx_') or name.startswith(fixed):
@@ -1578,6 +1607,7 @@ STATE_TOPICS = [
 	('heads_motion', ['heads_motion_state'], 0.2),
 	('dmx_effects', ['dmx_effects_state'], 0.2),
 	('dmx_chase', ['dmx_chase_state'], 0.1),
+	('dmx_rig_config', ['dmx_rig_config', 'dmx_rig_config_result'], 0.5),
 ]
 
 
@@ -1649,6 +1679,7 @@ def register_all():
 	_register_catalog(agent)
 	_register_planning(agent)
 	_register_show(agent)
+	_register_rig_config(agent)
 
 	agent.register_service(
 		'dmx_scan',
