@@ -1175,7 +1175,57 @@ def _build_patch_matrix():
 		'dmx_effects_state': {'kind': 'param', 'type': 'json', 'access': 'r'}},
 		'channels': list(fxm.module.CHANNELS) if fxm else [],
 		'shapes': list(fxm.module.SHAPES) if fxm else []}
-	return {'services': services, 'ports': rows, 'effects': effects}
+	channel_test = {'params': {'dmx_channel_test': {'kind': 'param', 'type': 'json', 'access': 'rw'}},
+		'ttl_default_s': CHANNEL_TEST_TTL[0], 'ttl_max_s': CHANNEL_TEST_TTL[1]}
+	return {'services': services, 'ports': rows, 'effects': effects, 'channel_test': channel_test}
+
+
+# Channel test (GAIA_INTERFACE "TD/Win-PD, 71"): raw DMX channels forced
+# on one Art-Net port, over everything (blackout included), for a limited
+# time -- to find the real channel order of a light (universe_build).
+#   dmx_channel_test  rw  set {port_id, values: {address 1-512: 0-255},
+#                         ttl?: s (default 120, max 600)} = replaces the
+#                         whole test; null / {} / no values = off
+#                         get = {port_id, values, until_ms} or null
+CHANNEL_TEST_TTL = (120.0, 600.0)
+
+
+def _channel_test_get():
+	p = _patch()
+	test = p.fetch('channel_test', None, search=False)
+	until = p.fetch('channel_test_until', 0, search=False)
+	if not test or (until and time.time() > until):
+		return None
+	port = p.fetch('channel_test_port', '', search=False)
+	vals = next(iter(test.values()), {})
+	return {'port_id': port, 'values': {str(a): v for a, v in vals.items()},
+		'until_ms': int(until * 1000) if until else None}
+
+
+def _channel_test_set(value):
+	p = _patch()
+	v = _json_arg(value) if isinstance(value, (bytes, str)) and value else value
+	if not v or not v.get('values'):
+		for k in ('channel_test', 'channel_test_until', 'channel_test_port'):
+			p.unstore(k)
+		return
+	port_id = str(v.get('port_id') or '')
+	ports = p.op('ports')
+	r = next((i for i in range(1, ports.numRows) if ports[i, 'port_id'].val == port_id), None)
+	if r is None or ports[r, 'kind'].val != 'artnet':
+		raise ValueError('dmx_channel_test: porta Art-Net %r non trovata (vedi dmx_matrix.patch.ports)' % port_id)
+	vals = {}
+	for a, x in dict(v['values']).items():
+		a, x = int(a), float(x)
+		if not 1 <= a <= 512 or not 0 <= x <= 255:
+			raise ValueError('dmx_channel_test: indirizzo 1-512 e valore 0-255 (arrivato %s: %s)' % (a, x))
+		vals[a] = x
+	ttl = max(1.0, min(CHANNEL_TEST_TTL[1], float(v.get('ttl') or CHANNEL_TEST_TTL[0])))
+	stream = p.op('universe_build_callbacks').module.chan_name(
+		*(ports[r, c].val for c in ('net', 'subnet', 'universe', 'ip')))
+	p.store('channel_test', {stream: vals})
+	p.store('channel_test_until', time.time() + ttl)
+	p.store('channel_test_port', port_id)
 
 
 # Light effects (dmx_patch/light_effects, GAIA_INTERFACE "TD/Win-PD, 59"):
@@ -1615,7 +1665,7 @@ def _drop_stale_rig_names(agent, live_keys):
 	"""Unregister dmx_<key>_* of rigs that no longer exist (removed groups)."""
 	fixed = ('dmx_fixture', 'dmx_fixtures', 'dmx_patch_report', 'dmx_group_',
 		'dmx_scan', 'dmx_output', 'dmx_blackout', 'dmx_model', 'dmx_type',
-		'dmx_patch_', 'dmx_universe_', 'dmx_groups', 'dmx_rig_config', 'dmx_rig_preset')
+		'dmx_patch_', 'dmx_universe_', 'dmx_groups', 'dmx_rig_config', 'dmx_rig_preset', 'dmx_channel_test')
 	for reg in (agent._params, agent._services):
 		for name in list(reg):
 			if not name.startswith('dmx_') or name.startswith(fixed):
@@ -1708,6 +1758,7 @@ def register_all():
 	_register_planning(agent)
 	_register_show(agent)
 	_register_rig_config(agent)
+	agent.register_param('dmx_channel_test', get=_channel_test_get, set=_channel_test_set)
 
 	agent.register_service(
 		'dmx_scan',

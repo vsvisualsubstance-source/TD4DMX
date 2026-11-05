@@ -22,6 +22,7 @@ Channel test: dmx_patch storage 'channel_test' = {stream: {address: value}}
 forces raw channels last (to find a fixture's real channel layout).
 """
 import re
+import time
 
 _UNIT = re.compile(r'^[A-Za-z]+(\d+)_')
 SENDABLE = ('ok', 'offline', 'conflict')
@@ -133,6 +134,9 @@ def onCook(scriptOp):
 	# 'channel_test' = {stream name: {address 1-512: value 0-255}} overrides
 	# those channels after everything else, blackout included; unstore = off
 	test = parent().fetch('channel_test', None, search=False)
+	until = parent().fetch('channel_test_until', 0, search=False)
+	if until and time.time() > until:
+		test = None   # expired (dmx_channel_test ttl); the storage stays until the next set
 	for name, vals in (test or {}).items():
 		buf = universes.get(name)
 		if buf is None:
