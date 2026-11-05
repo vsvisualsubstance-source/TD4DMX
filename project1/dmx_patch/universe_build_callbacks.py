@@ -17,6 +17,9 @@ and output channels. Pan/tilt/strobe/mode/fan/... are never scaled.
 Light effects (light_effects, "TD/Win-PD, 59") modify a fixture's values
 first (dimmer / colour / white waves on top of the look); the levels above
 act after them.
+
+Channel test: dmx_patch storage 'channel_test' = {stream: {address: value}}
+forces raw channels last (to find a fixture's real channel layout).
 """
 import re
 
@@ -126,6 +129,18 @@ def onCook(scriptOp):
 				v = max(0.0, min(255.0, v))
 				for buf in bufs:
 					buf[addr] = v
+	# channel test (like a console's channel check): dmx_patch storage
+	# 'channel_test' = {stream name: {address 1-512: value 0-255}} overrides
+	# those channels after everything else, blackout included; unstore = off
+	test = parent().fetch('channel_test', None, search=False)
+	for name, vals in (test or {}).items():
+		buf = universes.get(name)
+		if buf is None:
+			continue
+		for addr, v in vals.items():
+			a = int(addr) - 1
+			if 0 <= a < 512:
+				buf[a] = max(0.0, min(255.0, float(v)))
 	for name in sorted(universes):
 		c = scriptOp.appendChan(name)
 		c.vals = universes[name]
