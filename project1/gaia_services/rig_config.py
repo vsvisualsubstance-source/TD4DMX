@@ -11,7 +11,8 @@ The single dmx_<rig>_* params stay as they are. This module adds:
                params    the two params below
                kinds     {kind: {sections: [{key, label, fields}]}}
                fields    {kind: {field: {type, label, help?, range?,
-                         default?, options?}}}  types: float | enum |
+                         default?, options?, labels?}}}  (labels = shown
+                         names of the options, same order) types: float | enum |
                          color_rgb (3 x 0-1) | bool
                groups    [{group, label, alias, kind, comp, fixtures,
                          profiles, inactive: {field: reason}}]
@@ -121,6 +122,8 @@ HELP = {
 	'dimmer_gamma': 'Curva del livello per le luci SENZA canale dimmer (es. RGBW): '
 		'il livello si moltiplica dentro i colori con questa gamma.',
 	'bar_phase': 'Sfasamento di colore tra una luce e la successiva (0 = tutte uguali).',
+	'audio_source': 'Quale sorgente audio condivisa muove il rig (audio_engine, sorgente A o B). '
+		'Tutti i rig su A = una sola sorgente; A e B = due sorgenti diverse.',
 }
 
 SECTIONS = {
@@ -225,7 +228,7 @@ def _schema(comp, field):
 	p = ps[0]
 	d = {'type': typ, 'label': LABELS.get(field, field),
 		'role': 'calibration' if FIELDS[field][0] in _calibration_pars() else 'look'}
-	h = str(p.help or '').strip() or HELP.get(field, '')
+	h = HELP.get(field, '') or str(p.help or '').strip()
 	if h:
 		d['help'] = h
 	if typ == 'float':
@@ -233,6 +236,8 @@ def _schema(comp, field):
 		d['default'] = round(float(p.default), 6)
 	elif typ == 'enum':
 		d['options'] = list(p.menuNames)
+		if list(p.menuLabels) != d['options']:
+			d['labels'] = list(p.menuLabels)   # same order as options ("OPS, 51")
 		d['default'] = str(p.default)
 	elif typ == 'color_rgb':
 		d['range'] = [0.0, 1.0]
