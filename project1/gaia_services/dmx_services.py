@@ -200,6 +200,18 @@ module rig_config, GAIA_INTERFACE "TD/Win-PD, 68"). All JSON:
 dmx_matrix gains 'rig_config' ({params, kinds: sections per kind, fields:
 schema per kind, groups: [{group, label, alias, kind, inactive...}]});
 retained state topic dmx_rig_config.
+
+2026-11-05: calibration split from the look + calibration presets
+(GAIA_INTERFACE "TD/Win-PD, 69"): scenes no longer write min/max dimmer,
+boost, gamma, AGC, min range, kick thresholds (show_logic
+RIG_CALIBRATION_PARS). All JSON, results in dmx_rig_config_result:
+  dmx_rig_presets         r  [{name, kind, label, values, source, updated}]
+  dmx_rig_preset_store    w  {name, group, label?}
+  dmx_rig_preset_recall   w  {name | starter: true, group | groups}
+  dmx_rig_preset_copy     w  {from, to: group | [groups]}
+  dmx_rig_preset_remove   w  name
+dmx_matrix rig_config gains calibration (fields per kind), starters and
+groups[].starter; dmx_rig_presets rides on the dmx_rig_config topic.
 """
 import json
 import time
@@ -1570,6 +1582,22 @@ def _register_rig_config(agent):
 	agent.register_param('dmx_rig_config', get=lambda: _rig_config().values(),
 		set=lambda v: _rig_config().apply(_json_arg(v)))
 	agent.register_param('dmx_rig_config_result', get=lambda: _rig_config().result())
+	# calibration presets ("TD/Win-PD, 69")
+	agent.register_param('dmx_rig_presets', get=lambda: _rig_config().presets())
+	for name in ('store', 'recall', 'copy', 'remove'):
+		agent.register_param('dmx_rig_preset_' + name, get=lambda: None,
+			set=lambda v, fn='preset_' + name: getattr(_rig_config(), fn)(_json_arg_or_str(v)))
+
+
+def _json_arg_or_str(value):
+	"""JSON object/list (or its string); a plain string stays a string
+	(dmx_rig_preset_remove accepts the bare name)."""
+	if isinstance(value, (bytes, str)):
+		try:
+			return json.loads(value)
+		except ValueError:
+			return value.decode() if isinstance(value, bytes) else value
+	return value
 
 
 def _register_level_rig(agent, group, rig_name):
@@ -1587,7 +1615,7 @@ def _drop_stale_rig_names(agent, live_keys):
 	"""Unregister dmx_<key>_* of rigs that no longer exist (removed groups)."""
 	fixed = ('dmx_fixture', 'dmx_fixtures', 'dmx_patch_report', 'dmx_group_',
 		'dmx_scan', 'dmx_output', 'dmx_blackout', 'dmx_model', 'dmx_type',
-		'dmx_patch_', 'dmx_universe_', 'dmx_groups', 'dmx_rig_config')
+		'dmx_patch_', 'dmx_universe_', 'dmx_groups', 'dmx_rig_config', 'dmx_rig_preset')
 	for reg in (agent._params, agent._services):
 		for name in list(reg):
 			if not name.startswith('dmx_') or name.startswith(fixed):
@@ -1607,7 +1635,7 @@ STATE_TOPICS = [
 	('heads_motion', ['heads_motion_state'], 0.2),
 	('dmx_effects', ['dmx_effects_state'], 0.2),
 	('dmx_chase', ['dmx_chase_state'], 0.1),
-	('dmx_rig_config', ['dmx_rig_config', 'dmx_rig_config_result'], 0.5),
+	('dmx_rig_config', ['dmx_rig_config', 'dmx_rig_config_result', 'dmx_rig_presets'], 0.5),
 ]
 
 

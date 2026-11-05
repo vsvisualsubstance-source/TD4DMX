@@ -54,7 +54,7 @@ td-dmx-win	DMXMaster	soggiorno	touchdesigner	show_active	inactive	False
 td-dmx-win	DMXMaster	soggiorno	touchdesigner	show_rewind	unknown	False
 td-dmx-win	DMXMaster	soggiorno	touchdesigner	dmx_scan	unknown	False
 td-dmx-win	DMXMaster	soggiorno	touchdesigner	dmx_output	active	False
-td-dmx-win	DMXMaster	soggiorno	touchdesigner	dmx_blackout	active	False
+td-dmx-win	DMXMaster	soggiorno	touchdesigner	dmx_blackout	inactive	False
 td-dmx-win	DMXMaster	soggiorno	touchdesigner	audio_a_active	active	False
 td-dmx-win	DMXMaster	soggiorno	touchdesigner	audio_b_active	active	False
 td-pd-pc-win	PatchDeck	soggiorno	touchdesigner	deck_a	active	False

@@ -33,9 +33,35 @@ The single dmx_<rig>_* params stay as they are. This module adds:
   result()   dmx_rig_config_result: {request_id, ts, ok, applied:
              {group: [fields]}, errors: [str]}
 
-A write is a live tweak like one from the TD UI: it holds until the show
-timeline moves that par again (show_logic).
+A write is a live tweak like one from the TD UI. LOOK fields hold until
+the show timeline moves that par again; CALIBRATION fields (min/max dimmer,
+boost, gamma, AGC, min range, kick thresholds = show_logic
+RIG_CALIBRATION_PARS) are never written by scenes or lanes, so they hold
+("TD/Win-PD, 69"). Every field schema carries role: calibration | look.
+
+Calibration presets ("TD/Win-PD, 69"), only the calibration fields, per kind
+(today chase: level rigs have no calibration):
+  starters        theoretical starting points by the lights' channels:
+                  'dimmer' (every light has a dimmer channel: gamma does
+                  nothing) and 'no_dimmer' (at least one light without:
+                  the level is multiplied into the colours with the gamma,
+                  higher min so RGB LEDs do not step at the bottom). Full
+                  values = par defaults + STARTERS. matrix groups[].starter
+                  says which one fits a group (None without lights).
+  presets()       dmx_rig_presets: [{name, kind, label, values, source,
+                  updated}] from the rig_presets table (tsv, saved with the
+                  project)
+  preset_store    {name, group, label?}: capture the group's calibration
+                  (same name = overwrite)
+  preset_recall   {name | starter: true, group | groups: [...]}: write it
+                  (through apply: validated, all or nothing; starter = each
+                  group's own starter)
+  preset_copy     {from: group, to: group | [groups]}: calibration of one
+                  rig onto others of the same kind
+  preset_remove   name
+The result of every action is dmx_rig_config_result (+ action).
 """
+import json
 import time
 
 # field -> (par name, type); color_rgb uses <par>r/g/b
@@ -113,6 +139,19 @@ SECTIONS = {
 	],
 }
 
+# theoretical starting points over the par defaults (min/max on 0-255).
+# no_dimmer: level k = (dimmer/255)^gamma multiplies the RGB, 90 -> ~10%.
+STARTERS = {
+	'dimmer': {'min_dimmer': 30.0, 'max_dimmer': 255.0, 'dimmer_boost': 1.0},
+	'no_dimmer': {'min_dimmer': 90.0, 'max_dimmer': 255.0, 'dimmer_boost': 1.0, 'dimmer_gamma': 2.2},
+}
+STARTER_LABELS = {'dimmer': 'Partenza: luci con canale dimmer',
+	'no_dimmer': 'Partenza: luci senza canale dimmer (RGB/RGBW)'}
+PRESET_COLS = ['name', 'kind', 'label', 'values', 'source', 'updated']
+# fallback when show_logic is not reachable (same list as there)
+_CALIBRATION_PARS = ['Mindimmer', 'Maxdimmer', 'Dimmerboost', 'Dimmergamma', 'Agcrelease',
+	'Minrange', 'Kickthresh', 'Kickboost', 'Kickdecay', 'Kickcooldown', 'Kicksmooth']
+
 _last = {'result': None}
 
 
@@ -129,6 +168,17 @@ def _fl():
 
 def _kind_fields(kind):
 	return [f for _k, _l, fields in SECTIONS.get(kind, []) for f in fields]
+
+
+def _calibration_pars():
+	sl = _home().op('show/show_logic')
+	return list(getattr(sl.module, 'RIG_CALIBRATION_PARS', _CALIBRATION_PARS)) if sl else _CALIBRATION_PARS
+
+
+def calibration_fields(kind):
+	"""Fields of a kind that are calibration (not touched by scenes)."""
+	pars = set(_calibration_pars())
+	return [f for f in _kind_fields(kind) if FIELDS[f][0] in pars]
 
 
 def rigs():
@@ -173,7 +223,8 @@ def _schema(comp, field):
 		return None
 	typ = FIELDS[field][1]
 	p = ps[0]
-	d = {'type': typ, 'label': LABELS.get(field, field)}
+	d = {'type': typ, 'label': LABELS.get(field, field),
+		'role': 'calibration' if FIELDS[field][0] in _calibration_pars() else 'look'}
 	h = str(p.help or '').strip() or HELP.get(field, '')
 	if h:
 		d['help'] = h
@@ -190,20 +241,45 @@ def _schema(comp, field):
 	return d
 
 
+def _lights(rig):
+	return [f for f in _fl().rows(rig['group']) if f['enabled']]
+
+
+def _all_have_dimmer(rig):
+	"""True / False for a chase rig with lights, None without lights."""
+	fx = _lights(rig)
+	if rig['kind'] != 'chase' or not fx:
+		return None
+	fl = _fl()
+	chans = [fl.profile_channels(rig['group'], f['profile']) or [] for f in fx]
+	return all(any(c.startswith('dimmer') for c in ch) for ch in chans)
+
+
+def starter_name(rig):
+	"""'dimmer' | 'no_dimmer' | None: the starting preset fitting a rig."""
+	d = _all_have_dimmer(rig)
+	return None if d is None else ('dimmer' if d else 'no_dimmer')
+
+
+def starter_values(kind, which, comp):
+	"""Calibration values of a starter: par defaults + STARTERS[which]."""
+	out = {}
+	for f in calibration_fields(kind):
+		ps = _pars(comp, f)
+		if ps and FIELDS[f][1] == 'float':
+			out[f] = round(float(ps[0].default), 6)
+	out.update({f: v for f, v in STARTERS.get(which, {}).items() if f in out})
+	return out
+
+
 def _inactive(rig):
 	"""{field: reason} of fields that do nothing on this rig today."""
 	out = {}
-	if rig['kind'] != 'chase':
-		return out
-	fl = _fl()
-	fx = [f for f in fl.rows(rig['group']) if f['enabled']]
-	if fx:
-		chans = {f['profile']: fl.profile_channels(rig['group'], f['profile']) or [] for f in fx}
-		if all(any(c.startswith('dimmer') for c in ch) for ch in chans.values()):
-			out['dimmer_gamma'] = 'tutte le luci del gruppo hanno un canale dimmer: ' \
-				'la gamma agisce solo sui profili senza dimmer'
-		if len({f['unit'] for f in fx}) < 2:
-			out['bar_phase'] = 'una sola luce nel gruppo'
+	if _all_have_dimmer(rig):
+		out['dimmer_gamma'] = 'tutte le luci del gruppo hanno un canale dimmer: ' \
+			'la gamma agisce solo sui profili senza dimmer'
+	if rig['kind'] == 'chase' and _lights(rig) and len({f['unit'] for f in _lights(rig)}) < 2:
+		out['bar_phase'] = 'una sola luce nel gruppo'
 	return out
 
 
@@ -230,14 +306,32 @@ def matrix():
 		fx = [f for f in fl.rows(r['group']) if f['enabled']]
 		groups.append({'group': r['group'], 'label': r['label'], 'alias': r['alias'],
 			'kind': r['kind'], 'comp': r['comp'].name, 'fixtures': len(fx),
-			'profiles': sorted({f['profile'] for f in fx}), 'inactive': _inactive(r)})
+			'profiles': sorted({f['profile'] for f in fx}), 'inactive': _inactive(r),
+			'starter': starter_name(r)})
+	starters = {}
+	for kind in SECTIONS:
+		sample = next((r['comp'] for r in rs if r['kind'] == kind), None)
+		if sample is None or not calibration_fields(kind):
+			continue
+		starters[kind] = {w: {'label': STARTER_LABELS[w], 'values': starter_values(kind, w, sample)}
+			for w in STARTERS}
+	rw = {'kind': 'param', 'type': 'json', 'access': 'rw'}
+	w = {'kind': 'param', 'type': 'json', 'access': 'w'}
+	r_ = {'kind': 'param', 'type': 'json', 'access': 'r'}
 	return {
 		'params': {
-			'dmx_rig_config': {'kind': 'param', 'type': 'json', 'access': 'rw'},
-			'dmx_rig_config_result': {'kind': 'param', 'type': 'json', 'access': 'r'},
+			'dmx_rig_config': rw,
+			'dmx_rig_config_result': r_,
+			'dmx_rig_presets': r_,
+			'dmx_rig_preset_store': w,
+			'dmx_rig_preset_recall': w,
+			'dmx_rig_preset_copy': w,
+			'dmx_rig_preset_remove': w,
 		},
 		'kinds': kinds,
 		'fields': fields,
+		'calibration': {kind: calibration_fields(kind) for kind in kinds},
+		'starters': starters,
 		'groups': groups,
 	}
 
@@ -337,9 +431,23 @@ def _check(comp, field, value):
 	raise ValueError('%s: tipo sconosciuto' % field)
 
 
-def apply(req):
-	"""dmx_rig_config write: validate everything, then write everything."""
-	rid = req.get('request_id') if isinstance(req, dict) else None
+def _finish(res):
+	_last['result'] = res
+	if res['errors']:
+		raise ValueError('%s: %s' % (res.get('action', 'dmx_rig_config'), '; '.join(res['errors'])))
+	return res
+
+
+def _new_result(action, rid):
+	return {'action': action, 'request_id': rid, 'ts': int(time.time() * 1000), 'ok': True,
+		'applied': {}, 'errors': []}
+
+
+def apply(req, action='set', rid=None, extra=None):
+	"""dmx_rig_config write: validate everything, then write everything.
+	rid / extra: request_id and fields for the result of a preset action."""
+	if rid is None and isinstance(req, dict):
+		rid = req.get('request_id')
 	errors = []
 	plan = []   # (rig, {field: value})
 	try:
@@ -368,8 +476,9 @@ def apply(req):
 			if lo is not None and hi is not None and lo > hi:
 				errors.append('%s: min_dimmer %s maggiore di max_dimmer %s' % (rig['group'], lo, hi))
 		plan.append((rig, ok))
-	res = {'request_id': rid, 'ts': int(time.time() * 1000), 'ok': not errors,
-		'applied': {}, 'errors': errors}
+	res = _new_result(action, rid)
+	res.update(extra or {})
+	res['ok'], res['errors'] = not errors, errors
 	if not errors:
 		for rig, ok in plan:
 			comp = rig['comp']
@@ -384,7 +493,163 @@ def apply(req):
 				else:
 					ps[0].val = v
 			res['applied'].setdefault(rig['group'], []).extend(sorted(ok))
-	_last['result'] = res
-	if errors:
-		raise ValueError('dmx_rig_config: ' + '; '.join(errors))
-	return res
+	return _finish(res)
+
+
+# ---------------------------------------------------------------- presets
+
+def _table():
+	t = me.parent().op('rig_presets')
+	if t.numRows == 0 or t[0, 0] is None or t[0, 0].val != PRESET_COLS[0]:
+		t.clear()
+		t.appendRow(PRESET_COLS)
+	return t
+
+
+def presets():
+	"""dmx_rig_presets: [{name, kind, label, values, source, updated}]."""
+	t = _table()
+	out = []
+	for r in range(1, t.numRows):
+		try:
+			vals = json.loads(t[r, 'values'].val or '{}')
+		except ValueError:
+			vals = {}
+		try:
+			upd = int(t[r, 'updated'].val)
+		except ValueError:
+			upd = 0
+		out.append({'name': t[r, 'name'].val, 'kind': t[r, 'kind'].val,
+			'label': t[r, 'label'].val or t[r, 'name'].val, 'values': vals,
+			'source': t[r, 'source'].val, 'updated': upd})
+	return out
+
+
+def _preset(name):
+	return next((p for p in presets() if p['name'] == name), None)
+
+
+def _arg(req):
+	if not isinstance(req, dict):
+		raise ValueError('atteso un oggetto JSON')
+	return req, req.get('request_id')
+
+
+def _targets(req):
+	g = req.get('groups', req.get('group'))
+	return [g] if isinstance(g, str) else list(g or [])
+
+
+def preset_store(req):
+	"""{name, group, label?}: save the group's calibration as a preset."""
+	req, rid = _arg(req)
+	res = _new_result('preset_store', rid)
+	name = str(req.get('name') or '').strip()
+	rig = _rig(req.get('group'))
+	if not name or len(name) > 40 or '\t' in name or '\n' in name:
+		res['errors'].append('name: da 1 a 40 caratteri, senza tab o a capo')
+	if rig is None:
+		res['errors'].append('gruppo %r inesistente o non e\' un rig chase/level' % (req.get('group'),))
+	elif not calibration_fields(rig['kind']):
+		res['errors'].append('%s: un rig %s non ha taratura' % (rig['group'], rig['kind']))
+	old = _preset(name) if name else None
+	if rig is not None and old and old['kind'] != rig['kind']:
+		res['errors'].append('il preset %r esiste gia\' per i rig %s' % (name, old['kind']))
+	if res['errors']:
+		res['ok'] = False
+		return _finish(res)
+	vals = {f: _value(rig['comp'], f) for f in calibration_fields(rig['kind'])}
+	vals = {f: v for f, v in vals.items() if v is not None}
+	label = str(req.get('label') or (old['label'] if old else '') or name).replace('\t', ' ').replace('\n', ' ')
+	row = [name, rig['kind'], label, json.dumps(vals, sort_keys=True), rig['group'], str(res['ts'])]
+	t = _table()
+	for r in range(1, t.numRows):
+		if t[r, 'name'].val == name:
+			for c, v in zip(PRESET_COLS, row):
+				t[r, c] = v
+			break
+	else:
+		t.appendRow(row)
+	res['applied'] = {rig['group']: sorted(vals)}
+	res['preset'] = name
+	return _finish(res)
+
+
+def preset_recall(req):
+	"""{name | starter: true, group | groups}: write a preset (or each
+	group's starter) on the groups, all or nothing."""
+	req, rid = _arg(req)
+	res = _new_result('preset_recall', rid)
+	targets = _targets(req)
+	if not targets:
+		res['errors'].append('group o groups mancante')
+	items = []
+	if req.get('starter'):
+		for ref in targets:
+			rig = _rig(ref)
+			which = starter_name(rig) if rig else None
+			if rig is None:
+				res['errors'].append('gruppo %r inesistente o non e\' un rig chase/level' % (ref,))
+			elif which is None:
+				res['errors'].append('%s: nessuna luce in patch, partenza non definita' % rig['group'])
+			else:
+				items.append({'group': rig['group'], 'values': starter_values(rig['kind'], which, rig['comp'])})
+	else:
+		p = _preset(str(req.get('name') or ''))
+		if p is None:
+			res['errors'].append('preset %r inesistente' % (req.get('name'),))
+		else:
+			for ref in targets:
+				rig = _rig(ref)
+				if rig is not None and rig['kind'] != p['kind']:
+					res['errors'].append('%s: il preset %r e\' per i rig %s' % (rig['group'], p['name'], p['kind']))
+				else:
+					items.append({'group': ref, 'values': p['values']})   # apply() checks the group
+			res['preset'] = p['name']
+	if res['errors']:
+		res['ok'] = False
+		return _finish(res)
+	extra = {'starter': True} if req.get('starter') else {'preset': res.get('preset')}
+	return apply(items, action='preset_recall', rid=rid, extra=extra)
+
+
+def preset_copy(req):
+	"""{from: group, to: group | [groups]}: calibration of one rig onto others."""
+	req, rid = _arg(req)
+	res = _new_result('preset_copy', rid)
+	src = _rig(req.get('from'))
+	to = req.get('to')
+	to = [to] if isinstance(to, str) else list(to or [])
+	if src is None:
+		res['errors'].append('from: gruppo %r inesistente o non e\' un rig chase/level' % (req.get('from'),))
+	if not to:
+		res['errors'].append('to mancante')
+	items = []
+	if src is not None:
+		vals = {f: _value(src['comp'], f) for f in calibration_fields(src['kind'])}
+		for ref in to:
+			rig = _rig(ref)
+			if rig is not None and rig['kind'] != src['kind']:
+				res['errors'].append('%s: tipo %s diverso da %s (%s)' % (rig['group'], rig['kind'], src['group'], src['kind']))
+			else:
+				items.append({'group': ref, 'values': vals})
+	if res['errors']:
+		res['ok'] = False
+		return _finish(res)
+	return apply(items, action='preset_copy', rid=rid, extra={'from': src['group']})
+
+
+def preset_remove(req):
+	"""name (or {name, request_id?})."""
+	rid = req.get('request_id') if isinstance(req, dict) else None
+	name = str(req.get('name') if isinstance(req, dict) else req or '').strip()
+	res = _new_result('preset_remove', rid)
+	t = _table()
+	for r in range(1, t.numRows):
+		if t[r, 'name'].val == name:
+			t.deleteRow(r)
+			res['preset'] = name
+			return _finish(res)
+	res['ok'] = False
+	res['errors'].append('preset %r inesistente' % (name,))
+	return _finish(res)

@@ -13,8 +13,15 @@ Categories of a scene snapshot (pars read from the live COMPs, so pars added
 to those pages later are captured automatically):
   rigs    every rig of the patch (rig_groups(): dmx_patch groups table, target
           = group name): chase rigs (rig_a, rig_b, ledbar...) their 'DMX
-          Reactive' page (dimmer, colour motion, kick, AGC, audio amount)
-          except the palette, level rigs (haze, blinder...) Level / Fan
+          Reactive' page (colour motion, audio amount, smoothing, kick on/off)
+          except the palette and the CALIBRATION pars, level rigs (haze,
+          blinder...) Level / Fan
+          Calibration (RIG_CALIBRATION_PARS: min/max dimmer, boost, AGC,
+          min range, kick thresholds; GAIA_INTERFACE "TD/Win-PD, 69") is how
+          a rig is tuned to its lights, set live or by a rig preset
+          (gaia_services/rig_config): no category owns it, so scenes and
+          lanes never write it. Rows of older scenes for those pars stay in
+          scene_values but are ignored.
   palette Palette + the 5 Custom colours of every chase rig (GAIA_INTERFACE
           "OPS, 36": colour-only scenes). A scene saved before this category
           existed has an empty palette flag: it follows its rigs flag, so it
@@ -84,6 +91,10 @@ CATEGORY_LABELS = {'rigs': 'Look dei rig', 'heads': 'Teste mobili', 'groups': 'A
 # per-head fields of heads_color: everything but the position
 HEAD_POS_FIELDS = ('pan', 'tilt', 'mode')
 PALETTE_PARS = ['Palette'] + ['Custompalette%d%s' % (i, c) for i in range(1, 6) for c in 'rgb']
+# tuning of a chase rig to its lights: out of every scene category (see the
+# module docstring); rig_config (gaia_services) reads it from here
+RIG_CALIBRATION_PARS = ['Mindimmer', 'Maxdimmer', 'Dimmerboost', 'Dimmergamma', 'Agcrelease',
+	'Minrange', 'Kickthresh', 'Kickboost', 'Kickdecay', 'Kickcooldown', 'Kicksmooth']
 INTERPS = ['linear', 'smooth', 'step']
 
 # only: space-separated groups the scene is limited to ('' = all), see
@@ -216,7 +227,7 @@ def category_pars(cat):
 		out = []
 		for g, c, kind in rigs:
 			if kind == 'chase':
-				out += _page_pars(g, ('DMX Reactive',), ['Audiobus'] + PALETTE_PARS)
+				out += _page_pars(g, ('DMX Reactive',), ['Audiobus'] + PALETTE_PARS + RIG_CALIBRATION_PARS)
 			else:
 				out += [(g, n) for n in ('Level', 'Fan') if _par(g, n) is not None]
 		return out
