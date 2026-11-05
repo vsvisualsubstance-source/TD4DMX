@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.54.toe
-exported_at: '2026-11-05T09:23:28Z'
+source_file: dmx.55.toe
+exported_at: '2026-11-05T09:55:00Z'
 network_path: /
 options:
   include_dat_content: false
@@ -55,6 +55,7 @@ type_defaults:
     color: [0.67, 0.67, 0.67]
   constantTOP:
     parameters:
+      colorg: 0
       resolutionh: 200
       resolutionw: 200
     flags:
@@ -12193,7 +12194,6 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
-        value: look
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -12482,6 +12482,7 @@ operators:
           default: ZQ006018 4CH RGBW
           menuSource: me.op('fixture_ui').module.profile_menu()
           help: 'Fixture profile (channel layout) from the group library. Each fixture can have its own: profiles can be mixed in a group.'
+          value: ZQ006018 8CH
         - name: Fpalette
           style: Menu
           label: Palette
@@ -12489,7 +12490,6 @@ operators:
           menuSource: me.op('fixture_ui').module.palette_menu()
           help: 'Rigs only: palette of THIS light. ''(palette del rig)'' = follow the rig''s Palette (Look Rig tab); another name = this light uses that palette, with the rig''s speed, phase, dimmer and kick.'
           enableExpr: me.par.Fgroup.eval() != 'heads'
-          value: Warm
         - name: Fport
           style: Menu
           label: Output Port
@@ -12514,14 +12514,14 @@ operators:
           normMin: -16.0
           normMax: 16.0
           help: Position on the stage plan, in grid cells (drag on the plan snaps to 0.5).
-          value: -0.809
+          value: -1
         - name: Fy
           style: Float
           label: Plan Y
           normMin: -8.0
           normMax: 8.0
           help: Position on the stage plan, in grid cells, y up (stage front at the bottom).
-          value: 5.257
+          value: 5.5
         - name: Fenabled
           style: Toggle
           label: Enabled
@@ -12889,7 +12889,6 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
-        Level: 0
         Startaddress: 43
         Profile: Haze 2CH
         Outputport: 2.1.1.2:1
@@ -13087,9 +13086,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.3947695317
-        colorg: 0
-        colorb: 0.6061491164
+        colorr: 0.2549602909
+        colorb: 0.6903015139
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -13247,7 +13245,7 @@ operators:
         label: Scan Status
         readOnly: true
         help: 'Read-only: result of the last scan (time, nodes, RDM capability).'
-        value: '2026-11-05 08:05:52: 1 nodi, 2 porte online, RDM: nessun nodo RDM'
+        value: '2026-11-05 10:30:41: 1 nodi, 2 porte online, RDM: nessun nodo RDM'
       Output:
       - name: Output
         style: Toggle
@@ -13264,7 +13262,6 @@ operators:
         clampMin: true
         clampMax: true
         help: 'Master generale 0-1 (Plancia /dmx/master): moltiplica i canali di intensita'' di tutti i gruppi.'
-        value: 0.8484147787
       - name: Strobe
         style: Toggle
         help: 'Strobo generale (Plancia /dmx/strobe): i canali di intensita'' lampeggiano a Stroberate Hz.'
@@ -14201,9 +14198,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.3697822878
-        colorg: 0
-        colorb: 0.5809618741
+        colorr: 0.2546669559
+        colorb: 0.6861663109
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14391,18 +14387,18 @@ operators:
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: ledbar Level=0.83
+        value: scena strobo_off (fade 1.0s)
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /dmx/group/ledbar 0.833318  @ 10:22:21
+        value: /dmx/scene 6  @ 10:43:18
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 132668
+        value: 132734
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -14475,16 +14471,16 @@ operators:
       DMX Reactive:
         $t: dmx_reactive
         Palette: Deep Purple
-        Audioamount: 0.455
-        Mindimmer: 21
-        Maxdimmer: 150
-        Dimmerboost: 0.4654
+        Audioamount: 0.225
+        Mindimmer: 74
+        Maxdimmer: 189
+        Dimmerboost: 1.0715
         Smoothfactor: 0.475
         Colorsmooth: 0.799
-        Kickthresh: 0.15
       Fixture:
         $t: fixture_2
-        Level: 0.8333175778
+        Level: 0.4
+        Fixtureprofile: ZQ006018 8CH
         Nbars: 1
         Startaddress: 10
     position: [-600, -3000]
@@ -14632,9 +14628,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.1074499691
-        colorg: 0.0235231082
-        colorb: 0
+        colorr: 0.1799702495
+        colorb: 0.4579513202
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14996,7 +14991,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: master STOP 00:00.00  seq 574
+        value: master STOP 00:00.00  seq 15
       Status:
       - name: Identitystatus
         style: Str
@@ -15017,7 +15012,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 10:23:27
+        value: gaia/td/canvas @ 10:54:59
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -15044,7 +15039,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 8253.9833333333
+      lastmsg_seconds: 10144.85
     children:
     - name: soul
       type: outCHOP
@@ -15281,7 +15276,6 @@ operators:
       parameters:
         file: gaia_client/devices_table.tsv
         syncfile: true
-        rows: 145
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -15700,7 +15694,6 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
-        Level: 0
         Startaddress: 300
         Outputport: 2.1.1.2:1
     position: [200, -3000]
@@ -17027,7 +17020,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: topic, sequence number and how many fixtures are being sent, or the last error.'
-        value: 'dmx_live seq 5413: 2 fixture (v1 spento)'
+        value: 'dmx_live seq 42: 2 fixture (v1 spento)'
     position: [1000, -430]
     color: [0.325, 0.8, 0.3]
     comment: DMX services registered on gaia_client (op.Gaia) -- project-specific glue, outside the portable client
@@ -17132,7 +17125,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_audio.tsv
         syncfile: true
-        rows: 2
+        rows: 1
         cols: 9
       position: [800, -800]
       color: [0.9, 0.3, 0.4]
@@ -17332,9 +17325,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.3027766272
-        colorg: 0
-        colorb: 0.9289985009
+        colorr: 0.2540242951
+        colorb: 0.6845694414
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -17462,13 +17454,9 @@ operators:
         $t: dmx_reactive
         Palette: Deep Purple
         Audioamount: 0.5
-        Mindimmer: 78
-        Dimmerboost: 0.505
         Smoothfactor: 0.475
         Colorcurve: 0.739
         Colorsmooth: 0.751
-        Agcrelease: 0.0001
-        Kickthresh: 0.15
       Fixture:
         $t: fixture_2
         Level: 0.7427344918
@@ -17621,9 +17609,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.7039266549
-        colorg: 0.2465380147
-        colorb: 0
+        colorr: 0.3903371291
+        colorb: 0.5596999728
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP

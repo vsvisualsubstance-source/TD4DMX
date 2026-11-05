@@ -50,7 +50,7 @@ td-dmx-win	DMXMaster	soggiorno	touchdesigner	ptz_store_preset	unknown	False
 td-dmx-win	DMXMaster	soggiorno	touchdesigner	dmx_groups_strict	inactive	False
 td-dmx-win	DMXMaster	soggiorno	touchdesigner	show_play	inactive	False
 td-dmx-win	DMXMaster	soggiorno	touchdesigner	show_loop	active	False
-td-dmx-win	DMXMaster	soggiorno	touchdesigner	show_active	inactive	False
+td-dmx-win	DMXMaster	soggiorno	touchdesigner	show_active	active	False
 td-dmx-win	DMXMaster	soggiorno	touchdesigner	show_rewind	unknown	False
 td-dmx-win	DMXMaster	soggiorno	touchdesigner	dmx_scan	unknown	False
 td-dmx-win	DMXMaster	soggiorno	touchdesigner	dmx_output	active	False
