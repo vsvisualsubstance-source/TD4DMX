@@ -1,11 +1,16 @@
-name	label	rigs	heads	groups	audio	strobe	palette
-base	Base	1	1	1	1	1	
-colore_rosso	Colore rosso	1	0	0	0	0	
-colore_blu	Colore blu	1	0	0	0	0	
-teste_pubblico	Teste pubblico	0	1	0	0	0	
-teste_cielo	Teste cielo	0	1	0	0	0	
-strobo_on	Strobo ON	0	0	0	0	1	
-strobo_off	Strobo OFF	0	0	0	0	1	
-pal_magenta_cyan	Magenta-Cyan	1	0	0	0	0	
-pal_forest	Forest	1	0	0	0	0	
-pal_deep_purple	Deep Purple	1	0	0	0	0	
+name	label	rigs	heads	groups	audio	strobe	palette	only	heads_color
+base	test hc	0	1	0	0	1			
+colore_rosso	Colore rosso	1	0	0	0	0			
+colore_blu	Colore blu	1	0	0	0	0			
+teste_pubblico	Teste pubblico	0	1	0	0	0			
+teste_cielo	Teste cielo	0	1	0	0	0			
+strobo_on	Strobo ON	0	0	0	0	1			
+strobo_off	Strobo OFF	0	0	0	0	1			
+pal_magenta_cyan	Magenta-Cyan	0	0	0	0	0	1		
+pal_forest	Forest	0	0	0	0	0	1		
+pal_deep_purple	Deep Purple	0	0	0	0	0	1		
+pal_warm	Warm	0	0	0	0	0	1		
+pal_cool	Cool	0	0	0	0	0	1		
+teste_1	Teste 1	0	1	0	0	0	0		
+teste_col_red	Teste Red	0	0	0	0	0	0		1
+teste_col_yellow	Teste Yellow	0	0	0	0	0	0		1

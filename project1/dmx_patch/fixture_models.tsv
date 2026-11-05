@@ -2,7 +2,7 @@
 ZQ006018 4CH RGBW	chase	red green blue white		builtin								
 ZQ006018 8CH	chase	dimmer red green blue white strobe mode speed		builtin								
 RGB 3CH	chase	red green blue		builtin								
-D+RGB 4CH	chase	dimmer red green blue		builtin								
+D+RGB 4CH	chase	dimmer red green blue		builtin							ffffff	
 D+RGBW 5CH	chase	dimmer red green blue white		builtin								
 RGBWA+UV 6CH	chase	red green blue white amber uv		builtin								
 D+RGBW+S+M 7CH	chase	dimmer red green blue white strobe mode		builtin								

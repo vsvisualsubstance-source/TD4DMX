@@ -1,13 +1,3 @@
 id	name	group	unit	profile	port_id	address	x	y	enabled	palette	uid	audio	audio_gain
-31	UP1	rig_a	1	D+RGB 4CH	2.1.1.2:1	1	-5.2	1.05	1	Magenta-Cyan	p-um7agxs		
-32	BAR1	ledbar	1	D+RGB 4CH	2.1.1.2:1	12	-4.568	5.778	1		p-u2bjdhm		
-33	PAR1	rig_b	1	D+RGB 4CH	2.1.1.2:1	139	-3.2	0.3	1		p-cw9hheh		
-35	PAR2	rig_b	1	D+RGB 4CH	2.1.1.2:1	148	-1.6	0.3	1		p-elm730x		
-37	STROBO	blinder	1	Dimmer 1CH	2.1.1.2:1	300	0	0.3	1		p-o8d2sxq		
-39	PAR3	rig_b	1	D+RGB 4CH	2.1.1.2:1	157	1.6	0.3	1		p-of04huh		
-41	PAR4	rig_b	1	D+RGB 4CH	2.1.1.2:1	166	3.2	0.3	1		p-9epd693		
-34	MH2	heads	1	Coemar iSpot 575 EB 22ch	2.1.1.2:1	29	-2.4	0.3	1		p-jljywp9		
-43	MH3	heads	2	Coemar iSpot 575 EB 22ch	2.1.1.2:1	51	-0.8	0.3	1		p-yjgaozw		
-44	MH4	heads	3	Coemar iSpot 575 EB 22ch	2.1.1.2:1	73	0.8	0.3	1		p-7bwfnvs		
-45	MH5	heads	4	Coemar iSpot 575 EB 22ch	2.1.1.2:1	95	2.4	0.3	1		p-15vmxow		
-46	MH6	heads	5	Coemar iSpot 575 EB 22ch	2.1.1.2:1	117	4	0.3	1		p-kcg23bn		
+79	PAR1	rig_b	1	D+RGB 4CH	2.1.1.2:1	1	2.746	5.502	1	Warm	p-i8kfzz9		
+80	BAR1	ledbar	1	ZQ006018 4CH RGBW	2.1.1.2:1	10	-0.809	5.257	1	Warm	p-iz92bq4		0.25
