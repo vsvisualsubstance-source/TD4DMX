@@ -3,7 +3,7 @@ version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
 source_file: dmx.54.toe
-exported_at: '2026-11-05T08:51:32Z'
+exported_at: '2026-11-05T09:23:28Z'
 network_path: /
 options:
   include_dat_content: false
@@ -986,7 +986,6 @@ operators:
         clampMin: true
         normMax: 300.0
         help: 'Playhead position in seconds. Drag it to scrub: the state at that time is applied.'
-        value: 60
       - name: Rewind
         style: Pulse
         help: Back to 0 and re-apply everything.
@@ -1010,7 +1009,6 @@ operators:
         startSection: true
         default: true
         help: 'On: scenes/cues/automation write the rig, heads, PTZ and group pars. Off: live mode, the timeline touches nothing.'
-        value: false
       - name: Viewstart
         style: Float
         label: View Start (s)
@@ -1040,7 +1038,7 @@ operators:
         style: Str
         readOnly: true
         help: 'Read-only: transport, current cue, scene and fade progress.'
-        value: STOP 01:00.00  |  timeline NON attiva (live)
+        value: STOP 00:00.00  |  cue 1/4    -> pal_deep_purple  (fade 0%)
       - name: Message
         style: Str
         readOnly: true
@@ -12891,6 +12889,7 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
+        Level: 0
         Startaddress: 43
         Profile: Haze 2CH
         Outputport: 2.1.1.2:1
@@ -12930,7 +12929,7 @@ operators:
       DMX Reactive:
         $t: dmx_reactive
         Audiobus: b
-        Palette: Red
+        Palette: Deep Purple
         Audioamount: 0.5
         Mindimmer: 200
         Dimmerboost: 0.4654
@@ -13088,9 +13087,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.9285322002
+        colorr: 0.3947695317
         colorg: 0
-        colorb: 0
+        colorb: 0.6061491164
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -13258,7 +13257,6 @@ operators:
       - name: Blackout
         style: Toggle
         help: Send 0 on every patched channel (output stays connected).
-        value: true
       - name: Master
         style: Float
         startSection: true
@@ -13266,6 +13264,7 @@ operators:
         clampMin: true
         clampMax: true
         help: 'Master generale 0-1 (Plancia /dmx/master): moltiplica i canali di intensita'' di tutti i gruppi.'
+        value: 0.8484147787
       - name: Strobe
         style: Toggle
         help: 'Strobo generale (Plancia /dmx/strobe): i canali di intensita'' lampeggiano a Stroberate Hz.'
@@ -14044,7 +14043,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Cool
+        Palette: Deep Purple
         Audioamount: 0.5
         Kickenable: false
         Mindimmer: 200
@@ -14202,9 +14201,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.2903464722
+        colorr: 0.3697822878
         colorg: 0
-        colorb: 0.9027350332
+        colorb: 0.5809618741
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14392,18 +14391,18 @@ operators:
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: feedback fixture OSC richiesto dalla Plancia
+        value: ledbar Level=0.83
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /dmx/output/osc 1  @ 09:44:48
+        value: /dmx/group/ledbar 0.833318  @ 10:22:21
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 132284
+        value: 132668
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -14475,15 +14474,17 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Fire
-        Audioamount: 0.5
-        Mindimmer: 200
+        Palette: Deep Purple
+        Audioamount: 0.455
+        Mindimmer: 21
+        Maxdimmer: 150
         Dimmerboost: 0.4654
         Smoothfactor: 0.475
         Colorsmooth: 0.799
         Kickthresh: 0.15
       Fixture:
         $t: fixture_2
+        Level: 0.8333175778
         Nbars: 1
         Startaddress: 10
     position: [-600, -3000]
@@ -14631,8 +14632,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.7813902612
-        colorg: 0.3580590042
+        colorr: 0.1074499691
+        colorg: 0.0235231082
         colorb: 0
       position: [450, 700]
     - name: palette_preview
@@ -14995,7 +14996,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: master STOP 01:00.00  seq 996
+        value: master STOP 00:00.00  seq 574
       Status:
       - name: Identitystatus
         style: Str
@@ -15016,7 +15017,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/brain/state @ 09:51:31
+        value: gaia/td/canvas @ 10:23:27
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -15043,7 +15044,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 6338.9333333333
+      lastmsg_seconds: 8253.9833333333
     children:
     - name: soul
       type: outCHOP
@@ -15699,6 +15700,7 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
+        Level: 0
         Startaddress: 300
         Outputport: 2.1.1.2:1
     position: [200, -3000]
@@ -16442,7 +16444,7 @@ operators:
         clampMin: true
         clampMax: true
         help: 'Group level of the moving heads (0-1): scales their dimmer channel in dmx_patch/universe_build, with Master and Strobe, like the Level of the other groups. Plancia /dmx/group/mh.'
-        value: 0.2190900892
+        value: 0
       - name: Addresses
         style: Str
         label: Head Addresses
@@ -17025,7 +17027,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: topic, sequence number and how many fixtures are being sent, or the last error.'
-        value: 'dmx_live seq 4939: 2 fixture (v1 spento)'
+        value: 'dmx_live seq 5413: 2 fixture (v1 spento)'
     position: [1000, -430]
     color: [0.325, 0.8, 0.3]
     comment: DMX services registered on gaia_client (op.Gaia) -- project-specific glue, outside the portable client
@@ -17065,6 +17067,17 @@ operators:
       comment: Config avanzata dei rig per la Plancia (dmx_rig_config, GAIA_INTERFACE TD/Win-PD 68)
       tags:
       - py
+    - name: rig_presets
+      type: tableDAT
+      parameters:
+        file: project1/gaia_services/rig_presets.tsv
+        syncfile: true
+        rows: 1
+        cols: 6
+      position: [600, 0]
+      color: [0.67, 0.67, 0.67]
+      tags:
+      - tsv
     - name: dmx_services
       type: textDAT
       parameters:
@@ -17130,7 +17143,7 @@ operators:
       parameters:
         file: project1/gaia_services/touch_senders_touch_bands.tsv
         syncfile: true
-        rows: 1
+        rows: 2
         cols: 9
       flags:
       - viewer
@@ -17160,7 +17173,7 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Red
+        Palette: Deep Purple
         Audioamount: 0.5
         Mindimmer: 200
         Dimmerboost: 0.4654
@@ -17169,7 +17182,7 @@ operators:
         Kickthresh: 0.15
       Fixture:
         $t: fixture_2
-        Level: 0.245692268
+        Level: 0
         Fixtureprofile: D+RGB 4CH
         Nbars: 1
     position: [0, 50]
@@ -17319,9 +17332,9 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.8934359681
+        colorr: 0.3027766272
         colorg: 0
-        colorb: 0
+        colorb: 0.9289985009
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -17434,7 +17447,7 @@ operators:
     parameters:
       file: project1/externalizations.tsv
       syncfile: true
-      rows: 407
+      rows: 408
       cols: 11
     position: [-200, 0]
     color: [0.9, 0.3, 0.4]
@@ -17447,9 +17460,9 @@ operators:
     custom_pars:
       DMX Reactive:
         $t: dmx_reactive
-        Palette: Red
+        Palette: Deep Purple
         Audioamount: 0.5
-        Mindimmer: 196.35
+        Mindimmer: 78
         Dimmerboost: 0.505
         Smoothfactor: 0.475
         Colorcurve: 0.739
@@ -17458,6 +17471,7 @@ operators:
         Kickthresh: 0.15
       Fixture:
         $t: fixture_2
+        Level: 0.7427344918
         Fixtureprofile: D+RGB 4CH
         Nbars: 1
     position: [1025, 25]
@@ -17607,8 +17621,8 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.8914349724
-        colorg: 0.0746924406
+        colorr: 0.7039266549
+        colorg: 0.2465380147
         colorb: 0
       position: [450, 700]
     - name: palette_preview
