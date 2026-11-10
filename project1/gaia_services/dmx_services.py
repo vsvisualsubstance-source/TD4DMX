@@ -622,6 +622,12 @@ def _register_show(agent):
 			stop=lambda pn=par_name: setattr(_show().par, pn, 0),
 			status=lambda pn=par_name: bool(_show().par[pn].eval()))
 	agent.register_service('show_rewind', start=lambda: _show().par.Rewind.pulse())
+	for name, track in (('show_mute_effects', 'effects'), ('show_mute_chases', 'chases')):
+		agent.register_service(
+			name,
+			start=lambda t=track: sl().set_muted(t, True),
+			stop=lambda t=track: sl().set_muted(t, False),
+			status=lambda t=track: bool(sl().muted(t)))
 	_register_value(agent, 'show_time', None, 'Time', float, comp=_show)
 	_register_value(agent, 'show_length', None, 'Length', float, comp=_show)
 	# computed now, not the Status par: tick() refreshes that at the NEXT

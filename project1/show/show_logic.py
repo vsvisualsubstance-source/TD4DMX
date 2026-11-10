@@ -1657,8 +1657,24 @@ def check_effects(track):
 	return {'effects': effs, 'cues': cues_out}, errors
 
 
+# Mute of the effects and chases tracks (Plancia, buttons M): the cues stay, the
+# track just does not play. In memory on purpose: after a TD restart everything plays.
+_muted = {'effects': False, 'chases': False}
+
+
+def muted(track):
+	return _muted[track]
+
+
+def set_muted(track, on):
+	_muted[track] = bool(on)
+	invalidate(force=False)   # chase steps come out of the history, live moves stay
+
+
 def effects_at(t):
 	"""(cue index, [effect dicts]) of the effects track at time t."""
+	if _muted['effects']:
+		return -1, []
 	tr = effects_track()
 	idx, ids = -1, []
 	for i, c in enumerate(tr.get('cues') or []):
@@ -1778,6 +1794,8 @@ def check_chases(track, missing='error'):
 @_memo
 def chase_steps():
 	"""The timeline's chase cues expanded: [{time, scene, fade, chase, step}]."""
+	if _muted['chases']:
+		return []
 	tr = chases_track()
 	by = {c['id']: c for c in tr.get('chases') or []}
 	cs = tr.get('cues') or []
@@ -1797,6 +1815,8 @@ def chase_steps():
 def chase_at(t):
 	"""(cue index, chase dict | None, step index | None) of the timeline's
 	chase track at time t."""
+	if _muted['chases']:
+		return -1, None, None
 	tr = chases_track()
 	idx, cid = -1, None
 	for i, c in enumerate(tr.get('cues') or []):
