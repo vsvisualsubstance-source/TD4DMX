@@ -250,6 +250,34 @@ def add_group(group, kind='chase', profile=None, port_id=None, count=1, start=No
 	return group
 
 
+def _restore_rig(group):
+	"""A row of the groups table without its rig COMP (the tables live in
+	.tsv files, the COMPs only in the .toe): rebuild the COMP, leaving the
+	table and the fixtures as they are. True if it was rebuilt."""
+	fl = _fl()
+	info = fl.group_info(group)
+	if info is None or group in PROTECTED or _home().op(info['comp']) is not None:
+		return False
+	kind = info.get('kind') or 'chase'
+	if kind not in KINDS:
+		return False
+	name = info['comp']
+	comp = _build_chase_rig(name) if kind == 'chase' else _build_level_rig(name)
+	comp.nodeX, comp.nodeY = _free_slot(), ROW_Y
+	ports = _patch().op('ports')
+	used = [f['port_id'] for f in fl.rows(group) if f.get('port_id')]
+	port_id = used[0] if used else (ports[1, 'port_id'].val if ports.numRows > 1 else '')
+	if port_id:
+		comp.par.Outputport = port_id
+	_show_rigs_changed()
+	return True
+
+
+def restore_missing_rigs():
+	"""Rebuild every rig COMP missing from the groups table; returns the groups."""
+	return [g['group'] for g in _fl().groups() if _restore_rig(g['group'])]
+
+
 def _drop(group, name):
 	fl = _fl()
 	t = fl.table()
@@ -415,7 +443,7 @@ def set_groups(items, source='plancia'):
 			res['bound'].append({'group': name, 'td_group': target})
 		elif action == 'update':
 			_set_cells(target, label=label)
-			res['updated'].append(name)
+			res['created' if _restore_rig(target) else 'updated'].append(name)
 		else:
 			add_group(name, kind, count=0, label=label, source=source)
 			res['created'].append(name)

@@ -321,6 +321,9 @@ def onCook(scriptOp):
 			'green':  g_val * k,
 			'blue':   b_val * k,
 		}
+		# barre a due sezioni (es. Color Pix 14CH): la seconda segue la prima
+		for _role in ('dimmer', 'red', 'green', 'blue'):
+			values[_role + '2'] = values[_role]
 		for ch in CHANNELS:
 			chan_name = 'bar{:d}_{}'.format(i + 1, ch)
 			c = scriptOp.appendChan(chan_name)

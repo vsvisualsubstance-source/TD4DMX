@@ -6,3 +6,4 @@ D+RGB 4CH	dimmer red green blue
 D+RGBW 5CH	dimmer red green blue white
 RGBWA+UV 6CH	red green blue white amber uv
 D+RGBW+S+M 7CH	dimmer red green blue white strobe mode
+COLOR PIC 24x3W 14CH	dimmer strobe red green blue mode dimmer2 strobe2 red2 green2 blue2 mode2 macro speed
