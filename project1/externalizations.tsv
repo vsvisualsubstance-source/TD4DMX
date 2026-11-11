@@ -8,7 +8,7 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/show/scene_values	table	tsv	project1/show/scene_values.tsv	2026-10-03 14:33:58 UTC				0	-200	0.9000,0.3000,0.4000
 /project1/show/keys	table	tsv	project1/show/keys.tsv	2026-10-03 14:33:58 UTC				0	-600	0.9000,0.3000,0.4000
 /project1/show/cues	table	tsv	project1/show/cues.tsv	2026-10-03 14:33:58 UTC				0	-400	0.9000,0.3000,0.4000
-/project1/show	base	tox	project1/show.tox	2026-11-10 12:30:57 UTC		34	2025.33230	1000	-2100	0.3250,0.8000,0.3000
+/project1/show	base	tox	project1/show.tox	2026-11-10 17:47:24 UTC		35	2025.33230	1000	-2100	0.3250,0.8000,0.3000
 /project1/ptz_panel	container	tox	project1/ptz_panel.tox	2026-10-19 14:25:01 UTC		6	2025.33230	200	-2100	0.3250,0.8000,0.3000
 /project1/ptz/targets_callbacks	text	py	project1/ptz/targets_callbacks.py	2026-10-03 14:33:58 UTC				800	-120	0.9000,0.3000,0.4000
 /project1/ptz/ptz_logic	text	py	project1/ptz/ptz_logic.py	2026-10-03 14:33:58 UTC				400	0	0.9000,0.3000,0.4000
@@ -27,7 +27,7 @@ path	type	strategy	rel_file_path	timestamp	dirty	build	touch_build	node_x	node_y
 /project1/gaia_services/mqtt_discovery_callbacks	text	py	project1/gaia_services/mqtt_discovery_callbacks.py	2026-10-03 14:33:58 UTC				0	-920	0.9000,0.3000,0.4000
 /project1/gaia_services/lifecycle	execute	py	project1/gaia_services/lifecycle.py	2026-10-03 14:33:58 UTC				400	0	0.9000,0.3000,0.4000
 /project1/gaia_services/dmx_services	text	py	project1/gaia_services/dmx_services.py	2026-10-03 14:33:58 UTC				0	0	0.9000,0.3000,0.4000
-/project1/gaia_services	base	tox	project1/gaia_services.tox	2026-11-10 12:30:57 UTC		58	2025.33230	1000	-430	0.3250,0.8000,0.3000
+/project1/gaia_services	base	tox	project1/gaia_services.tox	2026-11-10 17:47:24 UTC		59	2025.33230	1000	-430	0.3250,0.8000,0.3000
 /project1/gaia_client/topic_dream	text	py	gaia_client/topic_dream.py	2026-10-03 14:33:58 UTC				400	-100	0.9000,0.3000,0.4000
 /project1/gaia_client/topic_canvas	text	py	gaia_client/topic_canvas.py	2026-10-03 14:33:58 UTC				400	700	0.9000,0.3000,0.4000
 /project1/gaia_client/topic_brainstate	text	py	gaia_client/topic_brainstate.py	2026-10-03 14:33:58 UTC				400	300	0.9000,0.3000,0.4000

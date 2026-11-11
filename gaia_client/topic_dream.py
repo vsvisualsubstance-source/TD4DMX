@@ -1,17 +1,15 @@
 {
-  "ts": 1793998817171,
-  "text": "Nella tua casa, gli stipendi dei sonni si trasformano in picche di luce, mentre l'oceano intorno scuote i fiori con le sue carezze sussurrate.",
+  "ts": 1791885611495,
+  "text": "Osservando stelle nel soffitto, il cuore della stanza palpitava con curiosit\u00e0 sorda.",
   "words": [
-    "stipendi",
-    "sonni",
-    "trasformano",
-    "picche",
-    "luce",
-    "oceano",
-    "intorno",
-    "scuote",
-    "fiori",
-    "carezze"
+    "osservando",
+    "stelle",
+    "soffitto",
+    "cuore",
+    "stanza",
+    "palpitava",
+    "curiosit\u00e0",
+    "sorda"
   ],
-  "mood": "neutra"
+  "mood": "curiosity"
 }
