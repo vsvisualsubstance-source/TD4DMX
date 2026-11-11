@@ -1682,6 +1682,286 @@ def _drop_stale_rig_names(agent, live_keys):
 
 # State topics (gaia_client register_state_topic, "OPS, 30"): topic suffix,
 # params, check interval in s. Heads change while programming, the rest rarely.
+# ---------------------------------------------------------------- catalogo palette (OPS, 59)
+# Palette create e modificate dalla Plancia. Il catalogo e' palettes.json accanto al
+# generatore dei rig (dmx_audio_chase); ogni generatore lo rilegge (reload_palettes).
+#   dmx_palette_catalog  r  {v, default, max_colors, palettes: [{name, colors [[r,g,b] 0-1],
+#                            stepped, builtin, modified, used: {rigs, fixtures, scenes}}]}
+#   dmx_palette_set      w  {name, colors [[r,g,b] 0-1], stepped, rename_from?, request_id}
+#                            nuova (in fondo), modifica, o rinomina (aggiorna rig, luci e scene)
+#   dmx_palette_remove   w  {name, replace?, request_id}: rig e scene passano a replace
+#                            (default: la palette di ripiego), le luci tornano a seguire il rig
+#   dmx_palette_restore  w  {name, request_id}: una palette di partenza ai colori originali
+#   dmx_palette_order    w  {names: [...], request_id}: ordine del menu
+#   dmx_palette_result   r  {request_id, ts, ok, errors, name, action}
+# Il menu Palette di ogni rig a colori segue il catalogo (Custom sempre in fondo).
+
+PALETTE_MAX_COLORS = 8
+PALETTE_NAME_MAX = 32
+_palette_state = {'result': None}
+
+
+def _pal_rig_comps():
+	"""[(gruppo come lo vede la Plancia, COMP)] dei rig a colori."""
+	out = []
+	for letter, comp in RIGS:
+		r = _rig(comp)
+		if r is not None and hasattr(r.par, 'Palette'):
+			out.append(('rig_' + letter, r))
+	for g, c, k in _created_rigs():
+		r = _rig(c)
+		if k == 'chase' and r is not None and hasattr(r.par, 'Palette'):
+			out.append((g, r))
+	return out
+
+
+def _pal_gen():
+	for _, r in _pal_rig_comps():
+		gen = r.op('dmx_generator_callbacks1')
+		if gen is not None and hasattr(gen.module, 'reload_palettes'):
+			return gen.module
+	return None
+
+
+def _pal_items():
+	"""Catalogo attuale come lo scrive palettes.json: colori 0-255 senza la ripetizione
+	che chiude il giro, nell'ordine del menu."""
+	m = _pal_gen()
+	if m is None:
+		return []
+	m.reload_palettes()
+	out = []
+	for name in m.PALETTE_ORDER:
+		cols = [list(c) for c in m.ALL_PALETTES.get(name, [])]
+		stepped = name in m.STEPPED_PALETTES
+		if not stepped and len(cols) > 1 and cols[-1] == cols[0]:
+			cols = cols[:-1]
+		out.append({'name': name, 'colors': cols, 'stepped': stepped})
+	return out
+
+
+def _pal_tables():
+	return _patch().op('fixtures'), me.parent().parent().op('show/scene_values')
+
+
+def _pal_usage():
+	use = {}
+	def u(name):
+		return use.setdefault(name, {'rigs': [], 'fixtures': 0, 'scenes': set()})
+	for g, r in _pal_rig_comps():
+		u(str(r.par.Palette.eval()))['rigs'].append(g)
+	fx, sv = _pal_tables()
+	if fx is not None and fx.numRows > 1 and 'palette' in [c.val for c in fx.row(0)]:
+		for i in range(1, fx.numRows):
+			name = fx[i, 'palette'].val
+			if name:
+				u(name)['fixtures'] += 1
+	if sv is not None and sv.numRows > 1:
+		for i in range(1, sv.numRows):
+			if sv[i, 'par'].val == 'Palette' and sv[i, 'value'].val:
+				u(sv[i, 'value'].val)['scenes'].add(sv[i, 'scene'].val)
+	return use
+
+
+def palette_catalog():
+	m = _pal_gen()
+	if m is None:
+		return {'v': 1, 'palettes': []}
+	use = _pal_usage()
+	out = []
+	for it in _pal_items():
+		name = it['name']
+		builtin = name in m.BUILTIN_PALETTES
+		modified = False
+		if builtin:
+			orig = [list(c) for c in m.BUILTIN_PALETTES[name]]
+			if name not in m.BUILTIN_STEPPED and len(orig) > 1 and orig[-1] == orig[0]:
+				orig = orig[:-1]
+			modified = orig != it['colors'] or it['stepped'] != (name in m.BUILTIN_STEPPED)
+		us = use.get(name, {'rigs': [], 'fixtures': 0, 'scenes': set()})
+		out.append({'name': name, 'colors': [[round(c / 255.0, 3) for c in rgb] for rgb in it['colors']],
+			'stepped': it['stepped'], 'builtin': builtin, 'modified': modified,
+			'used': {'rigs': us['rigs'], 'fixtures': us['fixtures'], 'scenes': len(us['scenes'])}})
+	missing = [n for n in m.BUILTIN_PALETTES if n not in [p['name'] for p in out]]
+	return {'v': 1, 'default': m.DEFAULT_PALETTE_NAME, 'max_colors': PALETTE_MAX_COLORS,
+		'name_max': PALETTE_NAME_MAX, 'palettes': out, 'builtin_missing': missing}
+
+
+def _pal_sync_menus():
+	names = [it['name'] for it in _pal_items()] + ['Custom']
+	for _, r in _pal_rig_comps():
+		par = r.par.Palette
+		if list(par.menuNames) != names:
+			cur = str(par.eval())
+			par.menuNames = names
+			par.menuLabels = names
+			if cur in names:
+				par.val = cur
+
+
+def _pal_write(items):
+	"""Scrive palettes.json, fa rileggere tutti i generatori, aggiorna i menu e la matrice."""
+	import os
+	m = _pal_gen()
+	path = m.palette_file()
+	doc = {'v': 1, 'palettes': [{'name': it['name'], 'colors': [[int(c) for c in rgb] for rgb in it['colors']],
+		'stepped': bool(it['stepped'])} for it in items]}
+	tmp = path + '.tmp'
+	with open(tmp, 'w', encoding='utf-8') as f:
+		json.dump(doc, f, indent=1)
+	os.replace(tmp, path)
+	for _, r in _pal_rig_comps():
+		gen = r.op('dmx_generator_callbacks1')
+		if gen is not None and hasattr(gen.module, 'reload_palettes'):
+			gen.module.reload_palettes(True)
+	_pal_sync_menus()
+	run("op('%s').module.publish_matrix()" % me.path, delayFrames=1)
+
+
+def _pal_move_refs(old, new_rig, new_fixture):
+	"""Rig, luci e scene che usavano `old` passano a new_rig / new_fixture ('' = segue il rig)."""
+	for _, r in _pal_rig_comps():
+		if str(r.par.Palette.eval()) == old:
+			r.par.Palette = new_rig
+	fx, sv = _pal_tables()
+	if fx is not None and fx.numRows > 1 and 'palette' in [c.val for c in fx.row(0)]:
+		for i in range(1, fx.numRows):
+			if fx[i, 'palette'].val == old:
+				fx[i, 'palette'] = new_fixture
+	if sv is not None and sv.numRows > 1:
+		for i in range(1, sv.numRows):
+			if sv[i, 'par'].val == 'Palette' and sv[i, 'value'].val == old:
+				sv[i, 'value'] = new_rig
+
+
+def _pal_result(action, req, name, errors):
+	_palette_state['result'] = {'request_id': req, 'ts': int(time.time() * 1000), 'ok': not errors,
+		'errors': errors, 'name': name, 'action': action}
+
+
+def _pal_colors_in(cols, errors):
+	"""[[r, g, b] 0-1] dalla Plancia -> 0-255 interi."""
+	if not isinstance(cols, list) or not (1 <= len(cols) <= PALETTE_MAX_COLORS):
+		errors.append('servono da 1 a %d colori' % PALETTE_MAX_COLORS)
+		return []
+	out = []
+	for c in cols:
+		try:
+			out.append([int(round(max(0.0, min(1.0, float(v))) * 255)) for v in list(c)[:3]])
+			if len(out[-1]) != 3:
+				raise ValueError
+		except (TypeError, ValueError):
+			errors.append('colore non valido: %r' % (c,))
+			return []
+	return out
+
+
+def palette_set(v):
+	v = _json_arg(v)
+	req, errors = v.get('request_id'), []
+	name = str(v.get('name') or '').strip()
+	frm = str(v.get('rename_from') or '').strip()
+	if not name:
+		errors.append('nome vuoto')
+	elif len(name) > PALETTE_NAME_MAX:
+		errors.append('nome oltre %d caratteri' % PALETTE_NAME_MAX)
+	elif name == 'Custom':
+		errors.append('"Custom" e\' riservato ai colori custom del rig')
+	cols = _pal_colors_in(v.get('colors'), errors)
+	items = _pal_items()
+	names = [it['name'] for it in items]
+	entry = {'name': name, 'colors': cols, 'stepped': bool(v.get('stepped'))}
+	if not errors:
+		if frm:
+			if frm not in names:
+				errors.append('palette "%s" non trovata' % frm)
+			elif name != frm and name in names:
+				errors.append('esiste gia\' una palette "%s"' % name)
+			else:
+				items[names.index(frm)] = entry
+		elif name in names:
+			items[names.index(name)] = entry
+		else:
+			items.append(entry)
+	if not errors:
+		_pal_write(items)
+		if frm and frm != name:
+			_pal_move_refs(frm, name, name)
+	_pal_result('rename' if frm and frm != name else 'set', req, name, errors)
+
+
+def palette_remove(v):
+	v = _json_arg_or_str(v)
+	v = v if isinstance(v, dict) else {'name': v}
+	req, errors = v.get('request_id'), []
+	name = str(v.get('name') or '').strip()
+	items = _pal_items()
+	names = [it['name'] for it in items]
+	m = _pal_gen()
+	if name not in names:
+		errors.append('palette "%s" non trovata' % name)
+	elif len(names) <= 1:
+		errors.append('il catalogo deve avere almeno una palette')
+	rest = [n for n in names if n != name]
+	repl = str(v.get('replace') or '').strip()
+	if not errors:
+		if repl not in rest:
+			repl = m.DEFAULT_PALETTE_NAME if m.DEFAULT_PALETTE_NAME in rest else rest[0]
+		_pal_write([it for it in items if it['name'] != name])
+		_pal_move_refs(name, repl, '')
+	_pal_result('remove', req, name, errors)
+
+
+def palette_restore(v):
+	v = _json_arg_or_str(v)
+	v = v if isinstance(v, dict) else {'name': v}
+	req, errors = v.get('request_id'), []
+	name = str(v.get('name') or '').strip()
+	m = _pal_gen()
+	if m is None or name not in m.BUILTIN_PALETTES:
+		errors.append('"%s" non e\' una palette di partenza' % name)
+	else:
+		orig = [list(c) for c in m.BUILTIN_PALETTES[name]]
+		stepped = name in m.BUILTIN_STEPPED
+		if not stepped and len(orig) > 1 and orig[-1] == orig[0]:
+			orig = orig[:-1]
+		items = _pal_items()
+		names = [it['name'] for it in items]
+		entry = {'name': name, 'colors': orig, 'stepped': stepped}
+		if name in names:
+			items[names.index(name)] = entry
+		else:
+			items.append(entry)
+		_pal_write(items)
+	_pal_result('restore', req, name, errors)
+
+
+def palette_order(v):
+	v = _json_arg(v)
+	req, errors = v.get('request_id'), []
+	want = [str(n) for n in (v.get('names') or [])]
+	items = _pal_items()
+	by = {it['name']: it for it in items}
+	if sorted(want) != sorted(by):
+		errors.append('l\'ordine deve contenere tutte e sole le palette del catalogo')
+	else:
+		_pal_write([by[n] for n in want])
+	_pal_result('order', req, None, errors)
+
+
+def _register_palettes(agent):
+	agent.register_param('dmx_palette_catalog', get=palette_catalog)
+	agent.register_param('dmx_palette_result', get=lambda: _palette_state['result'])
+	agent.register_param('dmx_palette_set', get=lambda: None, set=palette_set)
+	agent.register_param('dmx_palette_remove', get=lambda: None, set=palette_remove)
+	agent.register_param('dmx_palette_restore', get=lambda: None, set=palette_restore)
+	agent.register_param('dmx_palette_order', get=lambda: None, set=palette_order)
+	try:
+		_pal_sync_menus()   # menu dei rig allineati al catalogo anche dopo l'apertura del progetto
+	except Exception as e:
+		print('[DMX Services] palette: menu non allineati (%s)' % e)
+
+
 STATE_TOPICS = [
 	('dmx_catalog', ['dmx_models', 'dmx_types', 'dmx_groups'], 2.0),
 	('dmx_patch', ['dmx_fixtures', 'dmx_universe_map', 'dmx_patch_report'], 1.0),
@@ -1692,6 +1972,7 @@ STATE_TOPICS = [
 	('dmx_effects', ['dmx_effects_state'], 0.2),
 	('dmx_chase', ['dmx_chase_state'], 0.1),
 	('dmx_rig_config', ['dmx_rig_config', 'dmx_rig_config_result', 'dmx_rig_presets'], 0.5),
+	('dmx_palettes', ['dmx_palette_catalog', 'dmx_palette_result'], 0.5),
 ]
 
 
@@ -1764,6 +2045,7 @@ def register_all():
 	_register_planning(agent)
 	_register_show(agent)
 	_register_rig_config(agent)
+	_register_palettes(agent)
 	agent.register_param('dmx_channel_test', get=_channel_test_get, set=_channel_test_set)
 
 	agent.register_service(

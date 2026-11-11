@@ -10,10 +10,78 @@ _state = None  # stato persistito a livello di MODULO (non TD storage) --
 
 
 # palettes: module level so other DATs can read them (dmx_services publishes
-# their colours in dmx_matrix for the Plancia menus) -- plain constants, no TD access
-ALL_PALETTES = {'Rainbow (Daslight)': [(0, 0, 255), (0, 255, 255), (0, 255, 0), (255, 255, 0), (255, 128, 0), (255, 0, 0), (0, 0, 255)], 'Warm': [(255, 0, 0), (255, 90, 0), (255, 170, 0), (255, 220, 0), (255, 90, 0), (255, 0, 0)], 'Cool': [(0, 0, 255), (0, 140, 255), (0, 255, 200), (120, 0, 255), (0, 0, 255)], 'Fire': [(255, 0, 0), (255, 100, 0), (255, 180, 0), (255, 40, 0), (255, 0, 0)], 'Fire Inverted': [(0, 255, 255), (0, 155, 255), (0, 75, 255), (0, 215, 255), (0, 255, 255)], 'Ocean': [(0, 0, 180), (0, 130, 180), (0, 210, 160), (0, 130, 180), (0, 0, 180)], 'Magenta-Cyan': [(255, 0, 150), (150, 0, 255), (0, 150, 255), (0, 255, 200), (255, 0, 150)], 'Plasma': [(13, 8, 135), (126, 3, 168), (204, 71, 120), (248, 149, 64), (240, 249, 33), (13, 8, 135)], 'Basic': [(255, 0, 0), (0, 0, 255), (255, 255, 0), (0, 255, 0), (255, 0, 255), (255, 0, 0)], 'Basic 2': [(255, 0, 0), (0, 0, 255), (255, 255, 0), (0, 255, 0), (255, 0, 255)], 'Neon Party': [(255, 0, 120), (0, 60, 255), (180, 255, 0), (255, 210, 0), (255, 0, 120)], 'Sunset': [(0, 0, 150), (120, 0, 180), (255, 0, 120), (255, 90, 0), (255, 200, 0), (0, 0, 150)], 'Forest': [(0, 100, 0), (60, 180, 0), (170, 220, 0), (0, 180, 120), (0, 100, 0)], 'Deep Purple': [(60, 0, 120), (140, 0, 200), (255, 0, 150), (80, 0, 255), (60, 0, 120)], 'Red': [(255, 0, 0), (255, 0, 0)], 'Blue': [(0, 0, 255), (0, 0, 255)], 'Yellow': [(255, 255, 0), (255, 255, 0)], 'Amber': [(255, 150, 0), (255, 150, 0)]}
+# their colours in dmx_matrix for the Plancia menus).
+# 2026-11-11 (OPS, 59): catalogo gestibile dalla Plancia. BUILTIN_PALETTES sono
+# quelle di partenza; il catalogo vero sta in palettes.json accanto a questo file
+# ({'v': 1, 'palettes': [{'name', 'colors': [[r, g, b] 0-255, ...], 'stepped'}]},
+# nell'ordine del menu) e lo scrive dmx_services (dmx_palette_set/remove/restore).
+# ALL_PALETTES / STEPPED_PALETTES / PALETTE_ORDER si aggiornano SUL POSTO: chi li
+# legge da gen.module (dmx_services, show_logic, light_effects) vede il catalogo nuovo.
+# Nei colori a ciclo il primo colore e' ripetuto in fondo (chiude il giro).
+import json
+import os
+BUILTIN_PALETTES = {'Rainbow (Daslight)': [(0, 0, 255), (0, 255, 255), (0, 255, 0), (255, 255, 0), (255, 128, 0), (255, 0, 0), (0, 0, 255)], 'Warm': [(255, 0, 0), (255, 90, 0), (255, 170, 0), (255, 220, 0), (255, 90, 0), (255, 0, 0)], 'Cool': [(0, 0, 255), (0, 140, 255), (0, 255, 200), (120, 0, 255), (0, 0, 255)], 'Fire': [(255, 0, 0), (255, 100, 0), (255, 180, 0), (255, 40, 0), (255, 0, 0)], 'Fire Inverted': [(0, 255, 255), (0, 155, 255), (0, 75, 255), (0, 215, 255), (0, 255, 255)], 'Ocean': [(0, 0, 180), (0, 130, 180), (0, 210, 160), (0, 130, 180), (0, 0, 180)], 'Magenta-Cyan': [(255, 0, 150), (150, 0, 255), (0, 150, 255), (0, 255, 200), (255, 0, 150)], 'Plasma': [(13, 8, 135), (126, 3, 168), (204, 71, 120), (248, 149, 64), (240, 249, 33), (13, 8, 135)], 'Basic': [(255, 0, 0), (0, 0, 255), (255, 255, 0), (0, 255, 0), (255, 0, 255), (255, 0, 0)], 'Basic 2': [(255, 0, 0), (0, 0, 255), (255, 255, 0), (0, 255, 0), (255, 0, 255)], 'Neon Party': [(255, 0, 120), (0, 60, 255), (180, 255, 0), (255, 210, 0), (255, 0, 120)], 'Sunset': [(0, 0, 150), (120, 0, 180), (255, 0, 120), (255, 90, 0), (255, 200, 0), (0, 0, 150)], 'Forest': [(0, 100, 0), (60, 180, 0), (170, 220, 0), (0, 180, 120), (0, 100, 0)], 'Deep Purple': [(60, 0, 120), (140, 0, 200), (255, 0, 150), (80, 0, 255), (60, 0, 120)], 'Red': [(255, 0, 0), (255, 0, 0)], 'Blue': [(0, 0, 255), (0, 0, 255)], 'Yellow': [(255, 255, 0), (255, 255, 0)], 'Amber': [(255, 150, 0), (255, 150, 0)]}
+BUILTIN_STEPPED = {'Basic 2'}
 DEFAULT_PALETTE_NAME = 'Rainbow (Daslight)'
-STEPPED_PALETTES = {'Basic 2'}
+ALL_PALETTES = dict(BUILTIN_PALETTES)
+STEPPED_PALETTES = set(BUILTIN_STEPPED)
+PALETTE_ORDER = list(BUILTIN_PALETTES)
+_PAL_STAT = [None]
+
+
+def palette_file():
+	return os.path.join(project.folder, 'project1', 'dmx_audio_chase', 'palettes.json')
+
+
+def palette_cycle(colors, stepped):
+	"""colori come li sceglie l'utente -> come li fa girare il generatore."""
+	cols = [tuple(int(round(max(0, min(255, float(c))))) for c in rgb[:3]) for rgb in colors]
+	if stepped or len(cols) < 1:
+		return cols
+	return cols + [cols[0]]
+
+
+def reload_palettes(force=False):
+	"""Rilegge palettes.json se e' cambiato (o se force). Senza file: quelle di
+	partenza. Un file rotto lascia il catalogo di prima. True = cambiato."""
+	path = palette_file()
+	try:
+		st = os.stat(path).st_mtime_ns
+	except OSError:
+		st = None
+	if not force and st == _PAL_STAT[0]:
+		return False
+	_PAL_STAT[0] = st
+	pals, stepped, order = dict(BUILTIN_PALETTES), set(BUILTIN_STEPPED), list(BUILTIN_PALETTES)
+	if st is not None:
+		try:
+			with open(path, encoding='utf-8') as f:
+				doc = json.load(f)
+			pals, stepped, order = {}, set(), []
+			for it in doc.get('palettes', []):
+				name = str(it.get('name') or '').strip()
+				cols = it.get('colors') or []
+				if not name or name == 'Custom' or not cols or name in pals:
+					continue
+				s = bool(it.get('stepped'))
+				pals[name] = palette_cycle(cols, s)
+				order.append(name)
+				if s:
+					stepped.add(name)
+		except Exception as e:
+			debug('palettes.json non leggibile, resta il catalogo di prima:', e)
+			return False
+	# il ripiego resta sempre disponibile (anche se tolto dal menu)
+	pals.setdefault(DEFAULT_PALETTE_NAME, BUILTIN_PALETTES[DEFAULT_PALETTE_NAME])
+	ALL_PALETTES.clear()
+	ALL_PALETTES.update(pals)
+	STEPPED_PALETTES.clear()
+	STEPPED_PALETTES.update(stepped)
+	PALETTE_ORDER[:] = order
+	return True
+
+
+reload_palettes(True)
 
 
 def onSetupParameters(scriptOp):
@@ -22,6 +90,8 @@ def onSetupParameters(scriptOp):
 
 def onCook(scriptOp):
 	global _state
+	if absTime.frame % 30 == 0:   # catalogo cambiato dalla Plancia: si vede entro mezzo secondo
+		reload_palettes()
 	scriptOp.isTimeSlice = False
 	scriptOp.clear()
 
