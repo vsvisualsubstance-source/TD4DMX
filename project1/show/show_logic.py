@@ -824,6 +824,80 @@ def clock_command(action, value=None):
 	raise ValueError('azione %r sconosciuta' % action)
 
 
+def clock_timeline():
+	"""Timeline document for gaia_client/show_clock (gaia/show/clock/timeline):
+	what a master that is not a timeline (the Gaia audio engine) needs to
+	run this show: length, loop, Active and the main track's cues."""
+	p = _show().par
+	return {
+		'timeline': 'show',
+		'name': _meta('name', ''),
+		'bpm': _meta('bpm'),
+		'length': float(p.Length.eval()),
+		'loop': bool(p.Loop.eval()),
+		'active': bool(p.Active.eval()),
+		'track': MAIN_TRACK,
+		'cues': [{'time': c['time'], 'label': c.get('label', '') or '', 'scene': c.get('scene', '') or '',
+			'fade': c.get('fade', 0.0)} for c in track_cues()],
+	}
+
+
+# standby of a higher show clock (audio engine): what this module wrote last
+# frame, to tell the operator's changes (Play / Time on the show comp) apart
+_follow = {'time': None, 'play': None, 'abs': -1.0, 'hold': -1.0}
+FOLLOW_TOL_S = 0.005    # closer than this to the clock: leave Time alone
+FOLLOW_JUMP_S = 0.25    # farther: it is a seek / stop / cue, apply everything
+LOCAL_EDIT_S = 0.5      # a local Time change bigger than this = operator seek
+
+
+def _wrapdiff(a, b, length, loop):
+	d = a - b
+	if loop and length > 0:
+		d = (d + length / 2.0) % length - length / 2.0
+	return d
+
+
+def clock_follow(st, pos, cmd):
+	"""Standby (gaia_client show_clock): every frame the timeline goes where
+	the higher show clock says (st = its last state, pos = its position now,
+	cmd = its last command the first frame it is seen). An operator change
+	of Play / Time here is not overwritten: it goes to the master as a
+	command, returned as (action, value)."""
+	p = _show().par
+	f = _follow
+	now = absTime.seconds
+	length = max(0.1, float(p.Length.eval()))
+	loop = bool(p.Loop.eval())
+	t = float(p.Time.eval())
+	play = bool(p.Play.eval())
+	out = None
+	fresh = f['time'] is not None and 0.0 <= now - f['abs'] <= 0.5
+	at_end = t >= length - 0.1 and not loop
+	if fresh:
+		exp = f['time'] + (now - f['abs'] if f['play'] else 0.0)
+		if play != f['play'] and not (f['play'] and not play and at_end):
+			out = ('play', 1 if play else 0)
+		elif abs(_wrapdiff(t, exp, length, loop)) > LOCAL_EDIT_S and not at_end:
+			out = ('seek', round(t, 3))
+	if out is not None:
+		f['hold'] = now + 0.4    # the master's answer is on its way: do not pull back
+	elif now >= f['hold']:
+		want = bool(st.get('playing'))
+		if play != want:
+			p.Play = want
+		d = _wrapdiff(t, pos, length, loop)
+		if abs(d) > FOLLOW_TOL_S:
+			p.Time = round(pos, 4)
+			if abs(d) > FOLLOW_JUMP_S:
+				force_apply()
+		if cmd and cmd.get('action') in ('go', 'back', 'cue') and not p.Active.eval():
+			c = cmd.get('cue') or {}
+			if c.get('scene'):
+				recall(c['scene'], _f(c.get('fade'), 0.0))
+	f.update(time=float(p.Time.eval()), play=bool(p.Play.eval()), abs=now)
+	return out
+
+
 # ---------------------------------------------------------------- cues
 
 @_memo

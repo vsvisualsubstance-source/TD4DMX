@@ -46,14 +46,17 @@ def _show_logic():
 
 def _arm_clock():
 	"""The show timeline (/project1/show) is the master of gaia_client's
-	shared show clock. Re-armed like the registrar: show_clock loses its
+	shared show clock, or the standby of the audio engine's clock when that
+	one runs (it then follows it, see show_logic.clock_follow). Re-armed like the registrar: show_clock loses its
 	source on every hot-reload of its own file."""
 	dat = op.Gaia.op('show_clock')
 	if dat is None or dat.module.has_source():
 		return
 	dat.module.register_source(
 		state=lambda: _show_logic().clock_state(),
-		command=lambda action, value: _show_logic().clock_command(action, value))
+		command=lambda action, value: _show_logic().clock_command(action, value),
+		timeline=lambda: _show_logic().clock_timeline(),
+		follow=lambda st, pos, cmd: _show_logic().clock_follow(st, pos, cmd))
 
 
 def onStart():
