@@ -1,4 +1,4 @@
-name	label	rigs	heads	groups	audio	strobe	palette	only	heads_color
+﻿name	label	rigs	heads	groups	audio	strobe	palette	only	heads_color
 base	test hc	0	1	0	0	1			
 colore_rosso	Colore rosso	1	0	0	0	0	1	ledbar consolle fronte	0
 colore_blu	Colore blu	1	0	0	0	0	1	ledbar consolle fronte	0
@@ -17,3 +17,9 @@ teste_col_yellow	Teste Yellow	0	0	0	0	0	0		1
 pal_fire	Fire	0	0	0	0	0	1		0
 pal_plasma	Plasma	0	0	0	0	0	1		0
 pal_sunset	Sunset	0	0	0	0	0	1		0
+test_duo_1	PAR Fire · barra Ocean	1	0	0	0	0	1	ledbar rig_b	0
+test_duo_2	PAR Forest · barra Magenta-Cyan	1	0	0	0	0	1	ledbar rig_b	0
+test_duo_3	PAR Cool · barra Warm	1	0	0	0	0	1	ledbar rig_b	0
+test_duo_4	PAR Deep Purple · barra Fire	1	0	0	0	0	1	ledbar rig_b	0
+test_duo_5	PAR Sunset · barra Forest	1	0	0	0	0	1	ledbar rig_b	0
+test_duo_6	PAR Basic 2 · barra Neon Party	1	0	0	0	0	1	ledbar rig_b	0

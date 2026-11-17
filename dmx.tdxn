@@ -2,8 +2,8 @@ format: tdxn
 version: '2.1'
 generator: Embody/6.2.67
 td_build: 099.2025.33230
-source_file: dmx.62.toe
-exported_at: '2026-11-10T12:31:17Z'
+source_file: dmx.67.toe
+exported_at: '2026-11-16T15:01:20Z'
 network_path: /
 options:
   include_dat_content: false
@@ -17,10 +17,12 @@ type_defaults:
     color: [0.67, 0.67, 0.67]
   audiodeviceinCHOP:
     parameters:
-      active: =parent().par.Active and parent().par.Type == 'scheda_audio'
       autoexportroot: =parent()
       device: =parent().par.Device
       driver: =parent().par.Driver
+      format: stereo
+    flags:
+    - viewer
     size: [130, 90]
     color: [0.67, 0.67, 0.67]
   audiofileinCHOP:
@@ -31,6 +33,8 @@ type_defaults:
       mono: true
       play: =parent().par.Fileplay and parent().par.Type == 'file_demo'
       timecodeop: =tdu.Timecode()
+    flags:
+    - bypass
     size: [130, 90]
     color: [0.67, 0.67, 0.67]
   audiofilterCHOP:
@@ -47,14 +51,9 @@ type_defaults:
       clone: =op.TDTox.op('defaultCOMPs/button')
       repocomp: =me
       resizecomp: =me
-  constantCHOP:
-    parameters:
-      autoexportroot: =parent()
-      rate: =me.time.rate
-    size: [130, 90]
-    color: [0.67, 0.67, 0.67]
   constantTOP:
     parameters:
+      colorg: 0
       resolutionh: 200
       resolutionw: 200
     flags:
@@ -226,9 +225,14 @@ type_defaults:
       resizecomp: =me
   touchinCHOP:
     parameters:
+      active: =bool(parent().par.Active and parent().par.Type == 'touch_audio' and parent().par.Senderaddress.eval() and not (parent().name != 'source_a' and parent(2).op('source_a').par.Type.eval() == parent().par.Type.eval() and parent(2).op('source_a').par.Sender.eval() == parent().par.Sender.eval()))
       address: =parent().par.Senderaddress
       autoexportroot: =parent()
       port: =parent().par.Senderport
+      protocol: msging
+    flags:
+    - bypass
+    - viewer
     size: [130, 90]
     color: [0.67, 0.67, 0.67]
   transformTOP:
@@ -701,7 +705,7 @@ operators:
         clampMin: true
         clampMax: true
         help: XY pad position 0-1 (0.5 = center of the calibrated stage area). Bound to the pad in ptz_panel.
-        value: 0.480186
+        value: 0.993007
       - name: Padv
         style: Float
         label: Pad Y
@@ -709,7 +713,7 @@ operators:
         clampMin: true
         clampMax: true
         help: XY pad position 0-1 (0.5 = center of the calibrated stage area). Bound to the pad in ptz_panel.
-        value: 0.1959
+        value: 0.742597
       - name: Home
         style: Pulse
         label: Home (center)
@@ -988,7 +992,6 @@ operators:
         clampMin: true
         normMax: 300.0
         help: 'Playhead position in seconds. Drag it to scrub: the state at that time is applied.'
-        value: 50
       - name: Rewind
         style: Pulse
         help: Back to 0 and re-apply everything.
@@ -1005,7 +1008,7 @@ operators:
         normMin: 10.0
         normMax: 1800.0
         help: Show length in seconds (end of the timeline).
-        value: 7200
+        value: 1800
       - name: Active
         style: Toggle
         label: Timeline Drives Output
@@ -1041,7 +1044,7 @@ operators:
         style: Str
         readOnly: true
         help: 'Read-only: transport, current cue, scene and fade progress.'
-        value: STOP 00:50.00  |  cue 2/9  pal_magenta_cyan  -> pal_warm
+        value: STOP 00:00.00  |  cue 1/89    -> test_duo_6
       - name: Message
         style: Str
         readOnly: true
@@ -1228,9 +1231,91 @@ operators:
         chases: []
         cues: []
       timeline_effects:
-        effects: []
-        cues: []
-      timeline_loaded_rev: 861fa809da2b
+        effects:
+        - id: fx-centro
+          name: Dal centro
+          target:
+            group: ledbar
+          channel: dimmer
+          shape: sine
+          period:
+            value: 4
+            unit: beats
+          spread:
+            phase: 0.2
+            mirror: true
+          min: 0
+          max: 1
+        - id: fx-scintillio
+          name: Scintillio
+          target:
+            group: ledbar
+          channel: dimmer
+          shape: random
+          period:
+            value: 0.25
+            unit: beats
+          spread:
+            phase: 0
+            mirror: false
+          min: 0
+          max: 1
+          duty: 0.35
+        - id: efx-i9hd4eh
+          name: Onda di dimmer (mio)
+          target:
+            group: ledbar
+          channel: dimmer
+          shape: sine
+          period:
+            value: 4
+            unit: beats
+          spread:
+            phase: 0.25
+            mirror: false
+          min: 0
+          max: 1
+        - id: efx-6hu3jdm
+          name: 'Consolle: respiro'
+          target:
+            group: consolle
+          channel: dimmer
+          shape: sine
+          period:
+            value: 8
+            unit: beats
+          spread:
+            phase: 0.25
+            mirror: false
+          min: 0.2
+          max: 1
+        cues:
+        - time: 0
+          effects:
+          - fx-centro
+          label: ''
+        - time: 10
+          effects:
+          - fx-scintillio
+          - efx-6hu3jdm
+          label: ''
+        - time: 20
+          effects:
+          - efx-i9hd4eh
+          - efx-6hu3jdm
+          label: ''
+        - time: 30
+          effects:
+          - efx-6hu3jdm
+          label: ''
+        - time: 40
+          effects:
+          - efx-i9hd4eh
+          label: ''
+        - time: 50
+          effects: []
+          label: ''
+      timeline_loaded_rev: fb879eed0644
       timeline_motion:
         scenes: []
         cues: []
@@ -1241,7 +1326,7 @@ operators:
       type: tableDAT
       parameters:
         file: project1/show/cues.tsv
-        rows: 10
+        rows: 90
         cols: 6
       position: [0, -400]
       color: [0.9, 0.3, 0.4]
@@ -1261,7 +1346,7 @@ operators:
       type: tableDAT
       parameters:
         file: project1/show/scenes.tsv
-        rows: 19
+        rows: 25
         cols: 10
       color: [0.9, 0.3, 0.4]
       tags:
@@ -1287,7 +1372,7 @@ operators:
       type: tableDAT
       parameters:
         file: project1/show/scene_values.tsv
-        rows: 2253
+        rows: 2577
       position: [0, -200]
       color: [0.9, 0.3, 0.4]
       tags:
@@ -1320,8 +1405,6 @@ operators:
       color: [0.3, 0.55, 0.8]
   - name: comp1
     type: compositeTOP
-    flags:
-    - viewer
     position: [475, 175]
     size: [130, 90]
     color: [0.67, 0.67, 0.67]
@@ -1421,16 +1504,12 @@ operators:
       - antialias1
   - name: null1
     type: nullTOP
-    flags:
-    - viewer
     position: [200, 250]
     color: [0.67, 0.67, 0.67]
     inputs:
     - noise
   - name: null2
     type: nullTOP
-    flags:
-    - viewer
     position: [250, 100]
     color: [0.67, 0.67, 0.67]
     inputs:
@@ -12191,6 +12270,7 @@ operators:
         - Teste / PTZ
         - Gaia / Rete
         help: 'Tab shown in the Config window: audio sources, DMX scan/patch, fixture patch (plan + universe map), rig look (palette, colours, dimmer, kick of rig A and B), show timeline, moving heads/PTZ, Gaia.'
+        value: audio
     position: [600, -1200]
     size: [160, 130]
     color: [0.325, 0.8, 0.3]
@@ -12886,7 +12966,7 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
-        Level: 0.0441333428
+        Level: 0.0441333
         Startaddress: 43
         Profile: Haze 2CH
         Outputport: 2.1.1.2:1
@@ -13088,7 +13168,6 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorg: 0
         colorb: 0
       position: [450, 700]
     - name: palette_preview
@@ -13246,7 +13325,7 @@ operators:
         label: Scan Status
         readOnly: true
         help: 'Read-only: result of the last scan (time, nodes, RDM capability).'
-        value: '2026-11-10 09:02:30: 1 nodi, 2 porte online, RDM: nessun nodo RDM'
+        value: '2026-11-16 14:45:56: 1 nodi, 2 porte online, RDM: nessun nodo RDM'
       Output:
       - name: Output
         style: Toggle
@@ -13395,7 +13474,6 @@ operators:
       type: tableDAT
       parameters:
         file: project1/dmx_patch/fixtures.tsv
-        rows: 16
         cols: 14
       position: [0, -1600]
       color: [0.9, 0.3, 0.4]
@@ -14201,7 +14279,6 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorg: 0
         colorb: 0
       position: [450, 700]
     - name: palette_preview
@@ -14388,18 +14465,18 @@ operators:
         startSection: true
         readOnly: true
         help: 'Esito dell''ultimo messaggio: comando applicato, ignorato (/mh, /led) o errore.'
-        value: scena pal_deep_purple (fade 1.0s)
+        value: feedback fixture OSC richiesto dalla Plancia
       - name: Lastmessage
         style: Str
         label: Last Message
         readOnly: true
         help: Ultimo indirizzo OSC ricevuto con i suoi argomenti e l'ora.
-        value: /dmx/scene 9  @ 12:58:27
+        value: /dmx/output/osc 1  @ 16:00:29
       - name: Messages
         style: Int
         readOnly: true
         help: Numero di messaggi OSC ricevuti da quando il progetto e' aperto.
-        value: 134910
+        value: 134097
     position: [1800, -430]
     color: [0.325, 0.8, 0.3]
     tags:
@@ -14628,8 +14705,7 @@ operators:
       type: constantTOP
       parameters:
         colorr: 0
-        colorg: 0.0175297504
-        colorb: 0.8921666164
+        colorb: 0.8921568627
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -14746,7 +14822,7 @@ operators:
         Palette: Warm
         Audioamount: 0.225
         Mindimmer: 47.0525
-        Maxdimmer: 227.5086
+        Maxdimmer: 227.509
         Dimmerboost: 1.0715
         Smoothfactor: 0.475
         Colorsmooth: 0.799
@@ -14901,8 +14977,7 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorr: 0.732996503
-        colorg: 0.0018955899
+        colorr: 0.732965806
         colorb: 0
       position: [450, 700]
     - name: palette_preview
@@ -15263,7 +15338,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: what the show clock is doing (role, PLAY/STOP, position, latency to the master, errors).'
-        value: 'master: nessuna timeline registrata'
+        value: riserva di ops-audio STOP 00:00.00  lat 0 ms
       Status:
       - name: Identitystatus
         style: Str
@@ -15284,7 +15359,7 @@ operators:
         label: Last Message
         readOnly: true
         help: Topic and local time of the most recently received Gaia MQTT message.
-        value: gaia/td/canvas @ 13:31:16
+        value: gaia/brain/state @ 16:01:19
       - name: Deviceagentstatus
         style: Str
         label: Device Agent Status
@@ -15311,7 +15386,7 @@ operators:
     tags:
     - tox
     storage:
-      lastmsg_seconds: 16115.1666666667
+      lastmsg_seconds: 4444.0666666667
     children:
     - name: soul
       type: outCHOP
@@ -15547,7 +15622,7 @@ operators:
       type: tableDAT
       parameters:
         file: gaia_client/devices_table.tsv
-        rows: 15
+        rows: 1
         cols: 7
       position: [800, -4200]
       color: [0.9, 0.3, 0.4]
@@ -15561,6 +15636,9 @@ operators:
       position: [800, -3200]
     - name: constant_status
       type: constantCHOP
+      parameters:
+        rate: =me.time.rate
+        autoexportroot: =parent()
       sequences:
         const:
         - name: connected
@@ -15572,6 +15650,8 @@ operators:
         - name: msg_age
           value: =max(-1, absTime.seconds - parent.GaiaClient.fetch('lastmsg_seconds', 1e9))
       position: [2400, -2200]
+      size: [130, 90]
+      color: [0.67, 0.67, 0.67]
     - name: fleet_lifecycle
       type: executeDAT
       parameters:
@@ -15966,7 +16046,7 @@ operators:
     custom_pars:
       Fixture:
         $t: fixture
-        Level: 0.1285077482
+        Level: 0.128508
         Startaddress: 300
         Outputport: 2.1.1.2:1
     position: [200, -3000]
@@ -16048,7 +16128,7 @@ operators:
           label: Touch Sender
           menuSource: tdu.TableMenu(me.parent(2).op('gaia_services/touch_senders_' + (me.par.Type.eval() if me.par.Type.eval() in ('touch_audio', 'touch_bands') else 'touch_audio')), nameCol='device_id', labelCol='label')
           help: 'Gaia device sending Touch audio (found automatically from gaia/device/+/status: service touch_audio / touch_bands active + its *_port param). With a single sender it is picked automatically. Exposed as audio_<a|b>_sender.'
-          value: td-controller-macmauro
+          value: td-controller-pcmauro
         - name: Senderaddress
           style: Str
           label: Sender Address
@@ -16111,10 +16191,669 @@ operators:
       color: [0.325, 0.8, 0.3]
       tags:
       - tox
+      storage:
+        _q:
+        - cook: 9.6
+          ns: 2940
+          time_queue_under_min_target: 1475
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 2935
+          queue_added: 0
+          queue_size_end: 2934
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27678
+        - cook: 6.4
+          ns: 1470
+          time_queue_under_min_target: 14705
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 1
+          queue_added: 0
+          queue_size_end: 1
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27687
+        - cook: 1.6
+          ns: 1470
+          time_queue_under_min_target: 1096
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 3314
+          queue_added: 0
+          queue_size_end: 3313
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27696
+        - cook: 6.9
+          ns: 1470
+          time_queue_under_min_target: 14326
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 1
+          queue_added: 0
+          queue_size_end: 1
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27705
+        - cook: 0.8
+          ns: 1470
+          time_queue_under_min_target: 792
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 3618
+          queue_added: 0
+          queue_size_end: 3617
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27713
+        - cook: 8
+          ns: 1470
+          time_queue_under_min_target: 14022
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 1
+          queue_added: 0
+          queue_size_end: 1
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27722
+        - cook: 0.1
+          ns: 1470
+          time_queue_under_min_target: 0
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 4540
+          queue_added: 0
+          queue_size_end: 4539
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27731
+        - cook: 16.5
+          ns: 1470
+          time_queue_under_min_target: 13014
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 1
+          queue_added: 0
+          queue_size_end: 1
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27739
+        - cook: 0.2
+          ns: 1470
+          time_queue_under_min_target: 181
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 4229
+          queue_added: 0
+          queue_size_end: 4228
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27748
+        - cook: 9.3
+          ns: 1470
+          time_queue_under_min_target: 13411
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 1
+          queue_added: 0
+          queue_size_end: 1
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27756
+        - cook: 2
+          ns: 1470
+          time_queue_under_min_target: 1254
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 3156
+          queue_added: 0
+          queue_size_end: 3155
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27765
+        - cook: 9.3
+          ns: 1470
+          time_queue_under_min_target: 14484
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 1
+          queue_added: 0
+          queue_size_end: 1
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27773
+        - cook: 0.1
+          ns: 2940
+          time_queue_under_min_target: 1285
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 3125
+          queue_added: 0
+          queue_size_end: 3124
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27782
+        - cook: 2.6
+          ns: 1470
+          time_queue_under_min_target: 13045
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 1
+          queue_added: 0
+          queue_size_end: 1
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27789
+        - cook: 0.1
+          ns: 1470
+          time_queue_under_min_target: 0
+          time_queue_over_max_target: 0
+          queue_retarded_total: 10
+          queue_advanced_total: 0
+          queue_recover_total: 3
+          queue_size_start: 4447
+          queue_added: 0
+          queue_size_end: 4446
+          queue_bumped: 157888
+          connected: 1
+          sample_rate: 44100
+          time_slice: 1
+          total_cooks: 27798
+        _q3:
+        - - 9.5
+          - 3269
+          - 1141
+          - 0
+          - 338117
+          - 582104
+        - - 23.3
+          - 3253
+          - 1157
+          - 0
+          - 338117
+          - 595334
+        - - 22.9
+          - 3327
+          - 1083
+          - 0
+          - 338117
+          - 608564
+        - - 12.1
+          - 3905
+          - 505
+          - 0
+          - 338117
+          - 621794
+        - - 21.8
+          - 2685
+          - 1725
+          - 0
+          - 338117
+          - 636494
+        - - 22.7
+          - 2989
+          - 1421
+          - 0
+          - 338117
+          - 648254
+        - - 13.2
+          - 4045
+          - 365
+          - 0
+          - 338117
+          - 661484
+        - - 34.4
+          - 2295
+          - 2115
+          - 0
+          - 338117
+          - 677654
+        - - 13.5
+          - 4421
+          - 0
+          - 0
+          - 338117
+          - 687944
+        - - 18.5
+          - 2494
+          - 1916
+          - 0
+          - 338117
+          - 702644
+        - - 20.1
+          - 2679
+          - 1731
+          - 0
+          - 338117
+          - 714404
+        - - 17.5
+          - 1983
+          - 2427
+          - 0
+          - 338117
+          - 727634
+        - - 20.6
+          - 2585
+          - 1825
+          - 0
+          - 338117
+          - 742334
+        - - 38
+          - 3415
+          - 995
+          - 0
+          - 338117
+          - 757034
+        - - 24.3
+          - 3268
+          - 1142
+          - 0
+          - 338117
+          - 768794
+        - - 18.8
+          - 2569
+          - 1841
+          - 0
+          - 338117
+          - 782024
+        _q4:
+        - - 0.17
+          - ''
+          - 1
+          - 0
+          - 34509
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.06
+          - ''
+          - 1
+          - 0
+          - 3639
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.06
+          - ''
+          - 1
+          - 0
+          - 16869
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.06
+          - ''
+          - 1
+          - 0
+          - 30099
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.08
+          - ''
+          - 1
+          - 0
+          - 43329
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.05
+          - ''
+          - 1
+          - 0
+          - 12459
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.09
+          - ''
+          - 1
+          - 0
+          - 25689
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.04
+          - ''
+          - 1
+          - 0
+          - 38919
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.04
+          - ''
+          - 1
+          - 0
+          - 8049
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.06
+          - ''
+          - 1
+          - 0
+          - 21279
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.1
+          - ''
+          - 1
+          - 0
+          - 34509
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.08
+          - ''
+          - 1
+          - 0
+          - 3639
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.06
+          - ''
+          - 1
+          - 0
+          - 16869
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.06
+          - ''
+          - 1
+          - 0
+          - 30099
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.04
+          - ''
+          - 1
+          - 0
+          - 43329
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        - - 0.08
+          - ''
+          - 1
+          - 0
+          - 12459
+          - 0
+          - 2918
+          - 2729813
+          - 2
+        _q5:
+        - - 0.04
+          - 1470
+          - 1
+          - 41105
+          - 26
+          - 0
+          - 49434
+          - 4064513
+          - 1047
+        - - 5.26
+          - 1470
+          - 1
+          - 10235
+          - 27
+          - 0
+          - 49682
+          - 4077502
+          - 1055
+        - - 2.87
+          - 1470
+          - 1
+          - 23465
+          - 27
+          - 0
+          - 49915
+          - 4090508
+          - 1070
+        - - 2.37
+          - 1470
+          - 1
+          - 36695
+          - 27
+          - 0
+          - 50122
+          - 4103540
+          - 1079
+        - - 2.59
+          - 1470
+          - 1
+          - 5825
+          - 28
+          - 0
+          - 50803
+          - 4116097
+          - 1090
+        - - 2.54
+          - 1470
+          - 1
+          - 19055
+          - 28
+          - 0
+          - 51532
+          - 4128607
+          - 1103
+        - - 2.03
+          - 1470
+          - 1
+          - 32285
+          - 28
+          - 0
+          - 52079
+          - 4141299
+          - 1120
+        - - 2.78
+          - 1470
+          - 1
+          - 1415
+          - 29
+          - 0
+          - 52684
+          - 4153932
+          - 1130
+        - - 2.35
+          - 1470
+          - 1
+          - 14645
+          - 29
+          - 0
+          - 52762
+          - 4167093
+          - 1137
+        - - 2.9
+          - 1470
+          - 1
+          - 27875
+          - 29
+          - 0
+          - 52965
+          - 4180129
+          - 1144
+        - - 1.79
+          - 1470
+          - 1
+          - 41105
+          - 29
+          - 0
+          - 53536
+          - 4192797
+          - 1159
+        - - 2.02
+          - 1470
+          - 2
+          - 10235
+          - 30
+          - 0
+          - 54602
+          - 4204969
+          - 1161
+        - - 2.06
+          - 1470
+          - 1
+          - 23465
+          - 30
+          - 0
+          - 55100
+          - 4217709
+          - 1172
+        - - 2.58
+          - 1470
+          - 1
+          - 36695
+          - 30
+          - 0
+          - 55262
+          - 4230786
+          - 1179
+        - - 2.09
+          - 1470
+          - 331
+          - 5825
+          - 31
+          - 0
+          - 55861
+          - 4243426
+          - 1189
+        - - 3.36
+          - 1470
+          - 1
+          - 19055
+          - 31
+          - 0
+          - 56494
+          - 4256031
+          - 1201
+        - - 1.97
+          - 1470
+          - 1
+          - 32285
+          - 31
+          - 0
+          - 56910
+          - 4268854
+          - 1214
+        - - 2.16
+          - 1470
+          - 1
+          - 1415
+          - 32
+          - 0
+          - 57190
+          - 4281812
+          - 1225
+        - - 1.25
+          - 1470
+          - 122
+          - 14645
+          - 32
+          - 0
+          - 57511
+          - 4294731
+          - 1234
+        - - 2.48
+          - 1470
+          - 1
+          - 27875
+          - 32
+          - 0
+          - 58543
+          - 4306937
+          - 1247
+        - - 1.95
+          - 1470
+          - 1
+          - 41105
+          - 32
+          - 0
+          - 58875
+          - 4319844
+          - 1257
       children:
       - name: audio_in
         type: audiodeviceinCHOP
-        position: [-400, 200]
+        position: [-600, 175]
       - name: bands_out
         type: nullCHOP
         position: [4000, 200]
@@ -16207,10 +16946,11 @@ operators:
         type: switchCHOP
         parameters:
           index: =1 if parent().par.Type == 'touch_bands' else 0
+        flags:
+        - viewer
         position: [3200, 200]
         inputs:
         - merge_bands
-        - merge_touch_bands
       - name: analyze_level
         type: analyzeCHOP
         parameters:
@@ -16220,7 +16960,7 @@ operators:
         - null_input
       - name: audio_file_in
         type: audiofileinCHOP
-        position: [-400, 0]
+        position: [-500, -25]
       - name: math_bandgain
         type: mathCHOP
         parameters:
@@ -16229,47 +16969,18 @@ operators:
         position: [3600, 200]
         inputs:
         - switch_bands
-        - const_bandgain
       - name: switch_source
         type: switchCHOP
         parameters:
           index: '={''file_demo'': 1, ''touch_audio'': 2}.get(parent().par.Type.eval(), 0)'
-        position: [400, 0]
+        position: [350, 0]
         inputs:
-        - audio_in
         - audio_file_in
         - switch_touch_audio
-      - name: const_bandgain
-        type: constantCHOP
-        sequences:
-          const:
-          - name: bass
-            value: =parent().par.Bassgain
-          - name: mid
-            value: =parent().par.Midgain
-          - name: high
-            value: =parent().par.Highgain
-          - name: level
-            value: =1
-        position: [2800, -200]
+        - audio_in
       - name: touch_in_audio
         type: touchinCHOP
-        parameters:
-          active: =bool(parent().par.Active and parent().par.Type == 'touch_audio' and parent().par.Senderaddress.eval() and not (parent().name != 'source_a' and parent(2).op('source_a').par.Type.eval() == parent().par.Type.eval() and parent(2).op('source_a').par.Sender.eval() == parent().par.Sender.eval()))
         position: [-400, -200]
-      - name: touch_in_bands
-        type: touchinCHOP
-        parameters:
-          active: =bool(parent().par.Active and parent().par.Type == 'touch_bands' and parent().par.Senderaddress.eval() and not (parent().name != 'source_a' and parent(2).op('source_a').par.Type.eval() == parent().par.Type.eval() and parent(2).op('source_a').par.Sender.eval() == parent().par.Sender.eval()))
-        position: [1200, -600]
-      - name: math_touch_level
-        type: mathCHOP
-        parameters:
-          chanop: avg
-          renameto: level
-        position: [2400, -800]
-        inputs:
-        - select_touch_bands
       - name: source_callbacks
         type: parameterexecuteDAT
         parameters:
@@ -16278,27 +16989,11 @@ operators:
           valuechange: false
           file: project1/audio_engine/source_a/source_callbacks.py
           syncfile: true
-        position: [0, -400]
+        position: [0, -350]
         size: [130, 90]
         color: [0.9, 0.3, 0.4]
         tags:
         - py
-      - name: merge_touch_bands
-        type: mergeCHOP
-        position: [2800, -600]
-        inputs:
-        - select_touch_bands
-        - math_touch_level
-      - name: select_touch_bands
-        type: selectCHOP
-        parameters:
-          channames: low0 mid0 high0
-          renamefrom: low0 mid0 high0
-          renameto: bass mid high
-        position: [2000, -600]
-        color: [0.67, 0.67, 0.67]
-        inputs:
-        - switch_touch_bands
       - name: switch_touch_audio
         type: switchCHOP
         parameters:
@@ -16307,25 +17002,13 @@ operators:
         inputs:
         - touch_in_audio
         - select_shared_audio
-      - name: switch_touch_bands
-        type: switchCHOP
-        parameters:
-          index: =1 if (parent().name != 'source_a' and parent(2).op('source_a').par.Type.eval() == parent().par.Type.eval() and parent(2).op('source_a').par.Sender.eval() == parent().par.Sender.eval()) else 0
-        position: [1600, -600]
-        inputs:
-        - touch_in_bands
-        - select_shared_bands
       - name: select_shared_audio
         type: selectCHOP
         parameters:
           chops: ../source_a/touch_in_audio
-        position: [-400, -400]
-        color: [0.67, 0.67, 0.67]
-      - name: select_shared_bands
-        type: selectCHOP
-        parameters:
-          chops: ../source_a/touch_in_bands
-        position: [1200, -800]
+        flags:
+        - viewer
+        position: [-425, -400]
         color: [0.67, 0.67, 0.67]
       annotations:
       - name: annotate1
@@ -16362,7 +17045,6 @@ operators:
           - Touch LAN - audio
           - Touch LAN - bande
           help: Where this source takes its audio from. Scheda audio / File demo / Touch LAN - audio (raw audio from another TD via Touch Out, analyzed here) / Touch LAN - bande (bands already analyzed by the sender, used as they are). Exposed to Gaia as audio_<a|b>_type.
-          value: touch_audio
         - name: Sender
           style: StrMenu
           label: Touch Sender
@@ -16392,7 +17074,7 @@ operators:
           default: default
           menuSource: op('./audio_in').par.device
           help: 'Live audio input device. List comes from the system: press Refresh Devices after plugging in a new card. "default" = system default input.'
-          value: '{0.0.1.00000000}.{fd611481-a6a4-4d53-96d2-bd5ab0492603}||Gruppo_microfoni_(2-_Tecnologia_Intel®_Smart_Sound_per_microfoni_digitali)||1'
+          value: '{0.0.1.00000000}.{7a8f7db3-62b1-4100-9826-dbe164eaec33}||CABLE_Output_(VB-Audio_Virtual_Cable)||1'
         - name: Refreshdevices
           style: Pulse
           label: Refresh Devices
@@ -16431,7 +17113,7 @@ operators:
       children:
       - name: audio_in
         type: audiodeviceinCHOP
-        position: [-400, 200]
+        position: [-600, 175]
       - name: bands_out
         type: nullCHOP
         position: [4000, 200]
@@ -16524,10 +17206,11 @@ operators:
         type: switchCHOP
         parameters:
           index: =1 if parent().par.Type == 'touch_bands' else 0
+        flags:
+        - viewer
         position: [3200, 200]
         inputs:
         - merge_bands
-        - merge_touch_bands
       - name: analyze_level
         type: analyzeCHOP
         parameters:
@@ -16537,7 +17220,7 @@ operators:
         - null_input
       - name: audio_file_in
         type: audiofileinCHOP
-        position: [-400, 0]
+        position: [-500, -25]
       - name: math_bandgain
         type: mathCHOP
         parameters:
@@ -16546,47 +17229,18 @@ operators:
         position: [3600, 200]
         inputs:
         - switch_bands
-        - const_bandgain
       - name: switch_source
         type: switchCHOP
         parameters:
           index: '={''file_demo'': 1, ''touch_audio'': 2}.get(parent().par.Type.eval(), 0)'
-        position: [400, 0]
+        position: [350, 0]
         inputs:
-        - audio_in
         - audio_file_in
         - switch_touch_audio
-      - name: const_bandgain
-        type: constantCHOP
-        sequences:
-          const:
-          - name: bass
-            value: =parent().par.Bassgain
-          - name: mid
-            value: =parent().par.Midgain
-          - name: high
-            value: =parent().par.Highgain
-          - name: level
-            value: =1
-        position: [2800, -200]
+        - audio_in
       - name: touch_in_audio
         type: touchinCHOP
-        parameters:
-          active: =bool(parent().par.Active and parent().par.Type == 'touch_audio' and parent().par.Senderaddress.eval() and not (parent().name != 'source_a' and parent(2).op('source_a').par.Type.eval() == parent().par.Type.eval() and parent(2).op('source_a').par.Sender.eval() == parent().par.Sender.eval()))
         position: [-400, -200]
-      - name: touch_in_bands
-        type: touchinCHOP
-        parameters:
-          active: =bool(parent().par.Active and parent().par.Type == 'touch_bands' and parent().par.Senderaddress.eval() and not (parent().name != 'source_a' and parent(2).op('source_a').par.Type.eval() == parent().par.Type.eval() and parent(2).op('source_a').par.Sender.eval() == parent().par.Sender.eval()))
-        position: [1200, -600]
-      - name: math_touch_level
-        type: mathCHOP
-        parameters:
-          chanop: avg
-          renameto: level
-        position: [2400, -800]
-        inputs:
-        - select_touch_bands
       - name: source_callbacks
         type: parameterexecuteDAT
         parameters:
@@ -16595,27 +17249,11 @@ operators:
           valuechange: false
           file: project1/audio_engine/source_a/source_callbacks.py
           syncfile: true
-        position: [0, -400]
+        position: [0, -350]
         size: [130, 90]
         color: [0.9, 0.3, 0.4]
         tags:
         - py
-      - name: merge_touch_bands
-        type: mergeCHOP
-        position: [2800, -600]
-        inputs:
-        - select_touch_bands
-        - math_touch_level
-      - name: select_touch_bands
-        type: selectCHOP
-        parameters:
-          channames: low0 mid0 high0
-          renamefrom: low0 mid0 high0
-          renameto: bass mid high
-        position: [2000, -600]
-        color: [0.67, 0.67, 0.67]
-        inputs:
-        - switch_touch_bands
       - name: switch_touch_audio
         type: switchCHOP
         parameters:
@@ -16624,25 +17262,13 @@ operators:
         inputs:
         - touch_in_audio
         - select_shared_audio
-      - name: switch_touch_bands
-        type: switchCHOP
-        parameters:
-          index: =1 if (parent().name != 'source_a' and parent(2).op('source_a').par.Type.eval() == parent().par.Type.eval() and parent(2).op('source_a').par.Sender.eval() == parent().par.Sender.eval()) else 0
-        position: [1600, -600]
-        inputs:
-        - touch_in_bands
-        - select_shared_bands
       - name: select_shared_audio
         type: selectCHOP
         parameters:
           chops: ../source_a/touch_in_audio
-        position: [-400, -400]
-        color: [0.67, 0.67, 0.67]
-      - name: select_shared_bands
-        type: selectCHOP
-        parameters:
-          chops: ../source_a/touch_in_bands
-        position: [1200, -800]
+        flags:
+        - viewer
+        position: [-425, -400]
         color: [0.67, 0.67, 0.67]
       annotations:
       - name: annotate1
@@ -16652,13 +17278,23 @@ operators:
         position: [-70, -870]
         size: [4670, 1530]
         color: [0.55, 0.35, 0.75]
+    - name: info_touch_in_a
+      type: infoCHOP
+      parameters:
+        op: source_a/touch_in_audio
+        autoexportroot: =parent()
+      flags:
+      - viewer
+      position: [625, 200]
+      size: [130, 90]
+      color: [0.67, 0.67, 0.67]
     annotations:
     - name: annotate1
       mode: annotate
       title: Audio Sources
       text: 'Due sorgenti indipendenti (source_b e'' un clone di source_a: stessa logica, valori propri). Ogni rig sceglie bands_a o bands_b col suo parametro Audiobus: entrambi su A = sorgente unica, A + B = due sorgenti.'
       position: [-70, -270]
-      size: [670, 770]
+      size: [1070, 770]
       color: [0.55, 0.35, 0.75]
   - name: moving_heads
     type: baseCOMP
@@ -17160,8 +17796,7 @@ operators:
       type: constantTOP
       parameters:
         colorr: 0
-        colorg: 0
-        colorb: 0.5881555894
+        colorb: 0.5881133435
       position: [450, 700]
     - name: palette_preview
       type: scriptTOP
@@ -17302,7 +17937,7 @@ operators:
         startSection: true
         readOnly: true
         help: 'Read-only: topic, sequence number and how many fixtures are being sent, or the last error.'
-        value: 'dmx_live seq 11: 15 fixture (v1 spento)'
+        value: 'dmx_live seq 2: 2 fixture (v1 spento)'
     position: [1000, -430]
     color: [0.325, 0.8, 0.3]
     comment: DMX services registered on gaia_client (op.Gaia) -- project-specific glue, outside the portable client
@@ -17605,7 +18240,6 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorg: 0
         colorb: 0
       position: [450, 700]
     - name: palette_preview
@@ -17887,7 +18521,6 @@ operators:
     - name: pixel_preview
       type: constantTOP
       parameters:
-        colorg: 0
         colorb: 0
       position: [450, 700]
     - name: palette_preview
